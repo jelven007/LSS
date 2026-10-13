@@ -26,6 +26,7 @@ const records = document.querySelector("#strategy-records");
 const saveDialog = document.querySelector("#save-strategy-dialog");
 const statuses = {ready: "已生成", pending: "待生成 / 待行情", live: "实盘跟踪中", complete: "收盘已验证", missing: "行情不完整", no_plan: "当日无执行计划", no_candidates: "无候选 · 空仓观察"};
 const historyStatuses = {queued: "排队中", running: "生成中", succeeded: "已生成", failed: "生成失败"};
+const catalogRoles = {operational: "运行策略", reference: "历史参考", retired: "已退出", paper: "模拟盘参考"};
 
 function currentStrategy() {
   return strategies.find(item => item.strategy_id === strategyId);
@@ -72,7 +73,7 @@ function renderStrategyList() {
     const link = node("a", item.name);
     link.href = `/strategy?strategy_id=${encodeURIComponent(item.strategy_id)}`;
     nameCell.append(link);
-    const status = node("span", item.enabled ? "激活" : "未激活", `status-badge${item.enabled ? " is-active" : ""}`);
+    const status = node("span", item.enabled ? "激活" : catalogRoles[item.catalog_role] || "未激活", `status-badge${item.enabled ? " is-active" : ""}`);
     row.append(
       nameCell,
       node("td", `${item.archetype.name} · ${item.archetype.stage}`, "strategy-archetype"),
@@ -129,10 +130,12 @@ function refreshNameState() {
     : "";
   document.querySelector("#archive-strategy").disabled = saving || !current?.permissions?.delete;
   document.querySelector("#archive-strategy").title = current?.permissions?.delete ? "" : "初始策略不可删除";
+  document.querySelector("#toggle-strategy").disabled = saving || current?.permissions?.activate === false;
 }
 
 async function loadCatalog() {
   const params = new URLSearchParams();
+  params.set("scope", strategyId ? "all" : document.querySelector("#strategy-scope-filter").value);
   if (!strategyId) {
     const query = document.querySelector("#strategy-query").value.trim();
     const status = document.querySelector("#strategy-status-filter").value;
@@ -211,6 +214,10 @@ async function loadDays(append = false) {
     const localDay = new Intl.DateTimeFormat("en-CA", {timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit"}).format(new Date());
     const localHour = Number(new Intl.DateTimeFormat("en-GB", {timeZone: "Asia/Shanghai", hour: "2-digit", hourCycle: "h23"}).format(new Date()));
     refresh.disabled = day.trade_date > localDay || (day.trade_date === localDay && localHour < 15);
+    if (currentStrategy()?.catalog_role && currentStrategy().catalog_role !== "operational") {
+      refresh.disabled = true;
+      refresh.title = "历史参考仅查看已保存记录";
+    }
     if (refresh.disabled) refresh.title = "该交易日收盘后可生成计划";
     refresh.addEventListener("click", async () => {
       refresh.disabled = true;
@@ -526,6 +533,7 @@ document.querySelector("#strategy-query-form").onsubmit = (event) => {
 document.querySelector("#reset-strategy-query").onclick = () => {
   document.querySelector("#strategy-query").value = "";
   document.querySelector("#strategy-status-filter").value = "all";
+  document.querySelector("#strategy-scope-filter").value = "operational";
   loadCatalog().catch(showError);
 };
 nameInput.addEventListener("input", () => {

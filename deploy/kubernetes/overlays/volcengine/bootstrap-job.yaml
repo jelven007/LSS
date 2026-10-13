@@ -36,7 +36,7 @@ spec:
                   "SELECT EXISTS (
                      SELECT 1
                      FROM banxia.schema_migration
-                     WHERE filename = '015_strategy_archetypes.sql'
+                     WHERE filename = '024_unified_leader_catalog.sql'
                    )")" = "t" ]; then
                   exit 0
                 fi

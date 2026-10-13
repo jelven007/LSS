@@ -230,7 +230,13 @@ class MultiStrategyTest(unittest.TestCase):
         with self.assertRaises(PermissionError):
             self.repository.delete_strategy(initial["strategy_id"])
 
-    def test_api_copy_update_refresh_and_empty_day(self):
+    def test_lazy_l7_campaign_creation_cannot_restart_retired_pipeline(self):
+        self.connection.execute("DELETE FROM banxia.paper_campaign WHERE code='fusion-l7-v1'")
+        campaign = self.repository.ensure_paper_campaign("fusion-l7-v1")
+        self.assertEqual(campaign["status"], "cancelled")
+        self.assertEqual(self.repository.ensure_paper_campaign()["status"], "running")
+
+    def test_api_consolidates_operation_and_preserves_reference_history(self):
         with tempfile.TemporaryDirectory() as tmp:
             client = TestClient(create_api_app(ApiServices(
                 ReportStore([Path(tmp)]), self.repository, FakeCache(),
@@ -243,12 +249,13 @@ class MultiStrategyTest(unittest.TestCase):
                 "config": changed, "revision": source["revision"],
                 "history_range": "1w",
             })
-            self.assertEqual(response.status_code, 201)
-            sid = response.json()["strategy_id"]
+            self.assertEqual(response.status_code, 422)
+            sid = self.a["strategy_id"]
+            leader = self.repository.ensure_leader_strategy()
             listed = client.get("/api/v1/strategies").json()["items"]
-            summary = next(item for item in listed if item["strategy_id"] == sid)["key_parameters"]
-            self.assertEqual(summary["minimum_score"], 70)
-            self.assertEqual(summary["entry_cutoff_time"], "09:43")
+            self.assertEqual([item["strategy_id"] for item in listed], [leader["strategy_id"]])
+            history = client.get("/api/v1/strategies?scope=all").json()["items"]
+            self.assertIn(sid, [item["strategy_id"] for item in history])
             self.assertEqual(client.patch(
                 f"/api/v1/strategies/{sid}", json={"name": "API 副本已重命名"},
             ).status_code, 200)
@@ -256,14 +263,20 @@ class MultiStrategyTest(unittest.TestCase):
             self.assertEqual(client.patch(
                 f"/api/v1/strategies/{sid}", json={"name": "非法组合", "enabled": True},
             ).status_code, 422)
-            self.assertEqual(client.patch(f"/api/v1/strategies/{sid}", json={"enabled": True}).status_code, 200)
+            self.assertEqual(client.patch(f"/api/v1/strategies/{sid}", json={"enabled": True}).status_code, 422)
             self.assertFalse(self.repository.get_strategy(self.a["strategy_id"])["enabled"])
-            self.assertTrue(self.repository.get_strategy(sid)["enabled"])
+            self.assertTrue(self.repository.get_strategy(leader["strategy_id"])["enabled"])
             self.assertEqual(client.patch(f"/api/v1/strategies/{sid}", json={"enabled": False}).status_code, 200)
             self.assertFalse(self.repository.get_strategy(sid)["enabled"])
             job = client.post(f"/api/v1/reports/2026-09-23/refresh?strategy_id={sid}")
+            self.assertEqual(job.status_code, 409)
+            job = client.post(f"/api/v1/reports/2026-09-23/refresh?strategy_id={leader['strategy_id']}")
             self.assertEqual(job.status_code, 202)
-            self.assertEqual(job.json()["payload"]["strategy_id"], sid)
+            self.assertEqual(job.json()["payload"]["strategy_id"], leader["strategy_id"])
+            with self.assertRaises(ValueError):
+                self.repository.activate_strategy(sid)
+            with self.assertRaises(PermissionError):
+                self.repository.delete_strategy(leader["strategy_id"])
             self.report["candidates"] = []
             self.persist(self.b)
             rows = client.get(f"/api/v1/strategies/{self.b['strategy_id']}/days").json()["items"]
@@ -274,7 +287,14 @@ class MultiStrategyTest(unittest.TestCase):
         self.repository.save_trading_sessions(["2026-09-24", "2026-09-25", "2026-09-28"])
         identity = self.persist(self.a)
         self.repository.ensure_strategy_days("2026-09-25")
+        self.assertIsNone(self.repository.get_strategy_day(self.a["strategy_id"], "2026-09-25"))
+        leader = self.repository.ensure_leader_strategy()
+        self.assertIsNotNone(self.repository.get_strategy_day(leader["strategy_id"], "2026-09-25"))
         with self.connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO banxia.strategy_day(strategy_id,trade_date) VALUES (%s,'2026-09-25')",
+                (self.a["strategy_id"],),
+            )
             cursor.execute(
                 """UPDATE banxia.strategy_day
                 SET execution_plan='{"candidates":[]}'::jsonb

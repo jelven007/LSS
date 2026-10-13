@@ -1506,6 +1506,7 @@ class ApiV1Test(unittest.TestCase):
             "edit_parameters": True,
             "save_as": True,
             "delete": False,
+            "activate": True,
         })
         self.assertEqual(
             client.get("/api/v1/strategies?q=不存在").json(),

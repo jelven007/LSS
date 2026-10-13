@@ -14,6 +14,7 @@ from ..strategy import DailyReport, StrategyConfig, StrategyEngine, write_report
 from ..strategy_config import stamp_report
 from ..adapters.postgres import PostgresStorage, STRATEGY_CODE, _uuid
 from ..adapters.strategy_catalog import CatalogConfigStore
+from ..strategy_archetypes import LEADER_FUSION
 
 
 class NonTradingDayError(RuntimeError):
@@ -109,9 +110,12 @@ class ReportWorker:
                 f"requested {target_date.isoformat()}, received {report.as_of}"
             )
         stamp_report(report, self.storage_settings)
+        local_leader = strategy is None and config.strategy_archetype == LEADER_FUSION.key
+        if local_leader:
+            default_id = _uuid(f"strategy:{LEADER_FUSION.code}")
         report.strategy_id = resolved_strategy_id or default_id
-        report.strategy_code = strategy["code"] if strategy else STRATEGY_CODE
-        report.strategy_name = strategy["name"] if strategy else "首板晋级二板策略"
+        report.strategy_code = strategy["code"] if strategy else LEADER_FUSION.code if local_leader else STRATEGY_CODE
+        report.strategy_name = strategy["name"] if strategy else LEADER_FUSION.name if local_leader else "首板晋级二板策略"
         output = self.output_dir / "strategies" / resolved_strategy_id if strategy else self.output_dir
         paths = write_report(report, output)
         persistence = persist_report_copy(

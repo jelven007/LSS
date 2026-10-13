@@ -29,7 +29,7 @@ patches:
 images:
   - name: banxia-strategy
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
-    newTag: dashboard-20261006-r5
+    newTag: leader-20261014-r2
   - name: banxia-flink
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-flink
     newTag: 59f59a6
@@ -75,6 +75,10 @@ configMapGenerator:
       - ../../../../migrations/postgres/018_first_board_quality_filters.sql
       - ../../../../migrations/postgres/019_first_board_positive_return_gate.sql
       - ../../../../migrations/postgres/020_paper_trading_campaign.sql
+      - ../../../../migrations/postgres/021_fusion_l7_paper_campaign.sql
+      - ../../../../migrations/postgres/022_fusion_l7_candidate.sql
+      - ../../../../migrations/postgres/023_fusion_l7_t1_exit.sql
+      - ../../../../migrations/postgres/024_unified_leader_catalog.sql
   - name: banxia-clickhouse-migrations
     namespace: banxia
     files:

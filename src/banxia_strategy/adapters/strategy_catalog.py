@@ -9,6 +9,7 @@ from datetime import date
 from ..strategy_config import ConfigConflict, StrategyConfig, StrategyConfigStore
 from ..strategy_archetypes import (
     RUNTIME_CONFIG_KEYS,
+    LEADER_FUSION,
     STRATEGY_ARCHETYPES,
     initial_strategy_config,
     is_initial_strategy_code,
@@ -63,13 +64,8 @@ class StrategyCatalogMixin:
                 cursor.execute(
                     "SELECT pg_advisory_xact_lock(hashtext('banxia-initial-strategies'))"
                 )
-                cursor.execute("""SELECT EXISTS(
-                    SELECT 1 FROM banxia.strategy_definition
-                    WHERE enabled AND NOT archived
-                )""")
-                has_active = bool(cursor.fetchone()[0])
                 for index, profile in enumerate(STRATEGY_ARCHETYPES):
-                    profile_base = current if index == 0 else {
+                    profile_base = {
                         **defaults,
                         **shared_runtime,
                     }
@@ -102,11 +98,10 @@ class StrategyCatalogMixin:
                                 display_name,
                                 profile.description,
                                 json.dumps(values),
-                                index == 0 and not has_active,
+                                False,
                             ),
                         )
                         strategy_id = str(cursor.fetchone()[0])
-                        has_active = has_active or index == 0
                     else:
                         strategy_id = str(row[0])
                         cursor.execute(
@@ -122,25 +117,38 @@ class StrategyCatalogMixin:
                     strategy_ids.append(strategy_id)
         return [self.get_strategy(strategy_id) for strategy_id in strategy_ids]
 
+    def ensure_leader_strategy(self):
+        """Migration owns activation; startup never reactivates a paused strategy."""
+        with self.connection_factory() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT strategy_id FROM banxia.strategy_definition WHERE code=%s",
+                    (LEADER_FUSION.code,),
+                )
+                row = cursor.fetchone()
+        if row is None:
+            raise RuntimeError("请先应用 024_unified_leader_catalog.sql")
+        return self.get_strategy(str(row[0]))
+
     def list_strategies(self):
         with self.connection_factory() as connection:
             with connection.cursor() as cursor:
                 cursor.execute("""SELECT strategy_id,code,name,description,enabled,archived,current_config,
-                    parent_strategy_id,config_changes
+                    parent_strategy_id,config_changes,catalog_role
                     FROM banxia.strategy_definition WHERE NOT archived ORDER BY created_at,strategy_id""")
                 return [self._strategy_row(row) for row in cursor.fetchall()]
 
     @staticmethod
     def _strategy_row(row):
         return dict(zip(("strategy_id", "code", "name", "description", "enabled", "archived", "config",
-                         "parent_strategy_id", "config_changes"),
-                        (str(row[0]), *row[1:7], str(row[7]) if row[7] else None, row[8] or {})))
+                         "parent_strategy_id", "config_changes", "catalog_role"),
+                        (str(row[0]), *row[1:7], str(row[7]) if row[7] else None, row[8] or {}, row[9])))
 
     def get_strategy(self, strategy_id):
         with self.connection_factory() as connection:
             with connection.cursor() as cursor:
                 cursor.execute("""SELECT strategy_id,code,name,description,enabled,archived,current_config,
-                    parent_strategy_id,config_changes
+                    parent_strategy_id,config_changes,catalog_role
                     FROM banxia.strategy_definition WHERE strategy_id=%s""", (strategy_id,))
                 row = cursor.fetchone()
                 return self._strategy_row(row) if row else None
@@ -149,7 +157,7 @@ class StrategyCatalogMixin:
         with self.connection_factory() as connection:
             with connection.cursor() as cursor:
                 cursor.execute("""SELECT strategy_id,code,name,description,enabled,archived,current_config,
-                    parent_strategy_id,config_changes FROM banxia.strategy_definition
+                    parent_strategy_id,config_changes,catalog_role FROM banxia.strategy_definition
                     WHERE enabled AND NOT archived""")
                 row = cursor.fetchone()
                 return self._strategy_row(row) if row else None
@@ -217,6 +225,15 @@ class StrategyCatalogMixin:
         with self.connection_factory() as connection:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_xact_lock(hashtext('banxia-active-strategy'))")
+                cursor.execute(
+                    "SELECT catalog_role FROM banxia.strategy_definition WHERE strategy_id=%s FOR UPDATE",
+                    (strategy_id,),
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    raise ValueError("策略不存在")
+                if enabled and (archived or row[0] != "operational"):
+                    raise ValueError("仅主线龙头统一策略可激活；历史策略仅供参考")
                 if archived:
                     cursor.execute("""UPDATE banxia.strategy_definition SET enabled=false,archived=true
                         WHERE strategy_id=%s""", (strategy_id,))
@@ -247,6 +264,8 @@ class StrategyCatalogMixin:
                     raise ValueError("策略不存在")
                 if is_initial_strategy_code(strategy[1]):
                     raise PermissionError("初始策略不可删除")
+                if strategy[1] == LEADER_FUSION.code:
+                    raise PermissionError("统一龙头策略不可删除")
 
                 cursor.execute(
                     """SELECT v.strategy_version_id,r.run_id,p.plan_id,p.trade_date
@@ -695,7 +714,7 @@ class StrategyCatalogMixin:
                 cursor.execute("""INSERT INTO banxia.strategy_day(strategy_id,trade_date)
                     SELECT s.strategy_id,t.trade_date FROM banxia.strategy_definition s
                     CROSS JOIN banxia.trading_session t
-                    WHERE NOT s.archived AND t.trade_date=%s
+                    WHERE NOT s.archived AND s.catalog_role='operational' AND t.trade_date=%s
                     ON CONFLICT DO NOTHING""", (today,))
 
     @staticmethod

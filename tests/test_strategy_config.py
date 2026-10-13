@@ -26,6 +26,7 @@ from banxia_strategy.ports.storage import ReportIdentity
 from banxia_strategy.service import _config_store, _consume_report_refresh, _generate_scheduled_report, _prepare_plan
 from banxia_strategy.storage_config import StorageSettings
 from banxia_strategy.strategy import StrategyEngine
+from banxia_strategy.strategy_archetypes import LEADER_FUSION, initial_strategy_config
 from banxia_strategy.strategy_config import (
     ConfigConflict, ConfigError, StrategyConfig, StrategyConfigStore, version_for,
 )
@@ -43,18 +44,9 @@ class StrategyConfigTest(unittest.TestCase):
         self.path.write_text("{}", encoding="utf-8")
         self.store = StrategyConfigStore(self.path)
 
-    def test_initialization_file_matches_first_board_defaults(self):
+    def test_initialization_file_matches_unified_leader_defaults(self):
         config_path = Path(__file__).resolve().parents[1] / "config" / "strategy.json"
-        expected = asdict(StrategyConfig())
-        expected.update({
-            "minimum_turnover_pct": 3.0,
-            "maximum_turnover_pct": 15.0,
-            "ideal_turnover_max_pct": 15.0,
-            "maximum_first_seal_time": "10:30",
-            "minimum_first_minute_change_pct": 6.5,
-            "entry_cutoff_time": "09:43",
-            "next_day_take_profit_pct": 5.1,
-        })
+        expected = initial_strategy_config(LEADER_FUSION, asdict(StrategyConfig()))
         self.assertEqual(
             StrategyConfigStore(config_path).payload()["config"],
             expected,

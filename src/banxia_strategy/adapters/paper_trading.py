@@ -79,7 +79,7 @@ class PaperTradingMixin:
                         INSERT INTO banxia.strategy_definition (
                             strategy_id, code, name, description,
                             current_config, enabled, archived,
-                            parent_strategy_id, config_changes
+                            parent_strategy_id, config_changes, catalog_role
                         ) VALUES (
                             'ff8e167e-c458-511f-a0ba-8161cfaa063f',
                             'paper-first-board-positive-v1',
@@ -89,7 +89,8 @@ class PaperTradingMixin:
                             false,
                             false,
                             %s,
-                            %s::jsonb
+                            %s::jsonb,
+                            'paper'
                         )
                         ON CONFLICT (code) DO NOTHING
                         RETURNING strategy_id
@@ -136,14 +137,15 @@ class PaperTradingMixin:
                     """
                     INSERT INTO banxia.paper_campaign (
                         campaign_id, code, strategy_id, started_on,
-                        target_sample_count, config_snapshot
+                        target_sample_count, config_snapshot, status
                     ) VALUES (
                         %s,
                         %s,
                         %s,
                         CURRENT_DATE,
                         %s,
-                        %s::jsonb
+                        %s::jsonb,
+                        %s
                     )
                     ON CONFLICT (code) DO NOTHING
                     """,
@@ -153,6 +155,7 @@ class PaperTradingMixin:
                         strategy_id,
                         target_sample_count,
                         json.dumps(config, ensure_ascii=False),
+                        "cancelled" if code == "fusion-l7-v1" else "running",
                     ),
                 )
         campaign = self.get_paper_campaign(code)

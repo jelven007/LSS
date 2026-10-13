@@ -206,10 +206,34 @@ STRATEGY_ARCHETYPES = (
     ),
 )
 
-ARCHETYPE_BY_KEY = {item.key: item for item in STRATEGY_ARCHETYPES}
-ARCHETYPE_BY_CODE = {item.code: item for item in STRATEGY_ARCHETYPES}
-ARCHETYPE_LABELS = {item.key: item.name for item in STRATEGY_ARCHETYPES}
-INITIAL_STRATEGY_CODES = frozenset(ARCHETYPE_BY_CODE)
+LEADER_FUSION = StrategyArchetype(
+    "mainline_leader_fusion",
+    "banxia-mainline-leader-fusion",
+    "主线龙头统一策略",
+    "先确认活跃主线与题材第一顺位，再按启动、接力、首阴修复或断板反包生成唯一入场计划。",
+    "观察验证",
+    "规则实现；融合收益未验证",
+    "board_reseal",
+    "主线龙头",
+    {
+        "minimum_score": 50.0,
+        "max_candidates": 3,
+        "max_per_industry": 1,
+        "minimum_industry_limit_up_count": 2,
+        "maximum_break_count": 3,
+        "maximum_amount_cny": 10_000_000_000.0,
+        "entry_open_min_pct": -1.0,
+        "entry_open_max_pct": 4.0,
+        "reject_open_min_pct": -2.0,
+        "reject_open_max_pct": 6.0,
+        "position_limit_pct": 15,
+        "portfolio_risk_limit_pct": 30,
+    },
+)
+ARCHETYPE_BY_KEY = {item.key: item for item in (*STRATEGY_ARCHETYPES, LEADER_FUSION)}
+ARCHETYPE_BY_CODE = {item.code: item for item in (*STRATEGY_ARCHETYPES, LEADER_FUSION)}
+ARCHETYPE_LABELS = {key: item.name for key, item in ARCHETYPE_BY_KEY.items()}
+INITIAL_STRATEGY_CODES = frozenset(item.code for item in STRATEGY_ARCHETYPES)
 INITIAL_STRATEGY_CODE = STRATEGY_ARCHETYPES[0].code
 RUNTIME_CONFIG_KEYS = (
     "report_schedule",

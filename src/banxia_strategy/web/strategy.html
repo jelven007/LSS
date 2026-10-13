@@ -5,17 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light">
     <meta name="theme-color" content="#f6f7f5">
-    <title>策略管理 · 一进二</title>
+    <title>策略管理 · 主线龙头</title>
     <link rel="stylesheet" href="/styles.css?v=20260926.1">
     <link rel="stylesheet" href="/strategy.css?v=20260929.1">
     <link rel="stylesheet" href="/ui-standard.css?v=20260926.2">
     <script src="/auth.js?v=20260927.1" defer></script>
-    <script src="/strategy.js?v=20260929.1" defer></script>
+    <script src="/strategy.js?v=20261014.1" defer></script>
   </head>
   <body class="settings-body">
     <header class="topbar settings-topbar">
       <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">BX</span><strong>一进二</strong></a>
-      <span class="settings-source app-source">mootdx · 沪深主板 · 首板晋级二板</span>
+      <span class="settings-source app-source">mootdx · 沪深主板 · 主线龙头</span>
     </header>
     <nav class="primary-nav" aria-label="主导航">
       <a href="/">首页</a>
@@ -31,7 +31,7 @@
       <header class="settings-heading page-header">
         <div class="page-header-copy">
           <h1>策略管理</h1>
-          <p>每条策略独立运行，每个交易日一条记录：次日计划与当日实盘。</p>
+          <p>运行一条主线龙头策略，覆盖启动、接力、首阴修复与断板反包。</p>
           <p class="page-header-meta"><span id="revision-label">策略总数</span>：<code id="config-revision">读取中</code><span id="plan-link-separator" aria-hidden="true"> · </span><a id="plan-link" href="/plan">查看次日计划 ↗</a></p>
         </div>
       </header>
@@ -39,10 +39,11 @@
       <div id="settings-errors" class="notice is-error" role="alert" hidden></div>
       <section id="strategy-list-view" aria-labelledby="strategy-list-title">
         <div class="strategy-list-heading">
-          <div><h2 id="strategy-list-title">全部策略</h2><p>十类初始策略可调整参数并另存；参数副本继承原型且保持只读。</p></div>
+          <div><h2 id="strategy-list-title">统一龙头策略</h2><p>原策略与历史记录可在历史参考中查看；统一策略的收益仍需独立验证。</p></div>
           <form id="strategy-query-form" class="strategy-query" role="search">
             <label>关键词<input id="strategy-query" class="ui-control" type="search" placeholder="名称或编码"></label>
             <label>状态<select id="strategy-status-filter" class="ui-control"><option value="all">全部</option><option value="active">激活</option><option value="inactive">未激活</option></select></label>
+            <label>目录<select id="strategy-scope-filter" class="ui-control"><option value="operational">运行策略</option><option value="all">历史参考与运行策略</option></select></label>
             <button class="ui-button" type="submit">查询</button>
             <button class="ui-button" id="reset-strategy-query" type="button">重置</button>
           </form>

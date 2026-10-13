@@ -22,6 +22,9 @@ def ensure_initial_catalog(repository, config_path, *, today: Optional[date] = N
         else [repository.ensure_initial_strategy(current)]
     )
     initial = strategies[0]
+    ensure_leader = getattr(repository, "ensure_leader_strategy", None)
+    if ensure_leader is not None:
+        initial = ensure_leader()
     start, end = history_window("1y", today=today)
     job = repository.enqueue_strategy_history(
         initial["strategy_id"],
@@ -35,8 +38,9 @@ def ensure_initial_catalog(repository, config_path, *, today: Optional[date] = N
 
 def bootstrap(repository, roots, config_path):
     initial, _job = ensure_initial_catalog(repository, config_path)
-    default_id = initial["strategy_id"]
     current = StrategyConfigStore(config_path).payload()["config"]
+    # Legacy reports belong to the original strategy, never to the new fusion.
+    default_id = repository.ensure_initial_strategy(current)["strategy_id"]
     research = repository.list_research_runs()
     imported = 0
     if research:

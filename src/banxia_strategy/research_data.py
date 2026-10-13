@@ -173,6 +173,7 @@ class DatedResearchProvider:
             self.industry_codes,
             session,
             archetype,
+            self.snapshot.get("concept_sizes", {}),
         ))
 
 

@@ -244,6 +244,7 @@ def _strategy_rows_from_history(
     industry_codes: Mapping[str, str],
     session: date,
     archetype: str,
+    concept_sizes: Optional[Mapping[str, int]] = None,
 ) -> List[Dict[str, Any]]:
     """Build a point-in-time candidate universe without reading future bars."""
     current_limit_rows = {
@@ -253,6 +254,11 @@ def _strategy_rows_from_history(
     concept_counts: Counter[str] = Counter()
     for code in current_limit_rows:
         concept_counts.update(concepts.get(code, ()))
+    recent_concept_counts: Counter[str] = Counter()
+    for day in sorted(day for day in limit_pools if day <= session)[-5:]:
+        for item in limit_pools[day]:
+            recent_concept_counts.update(concepts.get(str(item.get("代码") or ""), ()))
+    concept_sizes = concept_sizes or {}
 
     rows: List[Dict[str, Any]] = []
     for code, raw_bars in histories.items():
@@ -310,14 +316,19 @@ def _strategy_rows_from_history(
             ),
             None,
         )
+        recent_limit_date = (
+            _bar_date(bars[-1 - days_since_limit]).isoformat()
+            if days_since_limit is not None else None
+        )
 
         code_concepts = concepts.get(code, ())
         industry = (
             max(
                 code_concepts,
                 key=lambda item: (
-                    concept_counts.get(item, 0),
-                    -len(item),
+                    concept_counts.get(item, 0) * 3,
+                    recent_concept_counts.get(item, 0),
+                    -concept_sizes.get(item, 10_000),
                     item,
                 ),
             )
@@ -349,6 +360,7 @@ def _strategy_rows_from_history(
             "_return_20d_pct": round(return_20d, 4),
             "_previous_board_count": previous_board_count,
             "_days_since_limit_up": days_since_limit,
+            "_recent_limit_date": recent_limit_date,
             "_is_bearish": close < float(current.get("open") or close),
             "_reversal_confirmed": (
                 days_since_limit is not None
@@ -371,7 +383,12 @@ def _strategy_rows_from_history(
         limit_row = current_limit_rows.get(code)
         if limit_row is not None:
             base.update(limit_row)
-        if archetype in LIMIT_POOL_ARCHETYPES:
+        if archetype == "mainline_leader_fusion":
+            if limit_row is not None or (
+                days_since_limit is not None and days_since_limit <= 5
+            ):
+                rows.append(base)
+        elif archetype in LIMIT_POOL_ARCHETYPES:
             if limit_row is not None:
                 rows.append(base)
         elif limit_row is None and float(base["成交额"]) >= 200_000_000:
@@ -1406,8 +1423,12 @@ class MootdxProvider:
             self._industry_codes,
             session,
             archetype,
+            self._concept_sizes,
         )
-        if archetype not in LIMIT_POOL_ARCHETYPES:
+        if archetype == "mainline_leader_fusion":
+            # Do not truncate or quality-filter the leader comparison universe.
+            self._enrich_finance_rows(rows)
+        elif archetype not in LIMIT_POOL_ARCHETYPES:
             rows.sort(
                 key=lambda row: float(row.get("成交额") or 0),
                 reverse=True,

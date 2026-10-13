@@ -4,13 +4,14 @@ import csv
 import json
 import math
 import re
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Sequence
 from zoneinfo import ZoneInfo
 
 from .strategy_config import StrategyConfig
+from .leader_strategy import leader_setups
 from .strategy_archetypes import (
     accepts_candidate,
     archetype_for,
@@ -109,6 +110,7 @@ COLUMN_ALIASES: Dict[str, Sequence[str]] = {
     "return_20d_pct": ("20日涨幅", "_return_20d_pct"),
     "previous_board_count": ("前期连板数", "_previous_board_count"),
     "days_since_limit_up": ("距涨停日", "_days_since_limit_up"),
+    "recent_limit_date": ("最近涨停日期", "_recent_limit_date"),
     "is_bearish": ("收阴", "_is_bearish"),
     "reversal_confirmed": ("反包确认", "_reversal_confirmed"),
     "trend_confirmed": ("趋势确认", "_trend_confirmed"),
@@ -283,6 +285,7 @@ class StrategyEngine:
             candidate_rows,
             industry_stats,
             market,
+            pools,
         )
         selected = self._select(raw_candidates)
         for index, candidate in enumerate(selected, start=1):
@@ -418,21 +421,24 @@ class StrategyEngine:
         rows: List[Dict[str, Any]],
         industry_stats: Dict[str, Dict[str, Any]],
         market: Dict[str, Any],
+        pools: Sequence[tuple[date, List[Dict[str, Any]]]] = (),
     ) -> List[Candidate]:
         cfg = self.config
         profile = archetype_for(cfg.strategy_archetype)
+        fused = cfg.strategy_archetype == "mainline_leader_fusion"
+        setups = leader_setups(rows, pools, industry_stats, market, cfg) if fused else {}
         board_floor = cfg.minimum_board_count if cfg.strategy_archetype == "mainline_leader_relay" else 0
         eligible = [
             row
             for row in rows
             if self._passes_filters(row)
             and row["board_count"] >= board_floor
-            and accepts_candidate(
+            and (row["code"] in setups if fused else accepts_candidate(
                 cfg.strategy_archetype,
                 row,
                 industry_stats.get(row["industry"], {}),
                 market,
-            )
+            ))
             and int(
                 industry_stats.get(row["industry"], {}).get("today_count", 0)
             )
@@ -451,6 +457,18 @@ class StrategyEngine:
 
         result: List[Candidate] = []
         for row in eligible:
+            setup = setups.get(row["code"], {})
+            entry_mode = setup.get("entry_mode", profile.entry_mode)
+            cfg = self.config
+            if setup.get("setup") == "leader_start":
+                cfg = replace(cfg,
+                    minimum_first_minute_change_pct=cfg.leader_start_first_minute_pct,
+                    entry_cutoff_time=cfg.leader_start_entry_cutoff,
+                    entry_open_min_pct=cfg.leader_start_open_min_pct,
+                    entry_open_max_pct=cfg.leader_start_open_max_pct,
+                )
+            elif fused and row["board_count"] == 0:
+                cfg = replace(cfg, reject_below_previous_close=False)
             stats = industry_stats.get(row["industry"], {})
             first_minutes = row["first_seal_minutes"] or 15 * 60
             last_minutes = row["last_seal_minutes"] or first_minutes
@@ -519,17 +537,25 @@ class StrategyEngine:
                 + theme
                 + leadership
                 + market_component
-                + setup_bonus(cfg.strategy_archetype, row)
+                + (cfg.leader_repair_bonus if fused and row["board_count"] == 0 else setup_bonus(cfg.strategy_archetype, row))
                 - penalty,
                 1,
             )
 
-            strategy = profile.setup_label
+            strategy = setup.get("label", profile.setup_label)
 
             reasons = [
                 f"策略原型：{profile.name}",
                 f"{row['industry']}涨停{today_count}只，近{self.config.lookback_sessions}日活跃{active_days}日",
             ]
+            if fused:
+                evidence = setup["leader_evidence"]
+                reasons.append(
+                    f"主线排名{evidence['theme_rank']}；{strategy}；"
+                    + (f"前期{evidence['prior_leader_date']}题材第一、"
+                       f"{evidence['prior_leader_height']}板"
+                       if "prior_leader_date" in evidence else "完整题材池第一顺位")
+                )
             if row["board_count"] > 0:
                 reasons.append(
                     f"当前{row['board_count']}板，首封{_format_time(row['first_seal_time'])}，"
@@ -550,12 +576,12 @@ class StrategyEngine:
                     f"{self.config.missing_seal_amount_penalty:g}分数据质量分；"
                     f"换手{row['turnover']:.1f}%"
                 )
-            if max_board >= cfg.catchup_board_count:
+            if not fused and max_board >= cfg.catchup_board_count:
                 reasons.append(f"板块已有{max_board}板高度，具备补涨参照")
             if momentum > cfg.expansion_momentum:
                 reasons.append("板块涨停家数较近期均值扩张")
 
-            entry_trigger = self._entry_trigger(profile.entry_mode)
+            entry_trigger = self._entry_trigger(entry_mode, cfg, setup.get("setup"))
             mode_invalidation = {
                 "reclaim_open": f"{cfg.entry_cutoff_time}前未放量站回开盘价与昨收",
                 "breakout": f"{cfg.entry_cutoff_time}前未放量突破计划关键价",
@@ -566,8 +592,8 @@ class StrategyEngine:
                     f"盘中炸板超过{cfg.manual_max_intraday_breaks}次或"
                     f"{cfg.entry_cutoff_time}前未封稳"
                 ),
-            }[profile.entry_mode]
-            if cfg.strategy_archetype == "first_board_second_board":
+            }[entry_mode]
+            if cfg.strategy_archetype == "first_board_second_board" or setup.get("setup") == "leader_start":
                 mode_invalidation = (
                     f"{cfg.entry_cutoff_time}前未出现触板后的有量开板成交窗口"
                 )
@@ -598,14 +624,18 @@ class StrategyEngine:
             plan = {
                 **cfg.entry_rules(),
                 "strategy_archetype": cfg.strategy_archetype,
-                "entry_mode": profile.entry_mode,
+                "entry_mode": entry_mode,
                 "minimum_minute_volume_ratio": 1.5,
             }
-            if profile.entry_mode == "breakout":
+            if fused:
+                plan.update(setup)
+                plan["t1_required"] = True
+                plan["identity_scope"] = "收盘完整题材池；盘中地位需复核"
+            if entry_mode == "breakout":
                 plan["trigger_price"] = (
                     row["high"] or row["previous_high"] or row["latest_price"]
                 )
-            elif profile.entry_mode == "momentum_breakout":
+            elif entry_mode == "momentum_breakout":
                 plan["trigger_change_pct"] = 5.0
             result.append(
                 Candidate(
@@ -637,8 +667,8 @@ class StrategyEngine:
             )
         return result
 
-    def _entry_trigger(self, entry_mode: str) -> str:
-        cfg = self.config
+    def _entry_trigger(self, entry_mode: str, cfg=None, setup=None) -> str:
+        cfg = cfg or self.config
         prefix = (
             f"次日竞价涨幅位于{cfg.entry_open_min_pct:.1f}%～"
             f"{cfg.entry_open_max_pct:g}%；同题材至少"
@@ -656,7 +686,7 @@ class StrategyEngine:
             condition = "放量突破计划关键价"
         elif entry_mode == "momentum_breakout":
             condition = "分钟量比达到1.5倍且涨幅达到5%"
-        elif cfg.strategy_archetype == "first_board_second_board":
+        elif cfg.strategy_archetype == "first_board_second_board" or setup == "leader_start":
             condition = "首次触板后出现有成交量且不低于昨收的开板窗口"
         else:
             condition = (

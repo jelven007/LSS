@@ -51,6 +51,19 @@ class StrategyConfig:
     minimum_score: float = param(58.0, "最低入选评分", "selection", 0, 1000, "分")
     minimum_industry_limit_up_count: int = param(2, "同题材涨停数量下限", "selection", 1, 100, "只")
     minimum_board_count: int = param(1, "连板数下限", "selection", 1, 30, "板")
+    leader_minimum_market_score: float = param(48.0, "龙头策略环境下限", "selection", 0, 100, "分")
+    leader_minimum_active_days: int = param(2, "主线活跃天数下限", "selection", 1, 60, "日")
+    leader_maximum_theme_rank: int = param(2, "主线排名上限", "selection", 1, 20, "名")
+    leader_minimum_prior_boards: int = param(3, "首阴反包前期高度下限", "selection", 2, 30, "板")
+    leader_maximum_repair_days: int = param(3, "断板修复窗口上限", "selection", 1, 5, "日")
+    leader_start_maximum_seal_time: str = param("10:30", "龙头启动首封截止", "selection", kind="time")
+    leader_start_minimum_turnover_pct: float = param(3.0, "龙头启动换手下限", "selection", 0, 100, "%")
+    leader_start_maximum_turnover_pct: float = param(15.0, "龙头启动换手上限", "selection", 0, 100, "%")
+    leader_start_first_minute_pct: float = param(6.5, "龙头启动首分钟下限", "entry", -20, 20, "%")
+    leader_start_entry_cutoff: str = param("09:43", "龙头启动入场截止", "entry", kind="time")
+    leader_start_open_min_pct: float = param(0.5, "龙头启动竞价下限", "entry", -10, 10, "%")
+    leader_start_open_max_pct: float = param(5.0, "龙头启动竞价上限", "entry", -10, 10, "%")
+    leader_repair_bonus: float = param(12.0, "龙头修复形态加分", "scoring", 0, 100, "分")
     minimum_amount_cny: float = param(200_000_000.0, "成交额下限", "selection", 0, 1e12, "亿元", 1e8)
     maximum_amount_cny: float = param(3_000_000_000.0, "成交额上限", "selection", 1, 1e12, "亿元", 1e8)
     minimum_turnover_pct: float = param(2.0, "换手率下限", "selection", 0, 100, "%")
@@ -201,12 +214,21 @@ class StrategyConfig:
             ("market_neutral_score", "market_strong_score"),
             ("other_rank_ratio", "second_rank_ratio"),
             ("quote_interval_seconds", "idle_interval_seconds"),
+            ("leader_start_minimum_turnover_pct", "leader_start_maximum_turnover_pct"),
+            ("leader_start_open_min_pct", "leader_start_open_max_pct"),
         ]:
             if any(values[a] > values[b] for a, b in zip(sequence, sequence[1:])):
                 description = " ≤ ".join(descriptors[key].metadata["label"] for key in sequence)
                 errors.update({key: description for key in sequence})
         if not "09:30" < values["entry_cutoff_time"] <= "11:30":
             errors["entry_cutoff_time"] = "入场截止时间应晚于09:30且不晚于11:30"
+        if not "09:30" < values["leader_start_entry_cutoff"] <= "11:30":
+            errors["leader_start_entry_cutoff"] = "启动入场截止应晚于09:30且不晚于11:30"
+        elif (values["strategy_archetype"] == "mainline_leader_fusion"
+              and values["leader_start_entry_cutoff"] > values["entry_cutoff_time"]):
+            errors["leader_start_entry_cutoff"] = "启动入场截止不应晚于统一入场截止"
+        if not "09:30" <= values["leader_start_maximum_seal_time"] <= "15:00":
+            errors["leader_start_maximum_seal_time"] = "启动首封截止应在09:30至15:00之间"
         if not "09:30" <= values["maximum_first_seal_time"] <= "15:00":
             errors["maximum_first_seal_time"] = "首板最晚首次封板时间应在09:30至15:00之间"
         if not "09:30" <= values["late_seal_time"] <= "15:00":

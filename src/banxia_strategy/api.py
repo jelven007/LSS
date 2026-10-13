@@ -935,13 +935,15 @@ def create_api_app(services: ApiServices):
         payload = selected_store(result["strategy_id"]).payload()
         archetype = payload["config"]["strategy_archetype"]
         is_initial = is_initial_strategy_code(result["code"])
+        operational = result.get("catalog_role", "operational") == "operational"
         result["revision"] = payload["revision"]
         result["is_initial"] = is_initial
         result["archetype"] = profile_metadata(archetype)
         result["permissions"] = {
-            "edit_parameters": is_initial,
-            "save_as": is_initial,
-            "delete": not is_initial,
+            "edit_parameters": is_initial and operational,
+            "save_as": is_initial and operational,
+            "delete": not is_initial and operational and archetype != "mainline_leader_fusion",
+            "activate": operational,
         }
         result["key_parameters"] = {
             key: payload["config"][key]
@@ -964,12 +966,17 @@ def create_api_app(services: ApiServices):
         status: str = "all",
         limit: int = 100,
         offset: int = 0,
+        scope: str = "operational",
     ):
+        if scope not in {"operational", "reference", "retired", "paper", "all"}:
+            raise HTTPException(status_code=400, detail="scope 必须是 operational、reference、retired、paper 或 all")
         if status not in {"all", "active", "inactive"}:
             raise HTTPException(status_code=400, detail="status 必须是 all、active 或 inactive")
         if not 1 <= limit <= 200 or offset < 0:
             raise HTTPException(status_code=400, detail="limit 必须为 1..200，offset 不能小于 0")
         items = services.repository.list_strategies()
+        if scope != "all":
+            items = [item for item in items if item.get("catalog_role", "operational") == scope]
         if q:
             keyword = q.strip().casefold()
             items = [
@@ -1013,6 +1020,8 @@ def create_api_app(services: ApiServices):
             if not parent_id:
                 raise ValueError("必须指定来源策略")
             parent = require_strategy(parent_id)
+            if parent.get("catalog_role", "operational") != "operational":
+                raise ValueError("历史策略只读；运行目录仅保留主线龙头统一策略")
             if not is_initial_strategy_code(parent["code"]):
                 raise ValueError("只有初始策略支持修改参数并另存")
             parent_payload = selected_store(parent_id).payload()
@@ -1057,7 +1066,7 @@ def create_api_app(services: ApiServices):
 
     @app.patch("/api/v1/strategies/{strategy_id}")
     async def update_strategy(strategy_id: str, request: Request):
-        require_strategy(strategy_id)
+        strategy = require_strategy(strategy_id)
         try:
             payload = await request.json()
             if not isinstance(payload, dict) or set(payload) not in ({"enabled"}, {"name"}):
@@ -1065,6 +1074,8 @@ def create_api_app(services: ApiServices):
             if "name" in payload:
                 item = services.repository.rename_strategy(strategy_id, payload["name"])
             else:
+                if payload["enabled"] is True and strategy.get("catalog_role", "operational") != "operational":
+                    raise ValueError("历史策略不可激活；运行目录仅保留主线龙头统一策略")
                 item = services.repository.update_strategy(
                     strategy_id, enabled=payload["enabled"], archived=False,
                 )
@@ -1075,6 +1086,8 @@ def create_api_app(services: ApiServices):
     @app.delete("/api/v1/strategies/{strategy_id}", status_code=204)
     def delete_strategy(strategy_id: str):
         strategy = require_strategy(strategy_id)
+        if strategy.get("catalog_role", "operational") != "operational" or strategy["code"] == "banxia-mainline-leader-fusion":
+            raise HTTPException(status_code=409, detail="统一策略与历史参考记录不可删除")
         if is_initial_strategy_code(strategy["code"]):
             raise HTTPException(status_code=409, detail="初始策略不可删除")
 
@@ -2609,6 +2622,8 @@ def create_api_app(services: ApiServices):
                 detail="交易日历中缺少所选日期的前一交易日",
             )
         selected = require_strategy(strategy_id) if strategy_id else active_strategy()
+        if selected and selected.get("catalog_role", "operational") != "operational":
+            raise HTTPException(status_code=409, detail="历史参考仅查看已保存记录")
         return services.repository.enqueue_report_refresh(
             reference_date,
             requested_by=request.state.request_id,
@@ -2667,6 +2682,8 @@ def create_api_app(services: ApiServices):
         if requested_date > now.date() or (requested_date == now.date() and now.hour < 15):
             raise HTTPException(status_code=400, detail="该交易日尚未收盘，暂不能生成收盘计划")
         selected = require_strategy(strategy_id) if strategy_id else active_strategy()
+        if selected and selected.get("catalog_role", "operational") != "operational":
+            raise HTTPException(status_code=409, detail="历史参考仅查看已保存记录")
         return services.repository.enqueue_report_refresh(
             tradeDate,
             requested_by=request.state.request_id,
