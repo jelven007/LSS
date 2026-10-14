@@ -123,3 +123,16 @@ flowchart TD
 - 迁移 001–025 在隔离 PostgreSQL 顺序执行通过；025 幂等地建立冻结 `paper` 身份与 `running` campaign（目标 30、`-4%` T+1 止损快照），其余旧目录与 498 条历史记录不受影响。
 - 三条 campaign 经适配器引导状态正确：一进二 `running`、L7 `cancelled`、龙头 `running`。
 - 新增 `test_leader_paper_trading`（8 项）覆盖 T+1 退出模拟与入场→结算全链路；完整测试集 342 项通过（1 项多组件集成跳过），含对迁移 025 的布局断言。
+
+### 生产发布验收
+
+2026-10-14 已将模拟盘 campaign 上线生产：
+
+- 发布镜像 `leader-20261014-r3`（在 `r1` 依赖层上叠加当前 `src`/`config`），镜像内 `src` 与提交 `96e8c67` 工作区逐文件一致；注册表摘要 `sha256:92118aa263f814e0349ce1efe87b09a1e71e5834c364e4cef6f7caf7f4578300`。
+- PG-only 迁移 Job 执行 `025_mainline_leader_paper_campaign.sql`：迁移账本推进到 025，策略定义从 13 增至 14，新增 `paper-mainline-leader-fusion-v1`（`paper`、`enabled=false`）。
+- 生产三条 campaign 状态：`first-board-positive-v1` 运行、`fusion-l7-v1` 取消、`mainline-leader-fusion-v1` 运行（目标 30，快照含 `-4%` T+1 止损、`t1_compliant=true`）。
+- API、行情采集、落库、参考同步、策略执行、outbox、投影及 4 个 CronJob 均滚动到 `r3`，副本数保持，常驻应用全部就绪；`BANXIA_CODE_COMMIT` 从运行 ConfigMap 注入为 `96e8c67`。
+- 公网就绪接口返回 `ready`，PostgreSQL/Redis/Kafka/ClickHouse 均 ok；生产 API `?campaign=mainline-leader-fusion-v1` 返回运行中、0/30 的进度。
+- 触发一次 `paper-trading` 作业（分析日 2026-10-13）在生产真实 mootdx 数据上顺序完成三条 campaign 的对账；龙头 campaign `started_on=2026-10-14`，10-13 计划早于起始日，因此 0 入场、0 策略日，前向样本从 10-14 计划起累计。
+
+模拟盘上线仅验证规则、链路与前向机制，样本累计到 30 笔前不构成已验证的盈利能力。
