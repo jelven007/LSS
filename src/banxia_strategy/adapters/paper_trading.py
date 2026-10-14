@@ -14,6 +14,46 @@ def _number(value: Any) -> Optional[float]:
 PAPER_CAMPAIGN_IDS: Mapping[str, str] = {
     "first-board-positive-v1": "b170b44a-4d72-532b-a28f-6654b18d7d00",
     "fusion-l7-v1": "4b1d7c9e-5f32-4e9a-9d2b-7a0c1e34fb02",
+    "mainline-leader-fusion-v1": "cc074131-02c2-5ed1-8b5d-7ae842bc7f90",
+}
+
+# Each forward-only paper campaign freezes a source strategy's config into a
+# dedicated paper identity. Migrations create these rows; the mapping lets the
+# adapter re-bootstrap idempotently when the campaign is first requested.
+# ``fusion-l7-v1`` reuses the first-board paper identity and stays cancelled: the
+# T+1 replay disproved it, so it can reconcile but never accumulate new samples.
+PAPER_CAMPAIGN_SOURCES: Mapping[str, Mapping[str, str]] = {
+    "first-board-positive-v1": {
+        "paper_code": "paper-first-board-positive-v1",
+        "paper_name": "一进二正收益模拟盘 V1",
+        "paper_description": (
+            "冻结一进二正收益观察参数，仅用于模拟成交和新增样本验证。"
+        ),
+        "paper_strategy_id": "ff8e167e-c458-511f-a0ba-8161cfaa063f",
+        "source_code": "banxia-first-board-second-board",
+        "status": "running",
+    },
+    "fusion-l7-v1": {
+        "paper_code": "paper-first-board-positive-v1",
+        "paper_name": "一进二正收益模拟盘 V1",
+        "paper_description": (
+            "冻结一进二正收益观察参数，仅用于模拟成交和新增样本验证。"
+        ),
+        "paper_strategy_id": "ff8e167e-c458-511f-a0ba-8161cfaa063f",
+        "source_code": "banxia-first-board-second-board",
+        "status": "cancelled",
+    },
+    "mainline-leader-fusion-v1": {
+        "paper_code": "paper-mainline-leader-fusion-v1",
+        "paper_name": "主线龙头统一策略模拟盘 V1",
+        "paper_description": (
+            "冻结主线龙头统一策略运行参数，仅用于前向模拟成交和新增样本验证，"
+            "遵守 A 股 T+1。"
+        ),
+        "paper_strategy_id": "1e6ea1fb-2260-51fc-80ac-8adb4c09dd6d",
+        "source_code": "banxia-mainline-leader-fusion",
+        "status": "running",
+    },
 }
 
 
@@ -49,14 +89,23 @@ class PaperTradingMixin:
         if code not in PAPER_CAMPAIGN_IDS:
             raise ValueError(f"unsupported paper campaign code: {code}")
         campaign_id = PAPER_CAMPAIGN_IDS[code]
+        source = PAPER_CAMPAIGN_SOURCES.get(code)
+        if source is None:
+            # Campaigns without a bootstrap recipe (e.g. the cancelled L7 line)
+            # are created only by migrations.
+            campaign = self.get_paper_campaign(code)
+            if campaign is None:
+                raise RuntimeError("paper campaign initialization failed")
+            return campaign
         with self.connection_factory() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
                     SELECT strategy_id
                     FROM banxia.strategy_definition
-                    WHERE code = 'paper-first-board-positive-v1'
-                    """
+                    WHERE code = %s
+                    """,
+                    (source["paper_code"],),
                 )
                 strategy = cursor.fetchone()
                 if strategy is None:
@@ -64,15 +113,17 @@ class PaperTradingMixin:
                         """
                         SELECT strategy_id, current_config
                         FROM banxia.strategy_definition
-                        WHERE code = 'banxia-first-board-second-board'
+                        WHERE code = %s
                           AND NOT archived
                         FOR UPDATE
-                        """
+                        """,
+                        (source["source_code"],),
                     )
-                    source = cursor.fetchone()
-                    if source is None:
+                    origin = cursor.fetchone()
+                    if origin is None:
                         raise ValueError(
-                            "first-board source strategy is unavailable"
+                            f"paper source strategy {source['source_code']}"
+                            " is unavailable"
                         )
                     cursor.execute(
                         """
@@ -81,29 +132,23 @@ class PaperTradingMixin:
                             current_config, enabled, archived,
                             parent_strategy_id, config_changes, catalog_role
                         ) VALUES (
-                            'ff8e167e-c458-511f-a0ba-8161cfaa063f',
-                            'paper-first-board-positive-v1',
-                            '一进二正收益模拟盘 V1',
-                            '冻结一进二正收益观察参数，仅用于模拟成交和新增样本验证。',
-                            %s::jsonb,
-                            false,
-                            false,
-                            %s,
-                            %s::jsonb,
-                            'paper'
+                            %s, %s, %s, %s, %s::jsonb,
+                            false, false, %s, %s::jsonb, 'paper'
                         )
                         ON CONFLICT (code) DO NOTHING
                         RETURNING strategy_id
                         """,
                         (
-                            json.dumps(source[1], ensure_ascii=False),
-                            source[0],
+                            source["paper_strategy_id"],
+                            source["paper_code"],
+                            source["paper_name"],
+                            source["paper_description"],
+                            json.dumps(origin[1], ensure_ascii=False),
+                            origin[0],
                             json.dumps(
                                 {
                                     "paper_campaign": {
-                                        "source": (
-                                            "banxia-first-board-second-board"
-                                        ),
+                                        "source": source["source_code"],
                                         "purpose": (
                                             "30-new-sample-forward-validation"
                                         ),
@@ -119,8 +164,9 @@ class PaperTradingMixin:
                             """
                             SELECT strategy_id
                             FROM banxia.strategy_definition
-                            WHERE code = 'paper-first-board-positive-v1'
-                            """
+                            WHERE code = %s
+                            """,
+                            (source["paper_code"],),
                         )
                         strategy = cursor.fetchone()
                 strategy_id = str(strategy[0])
@@ -139,13 +185,7 @@ class PaperTradingMixin:
                         campaign_id, code, strategy_id, started_on,
                         target_sample_count, config_snapshot, status
                     ) VALUES (
-                        %s,
-                        %s,
-                        %s,
-                        CURRENT_DATE,
-                        %s,
-                        %s::jsonb,
-                        %s
+                        %s, %s, %s, CURRENT_DATE, %s, %s::jsonb, %s
                     )
                     ON CONFLICT (code) DO NOTHING
                     """,
@@ -155,7 +195,7 @@ class PaperTradingMixin:
                         strategy_id,
                         target_sample_count,
                         json.dumps(config, ensure_ascii=False),
-                        "cancelled" if code == "fusion-l7-v1" else "running",
+                        source.get("status", "running"),
                     ),
                 )
         campaign = self.get_paper_campaign(code)

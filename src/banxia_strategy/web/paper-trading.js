@@ -19,6 +19,15 @@ const campaignCatalog = {
       { phase: "D3", title: "L7 动态退出", detail: "D2 不卖；D3 首次触及 TP +5.0% 或 SL -2.5% 时退出，未触发则 14:55 发出强退指令，以 14:56 分钟价代理。" },
     ],
   },
+  "mainline-leader-fusion-v1": {
+    label: "主线龙头 V1",
+    tagline: "冻结主线龙头统一策略运行参数，前向累计 30 笔新增样本 · 遵守 T+1。",
+    rules: [
+      { phase: "D1", title: "龙头身份确认", detail: "按运行目录识别活跃主线与完整题材池第一顺位，再按启动、接力、首阴修复或断板反包确定唯一形态。" },
+      { phase: "D2", title: "计划窗口入场", detail: "按候选计划的竞价区间、首分钟与量能条件在分钟线证明可买入窗口后成交，单票 ≤ 15%。" },
+      { phase: "D3", title: "保护止损退出", detail: "D2 不卖；D3 以 -4% 保护止损为先，未触发则 14:55 发出强退指令，以 14:56 分钟价代理。" },
+    ],
+  },
 };
 const defaultCampaignCode = "first-board-positive-v1";
 let currentCampaignCode = defaultCampaignCode;

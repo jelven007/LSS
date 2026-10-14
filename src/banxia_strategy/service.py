@@ -438,6 +438,27 @@ def run_paper_trading(settings: RuntimeSettings, logger: Any) -> None:
                 **dict(fusion.summary),
             },
         )
+        from .application.leader_paper import MainlineLeaderPaperTradingWorker
+
+        leader = MainlineLeaderPaperTradingWorker(
+            repository=repository,
+            provider=MootdxProvider(),
+            storage_settings=settings.storage,
+            strategy_config_path=settings.strategy_config_path,
+            output_dir=settings.report_output_dir,
+            logger=logger,
+        ).run(target_date)
+        logger.info(
+            "paper trading reconciliation completed",
+            extra={
+                "campaign_code": "mainline-leader-fusion-v1",
+                "trade_date": leader.trade_date,
+                "plan_generated": leader.plan_generated,
+                "entries_processed": leader.entries_processed,
+                "exits_processed": leader.exits_processed,
+                **dict(leader.summary),
+            },
+        )
     finally:
         repository.close()
 

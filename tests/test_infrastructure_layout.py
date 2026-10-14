@@ -129,6 +129,23 @@ class StorageSchemaTest(unittest.TestCase):
         self.assertIn("'layer7_t1_compliant', true", exit_migration)
         self.assertIn("14:56", exit_migration)
 
+    def test_mainline_leader_paper_migration_seeds_forward_campaign(self):
+        leader_seed = (
+            ROOT / "migrations/postgres/025_mainline_leader_paper_campaign.sql"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("paper-mainline-leader-fusion-v1", leader_seed)
+        self.assertIn("'mainline-leader-fusion-v1'", leader_seed)
+        self.assertIn("cc074131-02c2-5ed1-8b5d-7ae842bc7f90", leader_seed)
+        self.assertIn("'paper'", leader_seed)
+        self.assertIn("banxia-mainline-leader-fusion", leader_seed)
+        self.assertIn("target_sample_count", leader_seed)
+        self.assertIn("'exit_hard_stop_pct', 4.0", leader_seed)
+        self.assertIn("'t1_compliant', true", leader_seed)
+        self.assertIn("14:56", leader_seed)
+        # The campaign must start running to accumulate forward samples.
+        self.assertNotIn("'cancelled'", leader_seed)
+
     def test_clickhouse_schema_contains_history_tables_and_ttls(self):
         schema = "\n".join(
             path.read_text(encoding="utf-8")
