@@ -98,6 +98,7 @@ class RuntimeSettings:
     smtp_timeout_seconds: int = 10
     metrics_port: Optional[int] = None
     storage: StorageSettings = field(default_factory=StorageSettings)
+    data_provider: str = "mootdx"
 
     def topic(self, name: str) -> str:
         return f"{self.kafka_topic_prefix}{name}"
@@ -211,4 +212,5 @@ class RuntimeSettings:
                 else None
             ),
             storage=StorageSettings.from_env(source),
+            data_provider=source.get("BANXIA_DATA_PROVIDER", "mootdx"),
         )
