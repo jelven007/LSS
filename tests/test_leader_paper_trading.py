@@ -45,12 +45,16 @@ class Provider:
         ]
         self.minutes = {}
         self.daily = {}
+        self.pools = {}
 
     def trading_dates(self):
         return self.sessions
 
     def historical_minutes(self, symbol, session):
         return self.minutes.get((symbol, session), [])
+
+    def limit_up_pool(self, session):
+        return list(self.pools.get(session, []))
 
     def history_bars(self, symbol, _period, *, end_date, max_bars):
         del max_bars
@@ -255,6 +259,108 @@ class MainlineLeaderPaperWorkerTest(unittest.TestCase):
         exit_result = self.worker.run(date(2026, 10, 12))
         self.assertEqual(self.repository.trade["status"], "exit_data_missing")
         self.assertEqual(exit_result.summary["completed_sample_count"], 0)
+
+
+def v21_candidate():
+    candidate = leader_candidate()
+    candidate["plan"].update(
+        leader_execution_version=2,
+        minimum_minute_volume_ratio=1.5,
+        next_day_exit_mode="protective_timed",
+        minimum_sector_sample_size=2,
+        minimum_sector_rise_ratio=0.5,
+    )
+    return candidate
+
+
+def daily_from_minutes(prices, volumes):
+    return {
+        "open": prices[0], "high": max(prices), "low": min(prices),
+        "close": prices[-1], "volume": sum(volumes),
+    }
+
+
+class MainlineLeaderV2PaperWorkerTest(unittest.TestCase):
+    def setUp(self):
+        self.repository = Repository(
+            config_snapshot={"leader_execution_version": 2, "hard_stop_pct": 4.0,
+                             "minimum_minute_volume_ratio": 1.5,
+                             "minimum_sector_sample_size": 2, "minimum_sector_rise_ratio": 0.5}
+        )
+        self.repository.entry_candidates = [{
+            "plan_id": "plan", "reference_date": "2026-10-08", "entry_date": "2026-10-09",
+            "candidate": v21_candidate(),
+        }]
+        self.provider = Provider()
+        # D2: touch limit (11.0) at idx6, open board, then recover above the
+        # prior post-break high with a volume spike at idx12 WITHOUT resealing,
+        # leaving idx13 as a usable sub-limit fill minute with ample capacity.
+        d2_prices = [10.1, 10.3, 10.5, 10.7, 10.9, 10.95, 11.0, 10.8, 10.82,
+                     10.85, 10.88, 10.9, 10.95, 10.93] + [10.9] * 226
+        d2_vol = [2_000.0, 2_000, 2_000, 2_000, 2_000, 2_000, 6_000, 2_400, 2_200,
+                  2_200, 2_200, 2_400, 12_000, 3_000] + [3_000.0] * 226
+        self.provider.minutes[("600001", date(2026, 10, 9))] = minute_bars(d2_prices, d2_vol)
+        self.provider.daily[("600001", date(2026, 10, 9))] = daily_from_minutes(d2_prices, d2_vol)
+        # A same-theme D1 limit-up peer that is up at the confirmation minute.
+        peer_prices = [10.5] * 240
+        peer_vol = [200.0] * 240
+        self.provider.minutes[("600002", date(2026, 10, 9))] = minute_bars(peer_prices, peer_vol)
+        self.provider.daily[("600002", date(2026, 10, 9))] = daily_from_minutes(peer_prices, peer_vol)
+        self.provider.pools[date(2026, 10, 8)] = [
+            {"代码": "600001", "名称": "龙头股份", "所属行业": "主线题材",
+             "最新价": 10.0, "连板数": 2},
+            {"代码": "600002", "名称": "同题材二", "所属行业": "主线题材",
+             "最新价": 10.0, "连板数": 1},
+        ]
+        self.worker = MainlineLeaderPaperTradingWorker(
+            repository=self.repository, provider=self.provider,
+            storage_settings=StorageSettings(),
+            strategy_config_path=Path("config/strategy.json"),
+            output_dir=Path("reports"), campaign_code="mainline-leader-fusion-v2",
+        )
+
+    def test_strength_entry_with_sector_gate_opens_position(self):
+        entry = self.worker.run(date(2026, 10, 9))
+        self.assertEqual(entry.entries_processed, 1)
+        trade = self.repository.trade
+        self.assertEqual(trade["status"], "open")
+        self.assertEqual(trade["exit_date"], "2026-10-12")
+        self.assertEqual(trade["entry_evidence"]["reason_code"], "buyable_but_failed")
+        self.assertEqual(trade["entry_evidence"]["leader_execution_version"], 2)
+        self.assertGreaterEqual(trade["entry_evidence"]["sector_confirmation"]["sample_size"], 2)
+        self.assertEqual(str(trade["entry_time"])[:5], "09:44")
+
+    def test_sector_gate_rejects_when_theme_is_weak(self):
+        # Two same-theme peers trade below their reference, so the rise ratio
+        # (only the candidate itself is up) falls below the 0.5 gate.
+        for code in ("600002", "600003"):
+            weak = [9.5] * 240
+            self.provider.minutes[(code, date(2026, 10, 9))] = minute_bars(weak, [2_000.0] * 240)
+            self.provider.daily[(code, date(2026, 10, 9))] = daily_from_minutes(weak, [2_000.0] * 240)
+        self.provider.pools[date(2026, 10, 8)] = [
+            {"代码": "600001", "名称": "龙头股份", "所属行业": "主线题材", "最新价": 10.0, "连板数": 2},
+            {"代码": "600002", "名称": "同题材二", "所属行业": "主线题材", "最新价": 10.0, "连板数": 1},
+            {"代码": "600003", "名称": "同题材三", "所属行业": "主线题材", "最新价": 10.0, "连板数": 1},
+        ]
+        self.worker.run(date(2026, 10, 9))
+        self.assertEqual(self.repository.trade["status"], "rejected")
+        self.assertEqual(self.repository.trade["entry_evidence"]["reason_code"],
+                         "sector_evidence_missing_or_weak")
+
+    def test_causal_exit_settles_open_position_on_d3(self):
+        self.worker.run(date(2026, 10, 9))
+        buy_price = float(self.repository.trade["entry_price"])
+        # D3 holds above the -4% stop, so the 14:55 timed instruction fills.
+        d3_prices = [buy_price * 1.03] * 240
+        d3_vol = [1_000.0] * 240
+        self.provider.minutes[("600001", date(2026, 10, 12))] = minute_bars(d3_prices, d3_vol)
+        self.provider.daily[("600001", date(2026, 10, 12))] = daily_from_minutes(d3_prices, d3_vol)
+        exit_result = self.worker.run(date(2026, 10, 12))
+        self.assertEqual(exit_result.exits_processed, 1)
+        self.assertEqual(self.repository.trade["status"], "closed")
+        self.assertEqual(self.repository.trade["exit_reason"], "timed_exit")
+        self.assertTrue(self.repository.trade["exit_evidence"]["t1_compliant"])
+        self.assertEqual(exit_result.summary["completed_sample_count"], 1)
 
 
 if __name__ == "__main__":

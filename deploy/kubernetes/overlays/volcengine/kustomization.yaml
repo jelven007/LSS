@@ -93,6 +93,7 @@ configMapGenerator:
       - ../../../../migrations/postgres/025_mainline_leader_paper_campaign.sql
       - ../../../../migrations/postgres/026_mainline_leader_v2.sql
       - ../../../../migrations/postgres/027_mainline_leader_core.sql
+      - ../../../../migrations/postgres/028_mainline_leader_v2_paper_campaign.sql
   - name: banxia-clickhouse-migrations
     namespace: banxia
     files:

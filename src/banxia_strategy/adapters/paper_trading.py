@@ -15,6 +15,7 @@ PAPER_CAMPAIGN_IDS: Mapping[str, str] = {
     "first-board-positive-v1": "b170b44a-4d72-532b-a28f-6654b18d7d00",
     "fusion-l7-v1": "4b1d7c9e-5f32-4e9a-9d2b-7a0c1e34fb02",
     "mainline-leader-fusion-v1": "cc074131-02c2-5ed1-8b5d-7ae842bc7f90",
+    "mainline-leader-fusion-v2": "c0eb1367-6a69-52c0-adeb-c43b1f897127",
 }
 
 # Each forward-only paper campaign freezes a source strategy's config into a
@@ -51,6 +52,17 @@ PAPER_CAMPAIGN_SOURCES: Mapping[str, Mapping[str, str]] = {
             "遵守 A 股 T+1。"
         ),
         "paper_strategy_id": "1e6ea1fb-2260-51fc-80ac-8adb4c09dd6d",
+        "source_code": "banxia-mainline-leader-fusion",
+        "status": "running",
+    },
+    "mainline-leader-fusion-v2": {
+        "paper_code": "paper-mainline-leader-fusion-v2",
+        "paper_name": "主线龙头 V2.1 核心模拟盘",
+        "paper_description": (
+            "冻结主线龙头 V2.1 核心执行参数，仅用于前向模拟成交和新增样本验证，"
+            "遵守 A 股 T+1。"
+        ),
+        "paper_strategy_id": "390db5b3-a74e-53ae-b8d2-c540db224277",
         "source_code": "banxia-mainline-leader-fusion",
         "status": "running",
     },

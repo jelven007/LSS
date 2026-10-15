@@ -460,6 +460,27 @@ def run_paper_trading(settings: RuntimeSettings, logger: Any) -> None:
                 **dict(leader.summary),
             },
         )
+
+        leader_v2 = MainlineLeaderPaperTradingWorker(
+            repository=repository,
+            provider=make_provider(settings.data_provider),
+            storage_settings=settings.storage,
+            strategy_config_path=settings.strategy_config_path,
+            output_dir=settings.report_output_dir,
+            logger=logger,
+            campaign_code="mainline-leader-fusion-v2",
+        ).run(target_date)
+        logger.info(
+            "paper trading reconciliation completed",
+            extra={
+                "campaign_code": "mainline-leader-fusion-v2",
+                "trade_date": leader_v2.trade_date,
+                "plan_generated": leader_v2.plan_generated,
+                "entries_processed": leader_v2.entries_processed,
+                "exits_processed": leader_v2.exits_processed,
+                **dict(leader_v2.summary),
+            },
+        )
     finally:
         repository.close()
 

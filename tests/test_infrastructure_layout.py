@@ -146,6 +146,23 @@ class StorageSchemaTest(unittest.TestCase):
         # The campaign must start running to accumulate forward samples.
         self.assertNotIn("'cancelled'", leader_seed)
 
+    def test_mainline_leader_v2_paper_migration_seeds_core_campaign(self):
+        seed = (
+            ROOT / "migrations/postgres/028_mainline_leader_v2_paper_campaign.sql"
+        ).read_text(encoding="utf-8")
+        self.assertIn("paper-mainline-leader-fusion-v2", seed)
+        self.assertIn("'mainline-leader-fusion-v2'", seed)
+        self.assertIn("c0eb1367-6a69-52c0-adeb-c43b1f897127", seed)
+        self.assertIn("390db5b3-a74e-53ae-b8d2-c540db224277", seed)
+        self.assertIn("'paper'", seed)
+        self.assertIn("banxia-mainline-leader-fusion", seed)
+        # Only freeze when the operational config has reached V2.1.
+        self.assertIn("'leader_rule_version' = '3'", seed)
+        self.assertIn("'execution_version', 2", seed)
+        self.assertIn("'t1_compliant', true", seed)
+        # The campaign must start running to accumulate forward samples.
+        self.assertNotIn("'cancelled'", seed)
+
     def test_clickhouse_schema_contains_history_tables_and_ttls(self):
         schema = "\n".join(
             path.read_text(encoding="utf-8")

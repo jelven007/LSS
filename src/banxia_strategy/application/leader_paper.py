@@ -11,15 +11,20 @@ a -4% stop is the first touched threshold, and if it is never reached through
 """
 from __future__ import annotations
 
+import math
 from datetime import date
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Optional, Sequence
 
-from ..t1_research import cents, minute_label, minute_quality, net_return
-from ..leader_execution import exit_fill
+from ..t1_research import cash_paid, cents, minute_label, minute_quality, net_return
+from ..leader_execution import entry_signal, exit_fill
+from ..execution_analysis import classify_candidate
+from ..intraday import plan_for
+from ..market_provider import _limit_price
 from .paper_trading import (
     PaperTradingWorker,
     _daily_bar,
     _minute_data,
+    _next_session,
     execution_model,
 )
 
@@ -203,3 +208,132 @@ class MainlineLeaderPaperTradingWorker(PaperTradingWorker):
                     "exit_evidence": {"leader_execution_version": 2, "attempts": evidence},
                 })
         return len(records)
+
+    def _evaluate_entries(self, campaign, target_date, sessions):
+        if int(campaign["config_snapshot"].get("leader_execution_version", 1)) >= 2:
+            return self._evaluate_causal_entries(campaign, target_date, sessions)
+        return super()._evaluate_entries(campaign, target_date, sessions)
+
+    def _sector_confirmation(self, candidate, reference_date, entry_date, index):
+        """Dated D1 limit-up peers read at the signal minute; no future data.
+
+        Peers come from the frozen D1 limit-up pool, restricted to the same
+        theme, main-board, non-ST names holding at least one board. Each peer's
+        rise is judged by its own D2 minute close at the confirmation index.
+        """
+        try:
+            pool = self.provider.limit_up_pool(date.fromisoformat(reference_date))
+        except Exception:
+            pool = []
+        theme = candidate.get("industry")
+        peers = []
+        for row in pool:
+            code = str(row.get("代码") or row.get("code") or "")
+            name = str(row.get("名称") or row.get("name") or "")
+            if (row.get("所属行业", row.get("industry")) != theme
+                    or int(row.get("连板数", row.get("board_count") or 0)) < 1
+                    or not code.startswith(("00", "60"))
+                    or "ST" in name.upper() or "退" in name):
+                continue
+            reference = float(row.get("最新价") or row.get("latest_price") or 0)
+            if reference <= 0:
+                continue
+            minute = _minute_data(self.provider.historical_minutes(code, entry_date))
+            bar = _daily_bar(self.provider, code, entry_date)
+            if minute is None or bar is None or minute_quality(minute, bar) != "ok":
+                continue
+            if minute["volumes"][index] <= 0:
+                continue
+            peers.append({"code": code, "reference": reference,
+                          "price": minute["prices"][index]})
+        rising = sum(peer["price"] > peer["reference"] for peer in peers)
+        return {
+            "minute_index": index, "sample_size": len(peers), "peers": peers,
+            "rise_ratio": rising / len(peers) if peers else None,
+        }
+
+    def _evaluate_causal_entries(self, campaign, target_date, sessions):
+        """V2.1 forward entry: strength signal, dated sector gate, proven fill."""
+        records = self.repository.list_paper_entry_candidates(
+            campaign["campaign_id"], target_date)
+        model = execution_model(0.0)
+        processed = 0
+        for record in records:
+            candidate = record["candidate"]
+            symbol = str(candidate["code"])
+            entry_date = date.fromisoformat(record["entry_date"])
+            minute = _minute_data(self.provider.historical_minutes(symbol, entry_date))
+            bar = _daily_bar(self.provider, symbol, entry_date)
+            base = {
+                "plan_id": record["plan_id"], "symbol": symbol,
+                "name": str(candidate["name"]), "industry": candidate.get("industry"),
+                "reference_date": record["reference_date"], "entry_date": record["entry_date"],
+            }
+            quality = (minute_quality(minute, bar)
+                       if minute is not None and bar is not None else "missing")
+            if quality != "ok":
+                self.repository.save_paper_entry(campaign["campaign_id"], {
+                    **base, "status": "entry_data_missing",
+                    "rejection_reason": f"D2 行情质量检查失败：{quality}"})
+                processed += 1
+                continue
+            plan = candidate.get("plan") or plan_for(candidate)
+            reference = float(candidate["latest_price"])
+            upper = _limit_price(reference, str(candidate["name"]))
+            signal = entry_signal(minute["prices"], minute["volumes"], reference,
+                                  upper, float(bar["open"]), plan)
+            sector = (self._sector_confirmation(
+                candidate, record["reference_date"], entry_date, signal["confirmation_index"])
+                if signal["confirmed"] else None)
+            classified = classify_candidate(
+                {"code": symbol, "name": candidate["name"], "industry": candidate.get("industry"),
+                 "latest_price": reference, "plan": plan,
+                 "sector_confirmation": sector}, record["entry_date"], bar, minute)
+            if not classified["buyable"]:
+                self.repository.save_paper_entry(campaign["campaign_id"], {
+                    **base, "status": "rejected",
+                    "rejection_reason": classified["reason"],
+                    "entry_evidence": {**classified, "sector_confirmation": sector}})
+                processed += 1
+                continue
+            buy_index = int(classified["buy_index"])
+            sample_price = float(minute["prices"][buy_index])
+            buy_price = cents(sample_price * (1 + model["slippage_each_side"]), up=True)
+            position_cny = model["position_cny"]
+            shares = math.floor(position_cny / buy_price / model["lot_shares"]) * model["lot_shares"]
+            while shares > 0 and cash_paid(buy_price, shares, model) > position_cny:
+                shares -= model["lot_shares"]
+            capacity = (minute["volumes"][buy_index] * 100
+                        * model["maximum_participation_in_observed_minute_volume"])
+            if shares < model["minimum_shares_by_board"]["main"]:
+                rejection = "1 万元模拟预算不足一手"
+            elif shares > capacity:
+                rejection = "模拟委托超过该分钟成交量的 1%"
+            else:
+                rejection = None
+            if rejection:
+                self.repository.save_paper_entry(campaign["campaign_id"], {
+                    **base, "status": "rejected", "rejection_reason": rejection,
+                    "entry_evidence": {**classified, "sector_confirmation": sector,
+                                       "capacity_shares": capacity,
+                                       "requested_shares": shares}})
+                processed += 1
+                continue
+            exit_date = _next_session(sessions, entry_date)
+            if exit_date is None:
+                self.repository.save_paper_entry(campaign["campaign_id"], {
+                    **base, "status": "entry_data_missing",
+                    "rejection_reason": "缺少 D3 交易日", "entry_evidence": classified})
+                processed += 1
+                continue
+            self.repository.save_paper_entry(campaign["campaign_id"], {
+                **base, "exit_date": exit_date.isoformat(), "status": "open",
+                "entry_time": classified["buy_window_time"], "entry_price": buy_price,
+                "entry_sample_price": sample_price, "shares": shares,
+                "target_price": buy_price,
+                "entry_evidence": {**classified, "sector_confirmation": sector,
+                                   "entry_day_close": bar["close"], "position_cny": position_cny,
+                                   "capacity_shares": capacity, "leader_execution_version": 2,
+                                   "execution_model": model}})
+            processed += 1
+        return processed
