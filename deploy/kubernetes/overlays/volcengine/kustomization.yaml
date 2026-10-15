@@ -91,8 +91,11 @@ configMapGenerator:
       - ../../../../migrations/postgres/023_fusion_l7_t1_exit.sql
       - ../../../../migrations/postgres/024_unified_leader_catalog.sql
       - ../../../../migrations/postgres/025_mainline_leader_paper_campaign.sql
-      - ../../../../migrations/postgres/026_mainline_leader_v2.sql
-      - ../../../../migrations/postgres/027_mainline_leader_core.sql
+      # 026/027 (operational V1->V2->V2.1 upgrade) are intentionally NOT applied
+      # in production: the live operational strategy stays on V1. 028 freezes a
+      # V2.1 config into a dedicated paper campaign only. Keep 026/027 for dev
+      # and the isolated migration tests; add them here only to deliberately
+      # promote the operational strategy to V2.1.
       - ../../../../migrations/postgres/028_mainline_leader_v2_paper_campaign.sql
   - name: banxia-clickhouse-migrations
     namespace: banxia

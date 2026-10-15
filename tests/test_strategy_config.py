@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import threading
 import unittest
@@ -62,6 +63,19 @@ class StrategyConfigTest(unittest.TestCase):
         self.assertEqual(core.leader_execution_version, 2)
         self.assertEqual((core.position_limit_pct, core.portfolio_risk_limit_pct), (10, 20))
         self.assertEqual(StrategyConfig().max_per_industry, 5)
+
+    def test_v2_paper_overrides_on_v1_equal_core_config(self):
+        # Path A guard: the adapter/migration freeze a V2.1 paper identity by
+        # layering MAINLINE_LEADER_V2_OVERRIDES onto the operational (V1) config.
+        # That combination must equal config/strategy.json so the paper campaign
+        # is genuinely V2.1 without ever upgrading the live operational strategy.
+        from banxia_strategy.adapters.paper_trading import (
+            MAINLINE_LEADER_V2_OVERRIDES,
+        )
+        config_path = Path(__file__).resolve().parents[1] / "config" / "strategy.json"
+        v1 = json.loads(config_path.with_name("leader-v1.json").read_text())
+        combined = StrategyConfig.from_mapping({**v1, **MAINLINE_LEADER_V2_OVERRIDES})
+        self.assertEqual(combined, StrategyConfig.from_file(config_path))
 
     def test_invalid_values_cannot_change_file(self):
         invalid_values = [

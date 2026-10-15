@@ -23,7 +23,41 @@ PAPER_CAMPAIGN_IDS: Mapping[str, str] = {
 # adapter re-bootstrap idempotently when the campaign is first requested.
 # ``fusion-l7-v1`` reuses the first-board paper identity and stays cancelled: the
 # T+1 replay disproved it, so it can reconcile but never accumulate new samples.
-PAPER_CAMPAIGN_SOURCES: Mapping[str, Mapping[str, str]] = {
+
+# V2.1 core-execution overrides layered onto the operational (V1) config. These
+# mirror migration 028 exactly (combined 026 + 027 parameter sets) so the paper
+# identity is V2.1 without ever upgrading the live operational strategy. A
+# config-parity test asserts operational-V1 + these overrides == strategy.json.
+MAINLINE_LEADER_V2_OVERRIDES: Mapping[str, Any] = {
+    "leader_rule_version": 3,
+    "leader_core_only": True,
+    "leader_execution_version": 2,
+    "minimum_minute_volume_ratio": 1.5,
+    "next_day_exit_mode": "protective_timed",
+    "leader_minimum_market_score": 48.0,
+    "leader_trial_minimum_market_score": 40.0,
+    "leader_trial_maximum_break_rate_pct": 45.0,
+    "leader_trial_minimum_market_height": 3,
+    "leader_trial_maximum_boards": 3,
+    "leader_defense_break_rate_pct": 55.0,
+    "leader_emerging_minimum_limit_ups": 3,
+    "leader_contraction_minimum_ratio": 0.5,
+    "leader_trial_position_limit_pct": 5,
+    "leader_maximum_theme_rank": 2,
+    "leader_core_maximum_theme_rank": 2,
+    "leader_start_maximum_seal_time": "14:00",
+    "leader_start_minimum_turnover_pct": 2.0,
+    "leader_start_maximum_turnover_pct": 25.0,
+    "leader_start_first_minute_pct": 3.0,
+    "leader_start_entry_cutoff": "10:00",
+    "leader_start_open_min_pct": 0.0,
+    "leader_start_open_max_pct": 5.0,
+    "minimum_score": 60.0,
+    "position_limit_pct": 10,
+    "portfolio_risk_limit_pct": 20,
+}
+
+PAPER_CAMPAIGN_SOURCES: Mapping[str, Mapping[str, Any]] = {
     "first-board-positive-v1": {
         "paper_code": "paper-first-board-positive-v1",
         "paper_name": "一进二正收益模拟盘 V1",
@@ -64,6 +98,7 @@ PAPER_CAMPAIGN_SOURCES: Mapping[str, Mapping[str, str]] = {
         ),
         "paper_strategy_id": "390db5b3-a74e-53ae-b8d2-c540db224277",
         "source_code": "banxia-mainline-leader-fusion",
+        "config_overrides": MAINLINE_LEADER_V2_OVERRIDES,
         "status": "running",
     },
 }
@@ -137,6 +172,13 @@ class PaperTradingMixin:
                             f"paper source strategy {source['source_code']}"
                             " is unavailable"
                         )
+                    # Freeze the source config, layering any versioned overrides
+                    # so the paper identity can differ from the live strategy
+                    # (e.g. a V2.1 paper campaign off a V1 operational row).
+                    frozen_config = {
+                        **origin[1],
+                        **source.get("config_overrides", {}),
+                    }
                     cursor.execute(
                         """
                         INSERT INTO banxia.strategy_definition (
@@ -155,7 +197,7 @@ class PaperTradingMixin:
                             source["paper_code"],
                             source["paper_name"],
                             source["paper_description"],
-                            json.dumps(origin[1], ensure_ascii=False),
+                            json.dumps(frozen_config, ensure_ascii=False),
                             origin[0],
                             json.dumps(
                                 {

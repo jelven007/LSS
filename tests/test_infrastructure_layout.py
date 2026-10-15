@@ -156,10 +156,16 @@ class StorageSchemaTest(unittest.TestCase):
         self.assertIn("390db5b3-a74e-53ae-b8d2-c540db224277", seed)
         self.assertIn("'paper'", seed)
         self.assertIn("banxia-mainline-leader-fusion", seed)
-        # Only freeze when the operational config has reached V2.1.
-        self.assertIn("'leader_rule_version' = '3'", seed)
+        # Path A: freeze V2.1 into the paper identity by layering the inline
+        # overrides onto the operational config, without upgrading operational.
+        self.assertIn("'leader_rule_version', 3", seed)
+        self.assertIn("'leader_core_only', true", seed)
+        self.assertIn("'leader_execution_version', 2", seed)
         self.assertIn("'execution_version', 2", seed)
         self.assertIn("'t1_compliant', true", seed)
+        # Must not gate on, or upgrade, the operational row to V2.1.
+        self.assertNotIn("leader_rule_version' = '3'", seed)
+        self.assertNotIn("UPDATE banxia.strategy_definition", seed)
         # The campaign must start running to accumulate forward samples.
         self.assertNotIn("'cancelled'", seed)
 

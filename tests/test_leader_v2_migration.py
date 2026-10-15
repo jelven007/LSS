@@ -134,33 +134,40 @@ class LeaderV2MigrationTest(unittest.TestCase):
         self.connection.execute(self.core_migration)
         self.assertEqual(before, self.snapshot())
 
-    def test_v2_paper_campaign_freezes_core_config_and_keeps_v1(self):
+    def test_v2_paper_campaign_freezes_core_config_without_upgrading_operational(self):
         self.connection.execute("SET LOCAL banxia.allow_initial_strategy_upgrade = 'on'")
         v1 = json.loads((ROOT / "config/leader-v1.json").read_text())
         self.connection.execute(
             """UPDATE banxia.strategy_definition SET current_config=%s::jsonb
             WHERE code='banxia-mainline-leader-fusion'""", (json.dumps(v1),))
-        self.connection.execute(self.migration)
-        self.connection.execute(self.core_migration)
+        operational_before = self.connection.execute(
+            """SELECT current_config FROM banxia.strategy_definition
+            WHERE code='banxia-mainline-leader-fusion'""").fetchone()
         v1_paper_before = self.connection.execute(
             """SELECT config_snapshot FROM banxia.paper_campaign
             WHERE code='mainline-leader-fusion-v1'""").fetchone()
+        # 028 runs standalone, off a V1 operational row (no 026/027 applied).
         self.connection.execute(self.v2_paper_migration)
-        # The new V2.1 paper identity mirrors the operational V2.1 config.
+        # The new paper identity is exactly the V2.1 config, built by layering
+        # the inline overrides onto the V1 operational config.
         paper = self.connection.execute(
             """SELECT current_config FROM banxia.strategy_definition
             WHERE code='paper-mainline-leader-fusion-v2'""").fetchone()
         self.assertIsNotNone(paper)
-        config = StrategyConfig.from_mapping(paper[0])
-        self.assertEqual(config.leader_rule_version, 3)
-        self.assertTrue(config.leader_core_only)
-        self.assertEqual(config.leader_execution_version, 2)
+        self.assertEqual(StrategyConfig.from_mapping(paper[0]),
+                         StrategyConfig.from_file(ROOT / "config/strategy.json"))
         campaign = self.connection.execute(
             """SELECT status, config_snapshot->>'leader_rule_version'
             FROM banxia.paper_campaign WHERE code='mainline-leader-fusion-v2'""").fetchone()
         self.assertEqual(campaign[0], 'running')
         self.assertEqual(campaign[1], '3')
-        # The frozen V1 paper campaign is untouched by the new migration.
+        # The live operational strategy is NOT upgraded: it stays V1.
+        operational_after = self.connection.execute(
+            """SELECT current_config FROM banxia.strategy_definition
+            WHERE code='banxia-mainline-leader-fusion'""").fetchone()
+        self.assertEqual(operational_before, operational_after)
+        self.assertEqual(StrategyConfig.from_mapping(operational_after[0]).leader_rule_version, 1)
+        # The frozen V1 paper campaign is untouched.
         v1_paper_after = self.connection.execute(
             """SELECT config_snapshot FROM banxia.paper_campaign
             WHERE code='mainline-leader-fusion-v1'""").fetchone()
@@ -169,18 +176,6 @@ class LeaderV2MigrationTest(unittest.TestCase):
         after = self.snapshot()
         self.connection.execute(self.v2_paper_migration)
         self.assertEqual(after, self.snapshot())
-
-    def test_v2_paper_campaign_skips_when_operational_not_v21(self):
-        self.connection.execute("SET LOCAL banxia.allow_initial_strategy_upgrade = 'on'")
-        v1 = json.loads((ROOT / "config/leader-v1.json").read_text())
-        self.connection.execute(
-            """UPDATE banxia.strategy_definition SET current_config=%s::jsonb
-            WHERE code='banxia-mainline-leader-fusion'""", (json.dumps(v1),))
-        self.connection.execute(self.migration)  # operational now at V2, not V2.1
-        before = self.snapshot()
-        self.connection.execute(self.v2_paper_migration)
-        # Without V2.1 operational config, no V2.1 paper identity is seeded.
-        self.assertEqual(before, self.snapshot())
 
 
 if __name__ == "__main__":
