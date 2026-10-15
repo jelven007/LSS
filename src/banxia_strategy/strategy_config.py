@@ -51,9 +51,19 @@ class StrategyConfig:
     minimum_score: float = param(58.0, "最低入选评分", "selection", 0, 1000, "分")
     minimum_industry_limit_up_count: int = param(2, "同题材涨停数量下限", "selection", 1, 100, "只")
     minimum_board_count: int = param(1, "连板数下限", "selection", 1, 30, "板")
+    leader_rule_version: int = param(1, "龙头规则版本", "selection", 1, 2, note="未标版本的历史配置沿用 V1；V2 启用阶段门槛与试错仓位。")
     leader_minimum_market_score: float = param(48.0, "龙头策略环境下限", "selection", 0, 100, "分")
+    leader_trial_minimum_market_score: float = param(40.0, "V2 试错环境下限", "selection", 0, 100, "分")
+    leader_trial_maximum_break_rate_pct: float = param(45.0, "V2 试错炸板率上限", "selection", 0, 100, "%")
+    leader_trial_minimum_market_height: int = param(3, "V2 试错市场高度下限", "selection", 2, 30, "板")
+    leader_trial_maximum_boards: int = param(3, "V2 试错个股高度上限", "selection", 2, 30, "板")
+    leader_defense_break_rate_pct: float = param(55.0, "V2 防守炸板率起点", "selection", 0, 100, "%")
+    leader_emerging_minimum_limit_ups: int = param(3, "V2 新题材涨停下限", "selection", 2, 100, "只")
+    leader_contraction_minimum_ratio: float = param(0.5, "V2 分歧题材家数保留比例", "selection", 0.1, 1, "%", 0.01)
+    leader_trial_position_limit_pct: int = param(5, "V2 试错单票仓位上限", "risk", 1, 100, "%")
     leader_minimum_active_days: int = param(2, "主线活跃天数下限", "selection", 1, 60, "日")
     leader_maximum_theme_rank: int = param(2, "主线排名上限", "selection", 1, 20, "名")
+    leader_core_maximum_theme_rank: int = param(2, "V2 常规仓位题材排名上限", "selection", 1, 20, "名", note="其后的扩展题材与启动分支使用试错仓位。")
     leader_minimum_prior_boards: int = param(3, "首阴反包前期高度下限", "selection", 2, 30, "板")
     leader_maximum_repair_days: int = param(3, "断板修复窗口上限", "selection", 1, 5, "日")
     leader_start_maximum_seal_time: str = param("10:30", "龙头启动首封截止", "selection", kind="time")
@@ -220,6 +230,15 @@ class StrategyConfig:
             if any(values[a] > values[b] for a, b in zip(sequence, sequence[1:])):
                 description = " ≤ ".join(descriptors[key].metadata["label"] for key in sequence)
                 errors.update({key: description for key in sequence})
+        if values["leader_rule_version"] == 2:
+            for low, high in (
+                ("leader_trial_minimum_market_score", "leader_minimum_market_score"),
+                ("leader_trial_maximum_break_rate_pct", "leader_defense_break_rate_pct"),
+                ("leader_trial_position_limit_pct", "position_limit_pct"),
+                ("leader_core_maximum_theme_rank", "leader_maximum_theme_rank"),
+            ):
+                if values[low] > values[high]:
+                    errors[low] = f"{descriptors[low].metadata['label']}不能超过{descriptors[high].metadata['label']}"
         if not "09:30" < values["entry_cutoff_time"] <= "11:30":
             errors["entry_cutoff_time"] = "入场截止时间应晚于09:30且不晚于11:30"
         if not "09:30" < values["leader_start_entry_cutoff"] <= "11:30":

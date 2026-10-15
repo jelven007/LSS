@@ -221,6 +221,7 @@ def _report_payload(report: Mapping[str, Any], strategy_version: str = "v1"):
         "data_source": report.get("data_source"),
         "data_sessions": report.get("data_sessions", []),
         "rejected_count": report.get("rejected_count", 0),
+        "selection_diagnostics": report.get("selection_diagnostics", {}),
         "disclaimer": report.get("disclaimer", ""),
     }
 

@@ -4,6 +4,7 @@ import csv
 import json
 import math
 import re
+from collections import Counter
 from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import date, datetime
 from pathlib import Path
@@ -11,7 +12,7 @@ from typing import Any, Dict, Iterable, List, Optional, Protocol, Sequence
 from zoneinfo import ZoneInfo
 
 from .strategy_config import StrategyConfig
-from .leader_strategy import leader_setups
+from .leader_strategy import exclude, leader_setups
 from .strategy_archetypes import (
     accepts_candidate,
     archetype_for,
@@ -75,6 +76,7 @@ class DailyReport:
     strategy_id: str = ""
     strategy_code: str = ""
     strategy_name: str = ""
+    selection_diagnostics: Dict[str, Any] = field(default_factory=dict)
     constraints: Dict[str, Any] = field(
         default_factory=lambda: {
             "max_candidates": 8,
@@ -281,13 +283,15 @@ class StrategyEngine:
             ]
         else:
             candidate_rows = today_rows
+        diagnostics = {} if self.config.strategy_archetype == "mainline_leader_fusion" else None
         raw_candidates = self._build_candidates(
             candidate_rows,
             industry_stats,
             market,
             pools,
+            diagnostics=diagnostics,
         )
-        selected = self._select(raw_candidates)
+        selected = self._select(raw_candidates, diagnostics)
         for index, candidate in enumerate(selected, start=1):
             candidate.rank = index
 
@@ -311,6 +315,7 @@ class StrategyEngine:
                 "portfolio_risk_limit_pct": self.config.portfolio_risk_limit_pct,
             },
             candidates=selected,
+            selection_diagnostics=diagnostics or {},
             rejected_count=max(
                 0,
                 len(candidate_rows) - len(selected),
@@ -388,33 +393,36 @@ class StrategyEngine:
         return result
 
     def _passes_filters(self, row: Dict[str, Any]) -> bool:
+        return not self._filter_reason(row)
+
+    def _filter_reason(self, row: Dict[str, Any]) -> str:
         cfg = self.config
         if not row["code"] or not row["name"]:
-            return False
+            return "missing_stock_identity"
         if cfg.exclude_st and ("ST" in row["name"].upper() or "退" in row["name"]):
-            return False
+            return "st_or_delisted"
         if cfg.main_board_only and not _is_main_board(row["code"]):
-            return False
+            return "outside_main_board"
         if not cfg.minimum_amount_cny <= row["amount"] <= cfg.maximum_amount_cny:
-            return False
+            return "amount_outside_range"
         if not cfg.minimum_turnover_pct <= row["turnover"] <= cfg.maximum_turnover_pct:
-            return False
+            return "turnover_outside_range"
         if not (
             cfg.minimum_float_market_cap_cny
             <= row["float_market_cap"]
             <= cfg.maximum_float_market_cap_cny
         ):
-            return False
+            return "float_cap_outside_range"
         if row["break_count"] > cfg.maximum_break_count:
-            return False
+            return "too_many_breaks"
         maximum_first_seal = _time_minutes(cfg.maximum_first_seal_time)
         if (
             row["first_seal_minutes"] is not None
             and maximum_first_seal is not None
             and row["first_seal_minutes"] > maximum_first_seal
         ):
-            return False
-        return True
+            return "seal_too_late"
+        return ""
 
     def _build_candidates(
         self,
@@ -422,28 +430,32 @@ class StrategyEngine:
         industry_stats: Dict[str, Dict[str, Any]],
         market: Dict[str, Any],
         pools: Sequence[tuple[date, List[Dict[str, Any]]]] = (),
+        diagnostics: Optional[Dict[str, Any]] = None,
     ) -> List[Candidate]:
         cfg = self.config
         profile = archetype_for(cfg.strategy_archetype)
         fused = cfg.strategy_archetype == "mainline_leader_fusion"
-        setups = leader_setups(rows, pools, industry_stats, market, cfg) if fused else {}
+        setups = leader_setups(rows, pools, industry_stats, market, cfg, diagnostics) if fused else {}
         board_floor = cfg.minimum_board_count if cfg.strategy_archetype == "mainline_leader_relay" else 0
-        eligible = [
-            row
-            for row in rows
-            if self._passes_filters(row)
-            and row["board_count"] >= board_floor
-            and (row["code"] in setups if fused else accepts_candidate(
-                cfg.strategy_archetype,
-                row,
-                industry_stats.get(row["industry"], {}),
-                market,
-            ))
-            and int(
-                industry_stats.get(row["industry"], {}).get("today_count", 0)
-            )
-            >= self.config.minimum_industry_limit_up_count
-        ]
+        eligible = []
+        for row in rows:
+            if fused and row["code"] not in setups:
+                continue
+            reason = self._filter_reason(row)
+            if reason:
+                exclude(diagnostics, row, "quality", reason)
+                continue
+            if row["board_count"] < board_floor:
+                continue
+            if not fused and not accepts_candidate(
+                    cfg.strategy_archetype, row,
+                    industry_stats.get(row["industry"], {}), market):
+                continue
+            if int(industry_stats.get(row["industry"], {}).get("today_count", 0)) < cfg.minimum_industry_limit_up_count:
+                continue
+            eligible.append(row)
+        if diagnostics is not None:
+            diagnostics.update(universe_count=len(rows), eligible_count=len(eligible))
         industry_order: Dict[str, List[str]] = {}
         for industry in {row["industry"] for row in eligible}:
             members = [row for row in eligible if row["industry"] == industry]
@@ -460,6 +472,9 @@ class StrategyEngine:
             setup = setups.get(row["code"], {})
             entry_mode = setup.get("entry_mode", profile.entry_mode)
             cfg = self.config
+            if fused:
+                cfg = replace(cfg, position_limit_pct=setup["leader_evidence"].get(
+                    "position_limit_pct", cfg.position_limit_pct))
             if setup.get("setup") == "leader_start":
                 cfg = replace(cfg,
                     minimum_first_minute_change_pct=cfg.leader_start_first_minute_pct,
@@ -556,6 +571,11 @@ class StrategyEngine:
                        f"{evidence['prior_leader_height']}板"
                        if "prior_leader_date" in evidence else "完整题材池第一顺位")
                 )
+                if cfg.leader_rule_version == 2:
+                    reasons.append(
+                        f"V2 阶段：{ {'established': '持续主线', 'emerging': '首日启动', 'divergence': '有限分歧'}[evidence['theme_stage']] }；"
+                        f"{'弱市试错' if evidence['market_mode'] == 'trial' else '常规环境'}，单票上限{cfg.position_limit_pct}%"
+                    )
             if row["board_count"] > 0:
                 reasons.append(
                     f"当前{row['board_count']}板，首封{_format_time(row['first_seal_time'])}，"
@@ -616,7 +636,7 @@ class StrategyEngine:
                 else "次日无溢价或板块退潮优先退出；"
             )
             exit_plan = (
-                f"单票不超过{self.config.position_limit_pct}%；成本回撤"
+                f"单票不超过{cfg.position_limit_pct}%；成本回撤"
                 f"{self.config.hard_stop_pct:.1f}%触发风险预警；"
                 "A股T+1，当日新买仓位不能当日卖出，最早下一交易日按可成交情况退出；"
                 f"{target_exit}跳空和跌停可能导致损失超过预警阈值"
@@ -631,6 +651,13 @@ class StrategyEngine:
                 plan.update(setup)
                 plan["t1_required"] = True
                 plan["identity_scope"] = "收盘完整题材池；盘中地位需复核"
+                if cfg.leader_rule_version == 2:
+                    plan.update(
+                        leader_rule_version=2,
+                        position_limit_pct=cfg.position_limit_pct,
+                        portfolio_risk_limit_pct=cfg.portfolio_risk_limit_pct,
+                        risk_reason=setup["leader_evidence"]["risk_reason"],
+                    )
             if entry_mode == "breakout":
                 plan["trigger_price"] = (
                     row["high"] or row["previous_high"] or row["latest_price"]
@@ -661,7 +688,7 @@ class StrategyEngine:
                     entry_trigger=entry_trigger,
                     invalidation=invalidation,
                     exit_plan=exit_plan,
-                    position_limit_pct=self.config.position_limit_pct,
+                    position_limit_pct=cfg.position_limit_pct,
                     plan=plan,
                 )
             )
@@ -698,19 +725,29 @@ class StrategyEngine:
             "量能、板块和实际成交机会需人工核验"
         )
 
-    def _select(self, candidates: List[Candidate]) -> List[Candidate]:
+    def _select(self, candidates: List[Candidate], diagnostics=None) -> List[Candidate]:
         candidates.sort(key=lambda item: (-item.score, item.first_seal_time, item.code))
         selected: List[Candidate] = []
         industry_counts: Dict[str, int] = {}
         for candidate in candidates:
             if candidate.score < self.config.minimum_score:
+                exclude(diagnostics, asdict(candidate), "score", "score_below_minimum",
+                        score=candidate.score, minimum=self.config.minimum_score)
                 continue
             if industry_counts.get(candidate.industry, 0) >= self.config.max_per_industry:
+                exclude(diagnostics, asdict(candidate), "diversification", "same_theme_limit")
+                continue
+            if len(selected) >= self.config.max_candidates:
+                exclude(diagnostics, asdict(candidate), "diversification", "candidate_count_limit")
                 continue
             selected.append(candidate)
             industry_counts[candidate.industry] = industry_counts.get(candidate.industry, 0) + 1
-            if len(selected) >= self.config.max_candidates:
-                break
+        if diagnostics is not None:
+            diagnostics.update(
+                selected_count=len(selected),
+                stage_counts=dict(Counter(item["stage"] for item in diagnostics.get("excluded", []))),
+                reason_counts=dict(Counter(item["reason"] for item in diagnostics.get("excluded", []))),
+            )
         return selected
 
 
@@ -762,9 +799,21 @@ def _render_markdown(report: DailyReport) -> str:
         f"- 数据来源：{report.data_source}",
         f"- 数据交易日：{', '.join(report.data_sessions)}",
         "",
-        "## 次日候选",
-        "",
     ]
+    if report.selection_diagnostics:
+        diag = report.selection_diagnostics
+        stages = {"market": "市场门槛", "theme": "题材阶段或排名", "identity": "龙头身份",
+                  "setup": "形态确认", "quality": "流动性或数据质量",
+                  "score": "最低评分", "diversification": "数量与题材上限"}
+        modes = {"closed": "防守关闭", "trial": "小仓试错", "regular": "常规观察"}
+        lines.extend([
+            "## 筛选诊断", "",
+            f"- 规则：V{diag.get('rule_version', 1)}；模式：{modes.get(diag.get('market_mode'), '待确认')}",
+            f"- 候选宇宙 {diag.get('universe_count', 0)} 只，质量合格 {diag.get('eligible_count', 0)} 只，最终入选 {diag.get('selected_count', 0)} 只",
+            *[f"- {stages[stage]}排除：{count} 只" for stage, count in diag.get("stage_counts", {}).items()],
+            "",
+        ])
+    lines.extend(["## 次日候选", ""])
     if not report.candidates:
         lines.extend(
             [

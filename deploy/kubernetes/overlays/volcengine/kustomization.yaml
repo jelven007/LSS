@@ -91,6 +91,7 @@ configMapGenerator:
       - ../../../../migrations/postgres/023_fusion_l7_t1_exit.sql
       - ../../../../migrations/postgres/024_unified_leader_catalog.sql
       - ../../../../migrations/postgres/025_mainline_leader_paper_campaign.sql
+      - ../../../../migrations/postgres/026_mainline_leader_v2.sql
   - name: banxia-clickhouse-migrations
     namespace: banxia
     files:

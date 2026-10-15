@@ -44,13 +44,18 @@ class StrategyConfigTest(unittest.TestCase):
         self.path.write_text("{}", encoding="utf-8")
         self.store = StrategyConfigStore(self.path)
 
-    def test_initialization_file_matches_unified_leader_defaults(self):
+    def test_initialization_keeps_frozen_v1_and_opts_into_v2(self):
         config_path = Path(__file__).resolve().parents[1] / "config" / "strategy.json"
         expected = initial_strategy_config(LEADER_FUSION, asdict(StrategyConfig()))
         self.assertEqual(
-            StrategyConfigStore(config_path).payload()["config"],
+            StrategyConfigStore(config_path.with_name("leader-v1.json")).payload()["config"],
             expected,
         )
+        v2 = StrategyConfigStore(config_path).read()
+        self.assertEqual(v2.leader_rule_version, 2)
+        self.assertLess(v2.leader_trial_position_limit_pct, v2.position_limit_pct)
+        self.assertEqual(v2.minimum_amount_cny, expected["minimum_amount_cny"])
+        self.assertEqual(v2.portfolio_risk_limit_pct, expected["portfolio_risk_limit_pct"])
         self.assertEqual(StrategyConfig().max_per_industry, 5)
 
     def test_invalid_values_cannot_change_file(self):

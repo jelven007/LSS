@@ -1,0 +1,16 @@
+{
+  "strategy_archetype": "mainline_leader_fusion",
+  "leader_rule_version": 1,
+  "minimum_score": 50.0,
+  "max_candidates": 3,
+  "max_per_industry": 1,
+  "minimum_industry_limit_up_count": 2,
+  "maximum_break_count": 3,
+  "maximum_amount_cny": 10000000000.0,
+  "entry_open_min_pct": -1.0,
+  "entry_open_max_pct": 4.0,
+  "reject_open_min_pct": -2.0,
+  "reject_open_max_pct": 6.0,
+  "position_limit_pct": 15,
+  "portfolio_risk_limit_pct": 30
+}
