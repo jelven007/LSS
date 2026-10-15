@@ -258,6 +258,35 @@ def evaluate(
                 "muted",
             )
     entry_mode = str(plan.get("entry_mode") or "board_reseal")
+    if int(plan.get("leader_execution_version", 1)) >= 2:
+        from ..leader_execution import entry_signal
+        from ..t1_research import minute_label
+        evidence = quote.get("completed_execution_minutes") or {}
+        try:
+            through = datetime.fromisoformat(evidence["through"])
+            age = (now - through).total_seconds()
+            count = len(evidence.get("prices", []))
+            valid = (0 < count <= 120 and through.second == 0
+                     and through.strftime("%H:%M") == minute_label(count - 1)
+                     and through.date() == now.date()
+                     and 0 <= age <= plan.get("quote_max_age_seconds", 180))
+        except (KeyError, TypeError, ValueError):
+            valid = False
+        if not valid:
+            return advice(DecisionState.WATCH, "观察 · 等待完整分钟证据",
+                          "缺少连续且已完成的当日分钟，不能确认开板承接。")
+        signal = entry_signal(
+            evidence.get("prices", []), evidence.get("volumes", []),
+            plan["previous_close"], plan["limit_price"], quote["open"], plan,
+        )
+        if signal["confirmed"]:
+            return advice(
+                DecisionState.TRIGGERED, "承接恢复 · 待人工确认",
+                f"{signal['confirmation_time']}完成放量恢复；只能在确认之后验证成交，仍需复核盘中龙头地位及板块。",
+                "focus",
+            )
+        return advice(DecisionState.WATCH, "观察 · 等待承接恢复",
+                      "等待触板开板后恢复此前分钟高点，并同时满足计划量比。")
     if entry_mode != "board_reseal":
         volume_ratio = quote.get("minute_volume_ratio")
         minimum_ratio = float(plan.get("minimum_minute_volume_ratio", 1.5))

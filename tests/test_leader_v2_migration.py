@@ -19,9 +19,14 @@ class LeaderV2MigrationTest(unittest.TestCase):
         self.connection = psycopg.connect(os.environ["BANXIA_TEST_POSTGRES_DSN"])
         self.addCleanup(self.connection.close)
         self.addCleanup(self.connection.rollback)
-        self.migration = (ROOT / "migrations/postgres/026_mainline_leader_v2.sql").read_text()
+        self.migration = self._load("026_mainline_leader_v2.sql")
+        self.core_migration = self._load("027_mainline_leader_core.sql")
+
+    @staticmethod
+    def _load(name):
         # Run within the fixture's transaction, so every mutation is rolled back.
-        self.migration = self.migration.removeprefix("BEGIN;").removesuffix("COMMIT;\n")
+        text = (ROOT / "migrations/postgres" / name).read_text()
+        return text.removeprefix("BEGIN;").removesuffix("COMMIT;\n")
 
     def snapshot(self):
         result = {}
@@ -77,7 +82,7 @@ class LeaderV2MigrationTest(unittest.TestCase):
         )
         active = next(row[1] for row in after["strategy_definition"] if row[0] == "banxia-mainline-leader-fusion")
         self.assertEqual(StrategyConfig.from_mapping(active),
-                         StrategyConfig.from_file(ROOT / "config/strategy.json"))
+                         StrategyConfig.from_file(ROOT / "config/leader-v2.json"))
         paper = next(row[1] for row in after["strategy_definition"] if row[0] == "paper-mainline-leader-fusion-v1")
         self.assertEqual(StrategyConfig.from_mapping(paper).leader_rule_version, 1)
         self.connection.execute(self.migration)
@@ -91,6 +96,41 @@ class LeaderV2MigrationTest(unittest.TestCase):
             WHERE code='banxia-mainline-leader-fusion'""")
         before = self.snapshot()
         self.connection.execute(self.migration)
+        self.assertEqual(before, self.snapshot())
+
+    def test_core_migration_chains_v2_to_v21_and_keeps_frozen_rows(self):
+        self.connection.execute("SET LOCAL banxia.allow_initial_strategy_upgrade = 'on'")
+        v1 = json.loads((ROOT / "config/leader-v1.json").read_text())
+        self.connection.execute(
+            """UPDATE banxia.strategy_definition SET current_config=%s::jsonb
+            WHERE code='banxia-mainline-leader-fusion'""", (json.dumps(v1),))
+        self.connection.execute(self.migration)
+        before = self.snapshot()
+        self.connection.execute(self.core_migration)
+        after = self.snapshot()
+        # Frozen paper campaign and every non-operational row stay unchanged.
+        self.assertEqual(
+            [row for row in before["strategy_definition"] if row[0] != "banxia-mainline-leader-fusion"],
+            [row for row in after["strategy_definition"] if row[0] != "banxia-mainline-leader-fusion"],
+        )
+        active = next(row[1] for row in after["strategy_definition"]
+                      if row[0] == "banxia-mainline-leader-fusion")
+        self.assertEqual(StrategyConfig.from_mapping(active),
+                         StrategyConfig.from_file(ROOT / "config/strategy.json"))
+        self.assertEqual(StrategyConfig.from_mapping(active).leader_rule_version, 3)
+        # Re-running is idempotent: V2.1 is no longer at leader_rule_version 2.
+        self.connection.execute(self.core_migration)
+        self.assertEqual(after, self.snapshot())
+
+    def test_core_migration_skips_configs_not_at_v2(self):
+        self.connection.execute("SET LOCAL banxia.allow_initial_strategy_upgrade = 'on'")
+        v1 = json.loads((ROOT / "config/leader-v1.json").read_text())
+        self.connection.execute(
+            """UPDATE banxia.strategy_definition SET current_config=%s::jsonb
+            WHERE code='banxia-mainline-leader-fusion'""", (json.dumps(v1),))
+        before = self.snapshot()
+        # 027 only upgrades rows already at V2; a V1 row must be left for 026.
+        self.connection.execute(self.core_migration)
         self.assertEqual(before, self.snapshot())
 
 

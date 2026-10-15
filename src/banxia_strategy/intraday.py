@@ -129,6 +129,7 @@ def plan_for(candidate):
 
 def normalize_quote(raw, bars, now, plan):
     candles = []
+    execution_minutes = []
     for bar in bars:
         try:
             stamp = datetime.fromisoformat(str(bar["datetime"])).replace(tzinfo=SHANGHAI)
@@ -136,6 +137,10 @@ def normalize_quote(raw, bars, now, plan):
             continue
         volume = number(bar.get("vol"), 0)
         close = number(bar.get("close"), 0)
+        if (stamp.date() == now.date() and stamp <= now and stamp.second == 0
+                and "09:31" <= stamp.strftime("%H:%M") <= "11:30"
+                and volume >= 0 and close > 0):
+            execution_minutes.append((stamp, close, volume))
         # 忽略昨日分钟线、尚未到来的占位线与没有成交的占位值。
         if stamp.date() != now.date() or stamp > now or volume < 0.01 or close <= 0:
             continue
@@ -183,6 +188,18 @@ def normalize_quote(raw, bars, now, plan):
         if opening_minute is not None and reference
         else None
     )
+    from .t1_research import minute_label
+    execution_minutes.sort(key=lambda item: item[0])
+    complete_prefix = (
+        execution_minutes
+        and all(item[0].strftime("%H:%M") == minute_label(index)
+                for index, item in enumerate(execution_minutes))
+    )
+    evidence = ({
+        "through": execution_minutes[-1][0].isoformat(),
+        "prices": [item[1] for item in execution_minutes],
+        "volumes": [item[2] for item in execution_minutes],
+    } if complete_prefix else None)
     return {
         "price": price if price > 0 else None,
         "open": opening if opening > 0 else None,
@@ -205,6 +222,7 @@ def normalize_quote(raw, bars, now, plan):
         "fresh": fresh, "candles": candles,
         "minute_volume_ratio": ratio,
         "first_minute_change_pct": first_minute_change,
+        "completed_execution_minutes": evidence,
     }
 
 

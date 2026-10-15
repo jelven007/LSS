@@ -571,9 +571,9 @@ class StrategyEngine:
                        f"{evidence['prior_leader_height']}板"
                        if "prior_leader_date" in evidence else "完整题材池第一顺位")
                 )
-                if cfg.leader_rule_version == 2:
+                if cfg.leader_rule_version >= 2:
                     reasons.append(
-                        f"V2 阶段：{ {'established': '持续主线', 'emerging': '首日启动', 'divergence': '有限分歧'}[evidence['theme_stage']] }；"
+                        f"{'V2.1' if cfg.leader_rule_version == 3 else 'V2'} 阶段：{ {'established': '持续主线', 'emerging': '首日启动', 'divergence': '有限分歧'}[evidence['theme_stage']] }；"
                         f"{'弱市试错' if evidence['market_mode'] == 'trial' else '常规环境'}，单票上限{cfg.position_limit_pct}%"
                     )
             if row["board_count"] > 0:
@@ -602,6 +602,11 @@ class StrategyEngine:
                 reasons.append("板块涨停家数较近期均值扩张")
 
             entry_trigger = self._entry_trigger(entry_mode, cfg, setup.get("setup"))
+            if cfg.leader_execution_version >= 2 and entry_mode == "board_reseal":
+                entry_trigger += (
+                    f"；触板开板后放量恢复此前已完成分钟高点，量比≥{cfg.minimum_minute_volume_ratio:g}倍；"
+                    "确认后的有量非涨停分钟才验证成交，盘中龙头地位需复核"
+                )
             mode_invalidation = {
                 "reclaim_open": f"{cfg.entry_cutoff_time}前未放量站回开盘价与昨收",
                 "breakout": f"{cfg.entry_cutoff_time}前未放量突破计划关键价",
@@ -645,15 +650,15 @@ class StrategyEngine:
                 **cfg.entry_rules(),
                 "strategy_archetype": cfg.strategy_archetype,
                 "entry_mode": entry_mode,
-                "minimum_minute_volume_ratio": 1.5,
+                "minimum_minute_volume_ratio": cfg.minimum_minute_volume_ratio,
             }
             if fused:
                 plan.update(setup)
                 plan["t1_required"] = True
                 plan["identity_scope"] = "收盘完整题材池；盘中地位需复核"
-                if cfg.leader_rule_version == 2:
+                if cfg.leader_rule_version >= 2:
                     plan.update(
-                        leader_rule_version=2,
+                        leader_rule_version=cfg.leader_rule_version,
                         position_limit_pct=cfg.position_limit_pct,
                         portfolio_risk_limit_pct=cfg.portfolio_risk_limit_pct,
                         risk_reason=setup["leader_evidence"]["risk_reason"],

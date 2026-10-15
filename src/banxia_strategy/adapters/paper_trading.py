@@ -417,6 +417,7 @@ class PaperTradingMixin:
                     UPDATE banxia.paper_trade
                     SET
                         status = %s,
+                        exit_date = COALESCE(%s::date, exit_date),
                         exit_time = %s,
                         exit_price = %s,
                         exit_reason = %s,
@@ -429,6 +430,7 @@ class PaperTradingMixin:
                     """,
                     (
                         record["status"],
+                        record.get("exit_date"),
                         record.get("exit_time"),
                         record.get("exit_price"),
                         record.get("exit_reason"),

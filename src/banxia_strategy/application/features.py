@@ -95,6 +95,22 @@ class RealtimeFeatureProcessor:
                 attributes["sector_rise_ratio"] = (
                     round(rising / len(peers), 4) if peers else None
                 )
+                fresh_peers = []
+                for peer in peers:
+                    if str(peer.get("trade_date")) != trade_date:
+                        continue
+                    try:
+                        peer_time = datetime.fromisoformat(str(peer["source_time"]))
+                        peer_age = (source_time - peer_time).total_seconds()
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                    if 0 <= peer_age <= 180:
+                        fresh_peers.append(peer)
+                attributes["sector_strict_sample_size"] = len(fresh_peers)
+                attributes["sector_strict_rise_ratio"] = (
+                    sum(float(peer["price"]) > float(peer["previous_close"]) for peer in fresh_peers)
+                    / len(fresh_peers) if fresh_peers else None
+                )
         first_minute = self._first_minute_changes.get(symbol)
         if first_minute is not None and first_minute[0] == trade_date:
             attributes["first_minute_change_pct"] = first_minute[1]

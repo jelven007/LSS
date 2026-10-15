@@ -51,11 +51,16 @@ class StrategyConfigTest(unittest.TestCase):
             StrategyConfigStore(config_path.with_name("leader-v1.json")).payload()["config"],
             expected,
         )
-        v2 = StrategyConfigStore(config_path).read()
+        v2 = StrategyConfigStore(config_path.with_name("leader-v2.json")).read()
         self.assertEqual(v2.leader_rule_version, 2)
         self.assertLess(v2.leader_trial_position_limit_pct, v2.position_limit_pct)
         self.assertEqual(v2.minimum_amount_cny, expected["minimum_amount_cny"])
         self.assertEqual(v2.portfolio_risk_limit_pct, expected["portfolio_risk_limit_pct"])
+        core = StrategyConfigStore(config_path).read()
+        self.assertEqual(core.leader_rule_version, 3)
+        self.assertTrue(core.leader_core_only)
+        self.assertEqual(core.leader_execution_version, 2)
+        self.assertEqual((core.position_limit_pct, core.portfolio_risk_limit_pct), (10, 20))
         self.assertEqual(StrategyConfig().max_per_industry, 5)
 
     def test_invalid_values_cannot_change_file(self):

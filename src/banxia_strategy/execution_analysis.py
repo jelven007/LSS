@@ -17,6 +17,7 @@ from .data_provider import make_provider
 from .market_provider import DEFAULT_SERVERS, _at_price_limit, _limit_price, _minute_label
 from .research_data import write_json
 from .storage_config import StorageSettings
+from .leader_execution import entry_signal, usable_buy_indices
 
 
 METRIC = {
@@ -164,6 +165,31 @@ def classify_candidate(
         )
         return result
     result["auction_qualified"] = True
+    if int(plan.get("leader_execution_version", 1)) >= 2:
+        signal = entry_signal(prices, volumes, reference, limit_price, float(bar["open"]), plan)
+        result.update(signal)
+        if not signal["confirmed"]:
+            result.update(reason_code=signal["reason_code"], reason="未完成开板后放量恢复确认")
+            return result
+        # Versioned paper/research callers must supply dated sector evidence.
+        sector = candidate.get("sector_confirmation") or {}
+        if (sector.get("minute_index") != signal["confirmation_index"]
+                or sector.get("sample_size", 0) < plan.get("minimum_sector_sample_size", 2)
+                or sector.get("rise_ratio", 0) < plan.get("minimum_sector_rise_ratio", .5)):
+            result.update(reason_code="sector_evidence_missing_or_weak", reason="缺少确认时点的合格板块样本")
+            return result
+        index = next(usable_buy_indices(
+            prices, volumes, reference, limit_price, plan, signal["confirmation_index"] + 1), None)
+        if index is None:
+            result.update(reason_code="no_proven_fill_window", reason="确认之后没有合法成交窗口")
+            return result
+        result.update(
+            buyable=True, buy_index=index, buy_window_time=_minute_label(index),
+            buy_sample_price=float(prices[index]), success=bool(closed_limit),
+            reason_code="success" if closed_limit else "buyable_but_failed",
+            reason="放量恢复确认后出现有量非涨停分钟，成交仍受报价和参与率约束",
+        )
+        return result
     first_minute_change = 100 * (float(prices[0]) / reference - 1)
     result["first_minute_change_pct"] = round(first_minute_change, 3)
     minimum_first_minute = float(

@@ -15,6 +15,7 @@ from datetime import date
 from typing import Any, Mapping, Sequence
 
 from ..t1_research import cents, minute_label, minute_quality, net_return
+from ..leader_execution import exit_fill
 from .paper_trading import (
     PaperTradingWorker,
     _daily_bar,
@@ -81,6 +82,8 @@ class MainlineLeaderPaperTradingWorker(PaperTradingWorker):
         campaign: Mapping[str, Any],
         target_date: date,
     ) -> int:
+        if int(campaign["config_snapshot"].get("leader_execution_version", 1)) >= 2:
+            return self._settle_causal_exits(campaign, target_date)
         hard_stop_pct = float(
             campaign["config_snapshot"].get(
                 "hard_stop_pct",
@@ -149,3 +152,54 @@ class MainlineLeaderPaperTradingWorker(PaperTradingWorker):
             )
             processed += 1
         return processed
+
+    def _settle_causal_exits(self, campaign, target_date):
+        """Version 2 retries carried positions without settling unfilled losses."""
+        sessions = sorted(self.provider.trading_dates())
+        plan = campaign["config_snapshot"]
+        model = execution_model(0)
+        records = self.repository.list_paper_pending_exits(campaign["campaign_id"], target_date)
+        for record in records:
+            pending, closed, evidence = False, False, []
+            for session in sessions:
+                if not record["exit_date"] <= session.isoformat() <= target_date.isoformat():
+                    continue
+                minute = _minute_data(self.provider.historical_minutes(record["symbol"], session))
+                bar = _daily_bar(self.provider, record["symbol"], session)
+                previous = next((day for day in reversed(sessions) if day < session), None)
+                prior_bar = _daily_bar(self.provider, record["symbol"], previous) if previous else None
+                quality = minute_quality(minute, bar) if minute and bar else "missing"
+                if quality != "ok" or not prior_bar:
+                    evidence.append({"date": session.isoformat(), "quality": quality})
+                    # The timed instruction has expired by session end. Retry
+                    # its liquidation on the next observable legal session.
+                    pending = True
+                    continue
+                lower = cents(float(prior_bar["close"]) * .9)
+                outcome = exit_fill(
+                    minute["prices"], minute["volumes"],
+                    buy_price=float(record["entry_price"]), shares=int(record["shares"]),
+                    lower=lower, model=model, entry_date=record["entry_date"],
+                    trade_date=session.isoformat(), opening=float(bar["open"]), plan=plan,
+                    pending=pending,
+                )
+                evidence.append({"date": session.isoformat(), **outcome})
+                pending = outcome["pending"]
+                if outcome["status"] != "filled_proxy":
+                    continue
+                value = net_return(float(record["entry_price"]), outcome["price"], int(record["shares"]), model)
+                self.repository.save_paper_exit(record["paper_trade_id"], {
+                    "status": "closed", "exit_date": session.isoformat(),
+                    "exit_time": minute_label(outcome["index"]), "exit_price": outcome["price"],
+                    "exit_reason": outcome["reason"], "net_return_pct": value, "positive": value > 0,
+                    "exit_evidence": {"leader_execution_version": 2, "attempts": evidence, "t1_compliant": True},
+                })
+                closed = True
+                break
+            if not closed:
+                self.repository.save_paper_exit(record["paper_trade_id"], {
+                    "status": "exit_data_missing",
+                    "exit_reason": "保留未退出仓位并重试，未计入已结算样本",
+                    "exit_evidence": {"leader_execution_version": 2, "attempts": evidence},
+                })
+        return len(records)

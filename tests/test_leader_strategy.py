@@ -144,7 +144,7 @@ class LeaderV2Test(LeaderStrategyTest):
     def setUp(self):
         super().setUp()
         self.v1 = self.config
-        self.config = StrategyConfig.from_file(Path(__file__).parents[1] / "config/strategy.json")
+        self.config = StrategyConfig.from_file(Path(__file__).parents[1] / "config/leader-v2.json")
         self.market.update(break_rate_pct=25, max_board=4)
 
     # V1 tests remain in the base class; the cases below exercise changed V2 rules.

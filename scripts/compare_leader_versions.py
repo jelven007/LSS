@@ -84,7 +84,7 @@ def main():
     parser.add_argument("--frames", type=Path, required=True,
                         help="Dated normalized rows/pools/market/industry_stats JSON")
     parser.add_argument("--latest", type=Path)
-    parser.add_argument("--v2-config", type=Path, default=Path("config/strategy.json"))
+    parser.add_argument("--v2-config", type=Path, default=Path("config/leader-v2.json"))
     parser.add_argument("--outcome-snapshot", type=Path,
                         help="Optional research snapshot with calendar and actual daily histories")
     parser.add_argument("--output", type=Path, required=True)

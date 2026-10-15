@@ -191,6 +191,7 @@ def _quote_event(
         "ask1": quote.get("ask"),
         "ask1_volume": quote.get("ask_volume"),
         "source_node": source,
+        "completed_execution_minutes": quote.get("completed_execution_minutes"),
     }
     identity = {
         key: payload[key]

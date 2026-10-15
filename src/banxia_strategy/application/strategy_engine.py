@@ -143,11 +143,26 @@ class StrategyEventProcessor:
             "ask_volume": payload.get("ask1_volume"),
             "quote_time": source_time.isoformat(),
             "fresh": -5 <= age <= plan.get("quote_max_age_seconds", 180),
+            "completed_execution_minutes": payload.get("completed_execution_minutes"),
         }
         feature = self.features.get(symbol, {})
         if feature.get("trade_date") and str(feature["trade_date"]) != str(candidate["plan_date"]):
             feature = {}
         feature_attributes = feature.get("attributes", {})
+        if int(plan.get("leader_execution_version", 1)) >= 2:
+            try:
+                feature_time = datetime.fromisoformat(str(feature.get("max_input_time") or feature.get("window_end")))
+                feature_age = (collected_at - feature_time).total_seconds()
+                valid_feature = (feature_time.date() == collected_at.date()
+                                 and 0 <= feature_age <= plan.get("quote_max_age_seconds", 180))
+            except (TypeError, ValueError):
+                valid_feature = False
+            feature = {
+                **feature,
+                "attributes": {**feature_attributes, "sector_sample_size": (
+                    feature_attributes.get("sector_strict_sample_size", 0) if valid_feature else 0)},
+                "sector_rise_ratio": feature_attributes.get("sector_strict_rise_ratio") if valid_feature else None,
+            }
         quote["minute_volume_ratio"] = feature.get(
             "minute_volume_ratio",
             feature_attributes.get("minute_volume_ratio"),

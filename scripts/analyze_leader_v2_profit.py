@@ -103,7 +103,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--frames", type=Path, required=True)
     parser.add_argument("--snapshot", type=Path, required=True)
-    parser.add_argument("--v2-config", type=Path, default=Path("config/strategy.json"))
+    parser.add_argument("--v2-config", type=Path, default=Path("config/leader-v2.json"))
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     frames_raw, snapshot_raw = args.frames.read_bytes(), args.snapshot.read_bytes()

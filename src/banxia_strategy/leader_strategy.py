@@ -56,7 +56,7 @@ def _theme_gate(stats, config):
     if stats["today_count"] < config.minimum_industry_limit_up_count:
         return "", "insufficient_theme_limit_ups"
     if stats["active_days"] < config.leader_minimum_active_days:
-        if (config.leader_rule_version == 2 and stats["active_days"] == 1
+        if (config.leader_rule_version >= 2 and stats["active_days"] == 1
                 and stats["today_count"] >= config.leader_emerging_minimum_limit_ups
                 and stats["momentum"] > 0):
             return "emerging", ""
@@ -65,7 +65,7 @@ def _theme_gate(stats, config):
         return "established", ""
     # momentum is today's count minus the prior lookback average, not yesterday.
     prior_average = stats["today_count"] - stats["momentum"]
-    if (config.leader_rule_version == 2 and stats["max_board"] >= 2
+    if (config.leader_rule_version >= 2 and stats["max_board"] >= 2
             and prior_average > 0
             and stats["today_count"] / prior_average >= config.leader_contraction_minimum_ratio):
         return "divergence", ""
@@ -77,7 +77,7 @@ def leader_setups(rows, pools, industry_stats, market, config, diagnostics=None)
     market_mode, market_reason = _market_gate(market, config)
     if diagnostics is not None:
         diagnostics.update(rule_version=config.leader_rule_version, market_mode=market_mode,
-                           market_reason=market_reason, excluded=[], theme_decisions={})
+                           market_reason=market_reason, excluded=[], observations=[], theme_decisions={})
     if market_mode == "closed":
         for row in rows:
             exclude(diagnostics, row, "market", market_reason)
@@ -108,6 +108,10 @@ def leader_setups(rows, pools, industry_stats, market, config, diagnostics=None)
         theme, code = row["industry"], row["code"]
         if theme not in mainlines:
             exclude(diagnostics, row, "theme", decisions.get(theme, {}).get("reason") or "unknown_theme")
+            if config.leader_core_only and diagnostics is not None:
+                diagnostics["observations"].append({
+                    "code": code, "industry": theme, "reason": "theme_rank_outside_limit",
+                })
             continue
         if theme not in current:
             exclude(diagnostics, row, "identity", "no_current_theme_leader")
@@ -146,7 +150,7 @@ def leader_setups(rows, pools, industry_stats, market, config, diagnostics=None)
                     ("leader_relay", "主线龙头接力", "board_reseal")
                 )
         else:
-            if config.leader_rule_version == 2 and (
+            if config.leader_rule_version >= 2 and (
                     market_mode == "trial" or decisions[theme]["stage"] != "established"):
                 exclude(diagnostics, row, "setup", "repair_requires_regular_established_theme")
                 continue
@@ -176,7 +180,7 @@ def leader_setups(rows, pools, industry_stats, market, config, diagnostics=None)
             else:
                 exclude(diagnostics, row, "setup", "repair_confirmation_missing")
                 continue
-        if config.leader_rule_version == 2:
+        if config.leader_rule_version >= 2:
             theme_stage = decisions[theme]["stage"]
             risk_reason = (
                 "market_trial" if market_mode == "trial"
@@ -186,12 +190,20 @@ def leader_setups(rows, pools, industry_stats, market, config, diagnostics=None)
                 else "regular"
             )
             trial_risk = risk_reason != "regular"
-            evidence.update(rule_version=2, market_mode=market_mode, theme_stage=theme_stage)
+            evidence.update(rule_version=config.leader_rule_version, market_mode=market_mode, theme_stage=theme_stage)
             evidence["risk_reason"] = risk_reason
             evidence["position_limit_pct"] = min(
                 config.position_limit_pct,
                 config.leader_trial_position_limit_pct if trial_risk else config.position_limit_pct,
             )
+            if config.leader_core_only and trial_risk:
+                exclude(diagnostics, row, "core", "observation_only", risk_reason=risk_reason)
+                if diagnostics is not None:
+                    diagnostics["observations"].append({
+                        "code": code, "industry": theme, "setup": setup,
+                        "risk_reason": risk_reason, "leader_evidence": evidence,
+                    })
+                continue
         result[code] = {"setup": setup, "label": label, "entry_mode": mode,
                         "leader_evidence": evidence}
     return result

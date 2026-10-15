@@ -51,7 +51,11 @@ class StrategyConfig:
     minimum_score: float = param(58.0, "最低入选评分", "selection", 0, 1000, "分")
     minimum_industry_limit_up_count: int = param(2, "同题材涨停数量下限", "selection", 1, 100, "只")
     minimum_board_count: int = param(1, "连板数下限", "selection", 1, 30, "板")
-    leader_rule_version: int = param(1, "龙头规则版本", "selection", 1, 2, note="未标版本的历史配置沿用 V1；V2 启用阶段门槛与试错仓位。")
+    leader_rule_version: int = param(1, "龙头规则版本", "selection", 1, 3, note="历史配置沿用 V1；V2 为扩展观察；版本3为 V2.1 核心执行。")
+    leader_core_only: bool = param(False, "仅执行常规核心龙头", "selection", note="过滤在最终排名前执行；其他已识别分支写入观察诊断。")
+    leader_execution_version: int = param(1, "龙头成交规则版本", "entry", 1, 2, note="版本2要求开板后放量恢复此前高点，后续分钟才可证明成交。")
+    minimum_minute_volume_ratio: float = param(1.5, "确认分钟量比下限", "entry", 0.1, 20, "倍")
+    next_day_exit_mode: str = param("protective_timed", "隔日退出方式", "risk", note="protective_timed：保护止损+定时；protective_weak：另加09:35–10:00承接失败。仅成交版本2启用。")
     leader_minimum_market_score: float = param(48.0, "龙头策略环境下限", "selection", 0, 100, "分")
     leader_trial_minimum_market_score: float = param(40.0, "V2 试错环境下限", "selection", 0, 100, "分")
     leader_trial_maximum_break_rate_pct: float = param(45.0, "V2 试错炸板率上限", "selection", 0, 100, "%")
@@ -230,7 +234,7 @@ class StrategyConfig:
             if any(values[a] > values[b] for a, b in zip(sequence, sequence[1:])):
                 description = " ≤ ".join(descriptors[key].metadata["label"] for key in sequence)
                 errors.update({key: description for key in sequence})
-        if values["leader_rule_version"] == 2:
+        if values["leader_rule_version"] >= 2:
             for low, high in (
                 ("leader_trial_minimum_market_score", "leader_minimum_market_score"),
                 ("leader_trial_maximum_break_rate_pct", "leader_defense_break_rate_pct"),
@@ -239,6 +243,10 @@ class StrategyConfig:
             ):
                 if values[low] > values[high]:
                     errors[low] = f"{descriptors[low].metadata['label']}不能超过{descriptors[high].metadata['label']}"
+        if values["leader_core_only"] and values["leader_rule_version"] < 3:
+            errors["leader_core_only"] = "核心执行限制需要龙头规则版本3"
+        if values["next_day_exit_mode"] not in {"protective_timed", "protective_weak"}:
+            errors["next_day_exit_mode"] = "隔日退出方式无效"
         if not "09:30" < values["entry_cutoff_time"] <= "11:30":
             errors["entry_cutoff_time"] = "入场截止时间应晚于09:30且不晚于11:30"
         if not "09:30" < values["leader_start_entry_cutoff"] <= "11:30":
@@ -275,7 +283,7 @@ class StrategyConfig:
         return cls.from_mapping(json.loads(path.read_text(encoding="utf-8")))
 
     def entry_rules(self):
-        return {
+        result = {
             "open_min_pct": self.entry_open_min_pct, "open_max_pct": self.entry_open_max_pct,
             "reject_min_pct": self.reject_open_min_pct, "reject_max_pct": self.reject_open_max_pct,
             **{key: getattr(self, key) for key in (
@@ -286,6 +294,13 @@ class StrategyConfig:
                 "next_day_force_exit_time",
             )},
         }
+        if self.leader_execution_version >= 2:
+            result.update(
+                leader_execution_version=self.leader_execution_version,
+                minimum_minute_volume_ratio=self.minimum_minute_volume_ratio,
+                next_day_exit_mode=self.next_day_exit_mode,
+            )
+        return result
 
 
 class ConfigError(ValueError):
