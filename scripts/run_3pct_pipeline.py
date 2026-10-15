@@ -26,7 +26,8 @@ from banxia_strategy.monthly_target_research import (
     save,
     sha256,
 )
-from banxia_strategy.mootdx_provider import MootdxProvider, _bar_date
+from banxia_strategy.data_provider import make_provider
+from banxia_strategy.market_provider import _bar_date
 
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT = ROOT / "research" / "monthly-target-v1-3pct"
@@ -165,7 +166,7 @@ def collect_missing_minutes(candidates: list[dict]) -> dict:
     if not missing:
         return {"cached": len(needed), "downloaded": 0, "errors": 0}
 
-    provider = MootdxProvider()
+    provider = make_provider()
     workers = min(len(provider.servers), max(1, len(missing)))
 
     def worker(number: int, partition: list[tuple[str, str]]):
@@ -185,7 +186,7 @@ def collect_missing_minutes(candidates: list[dict]) -> dict:
                         volumes = [float(v) for v in frame["vol"]]
                         if not all(math.isfinite(v) for v in prices + volumes):
                             raise ValueError("non-finite minute sample")
-                        return {"date": day, "symbol": symbol, "prices": prices, "volumes": volumes, "source": "mootdx"}
+                        return {"date": day, "symbol": symbol, "prices": prices, "volumes": volumes, "source": provider.source_name}
 
                     save(path, _request_with_retry(provider, number, state, fetch))
                     counts["downloaded"] += 1

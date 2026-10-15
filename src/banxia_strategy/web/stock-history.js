@@ -319,9 +319,10 @@ async function loadHistory(refresh = false) {
     page = 0;
     byId("history-name").textContent = payload.name;
     byId("history-code").textContent = payload.symbol;
+    byId("history-source").textContent = payload.source === "unknown" ? "来源未记录" : payload.source;
     byId("history-storage").textContent = payload.served_by === "clickhouse"
       ? "本地历史库"
-      : "mootdx 已回填本地";
+      : `${payload.served_by} 已回填本地`;
     byId("history-status").textContent = `${periodLabels[period]} · ${items.length.toLocaleString("zh-CN")} 条`;
     byId("history-count").textContent = `图示最近 ${Math.min(items.length, 180)} 条 · 明细保留全部 ${items.length.toLocaleString("zh-CN")} 条`;
     document.title = `${payload.name}历史行情 · 一进二`;

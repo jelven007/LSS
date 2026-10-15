@@ -30,11 +30,14 @@ make infra-check
 `report-scheduler` 随常驻服务启动，默认在交易日 16:30 生成初版、23:30 覆盖更新。
 `market-reference-sync` 首次启动时补齐主数据，之后每个交易日 16:20 更新证券目录、
 板块、行业版本和全市场每日行情快照。
-非交易日由 mootdx 交易日历校验后跳过。调度器重启后会补跑最近缺失的交易日报；
-报告任务通过 host 网络访问 mootdx，并通过完成标记区分完整持久化和残留文件。
+非交易日由 rustdx 交易日历校验后跳过。调度器重启后会补跑最近缺失的交易日报；
+报告任务通过 host 网络访问 rustdx 通达信节点，并通过完成标记区分完整持久化和残留文件。
 API 与调度器启动时会幂等预置十条受保护的初始策略；仅主策略自动提交最近一年次日计划
-与当日实盘历史生成任务，避免首次启动同时触发十份全市场回放。调度器使用 mootdx
+与当日实盘历史生成任务，避免首次启动同时触发十份全市场回放。调度器使用 rustdx
 处理任务，相同策略和日期区间不会重复入队。
+镜像通过 Rust 构建阶段编译 `native/rustdx_native`。默认 `BANXIA_DATA_PROVIDER=rustdx`，
+节点和超时可在 `.env` 中配置；升级旧环境需要重新构建应用镜像。详见
+[数据源迁移](../../docs/30-rustdx-migration.md)。
 调度和页面刷新都在 Worker 开始时读取 PostgreSQL 中当前唯一激活策略。使用完整策略目录前，
 数据库必须已应用 `004_strategy_research.sql`、`005_multi_strategy.sql` 和
 `006_immutable_active_strategy.sql`；新数据卷会按文件名顺序自动执行全部迁移。

@@ -44,7 +44,7 @@ from .contracts.topics import (
     STRATEGY_DECISION,
     STRATEGY_PLAN_CREATED,
 )
-from .mootdx_provider import MootdxProvider
+from .data_provider import make_provider
 from .observability import configure_logging, start_metrics_server
 from .web_server import ReportStore
 from .ports.storage import ReportIdentity
@@ -400,7 +400,7 @@ def run_paper_trading(settings: RuntimeSettings, logger: Any) -> None:
     try:
         first_board = PaperTradingWorker(
             repository=repository,
-            provider=MootdxProvider(),
+            provider=make_provider(settings.data_provider),
             storage_settings=settings.storage,
             strategy_config_path=settings.strategy_config_path,
             output_dir=settings.report_output_dir,
@@ -421,7 +421,7 @@ def run_paper_trading(settings: RuntimeSettings, logger: Any) -> None:
 
         fusion = FusionL7PaperTradingWorker(
             repository=repository,
-            provider=MootdxProvider(),
+            provider=make_provider(settings.data_provider),
             storage_settings=settings.storage,
             strategy_config_path=settings.strategy_config_path,
             output_dir=settings.report_output_dir,
@@ -442,7 +442,7 @@ def run_paper_trading(settings: RuntimeSettings, logger: Any) -> None:
 
         leader = MainlineLeaderPaperTradingWorker(
             repository=repository,
-            provider=MootdxProvider(),
+            provider=make_provider(settings.data_provider),
             storage_settings=settings.storage,
             strategy_config_path=settings.strategy_config_path,
             output_dir=settings.report_output_dir,
@@ -670,7 +670,7 @@ def _automatic_collection_allowed(
         return repository.is_trading_session(target_date)
     except Exception:
         logger.exception(
-            "trading calendar check failed; automatic mootdx collection paused",
+            "trading calendar check failed; automatic market collection paused",
             extra={"trade_date": target_date.isoformat()},
         )
         return False
@@ -708,7 +708,7 @@ def run_report_scheduler(settings: RuntimeSettings, logger: Any) -> None:
                 if not is_trading_day:
                     if paused_date != now.date():
                         logger.info(
-                            "automatic mootdx collection paused",
+                            "automatic market collection paused",
                             extra={
                                 "trade_date": now.date().isoformat(),
                                 "reason": "non_trading_day",
@@ -724,7 +724,7 @@ def run_report_scheduler(settings: RuntimeSettings, logger: Any) -> None:
                         calendar_attempt = now.timestamp()
                         try:
                             repository.save_trading_sessions(
-                                MootdxProvider().trading_dates()
+                                make_provider(settings.data_provider).trading_dates()
                             )
                             calendar_date = now.date()
                         except Exception:

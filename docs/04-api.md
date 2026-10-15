@@ -239,15 +239,15 @@ SSE 不是权威存储。客户端重连时先调用普通查询，再使用 `La
 | --- | --- | --- |
 | GET | `/api/v1/stock-blocks` | PostgreSQL 已发布板块快照 |
 | GET | `/api/v1/stocks` | PostgreSQL 证券与每日快照，Redis 覆盖盘中行情 |
-| GET | `/api/v1/stocks/{symbol}` | PostgreSQL/Redis 行情；财务、除权除息和 F10 目录直读 mootdx |
+| GET | `/api/v1/stocks/{symbol}` | PostgreSQL/Redis 行情；财务、除权除息和 F10 目录直读 rustdx |
 | GET | `/api/v1/stocks/{symbol}/daily-history` | PostgreSQL 每日行情快照 |
-| GET | `/api/v1/stocks/{symbol}/company?section=...` | mootdx F10 正文 |
-| GET | `/api/v1/stocks/{symbol}/history` | ClickHouse；缺口可回源 mootdx 并回填 |
+| GET | `/api/v1/stocks/{symbol}/company?section=...` | rustdx F10 正文 |
+| GET | `/api/v1/stocks/{symbol}/history` | ClickHouse；缺口可回源 rustdx 并回填，source 保留各行的采集来源 |
 | GET | `/api/v1/limit-up-history/options` | PostgreSQL 涨停历史筛选项 |
 | GET | `/api/v1/limit-up-history` | PostgreSQL 涨停历史、统计和排行 |
 
 股票与板块响应携带 `source_as_of`、`fetched_at`、`snapshot_id`、`data_state` 和
-`stale_after`。证券主数据已与 mootdx 请求解耦；公司资料尚未完成持久化，节点不可用时相关
+`stale_after`。证券主数据已与 rustdx 请求解耦；公司资料尚未完成持久化，节点不可用时相关
 详情接口可能返回 `503`。
 
 历史行情 `period` 支持 `minute`、`day`、`week`、`month`、`year`。`minute` 是指定交易日
@@ -264,7 +264,7 @@ SSE 不是权威存储。客户端重连时先调用普通查询，再使用 `La
 | PUT | `/api/v1/settings/new-boards` | 替换新板块设置 |
 | PUT | `/api/v1/stocks/{symbol}/new-board` | 设置单只股票的新板块 |
 
-上述写接口要求已登录用户。自选股和人工分类是应用数据，不改变 mootdx 原始证券与板块快照。
+上述写接口要求已登录用户。自选股和人工分类是应用数据，不改变原始证券与板块快照。
 
 ### 4.9 模拟盘
 
@@ -273,7 +273,7 @@ SSE 不是权威存储。客户端重连时先调用普通查询，再使用 `La
 | GET | `/api/v1/paper-trading` | 按可选 `campaign` 返回进度、胜率和收益摘要 |
 | GET | `/api/v1/paper-trading/trades` | 按活动和状态分页查询逐笔模拟记录 |
 
-模拟盘由工作日 16:50 CronJob 驱动，使用冻结策略和 mootdx 历史行情生成成交代理。接口只读，
+模拟盘由工作日 16:50 CronJob 驱动，使用冻结策略和历史行情生成成交代理。接口只读，
 不包含券商账户、委托或自动下单能力。
 
 ### 4.10 页面和机器文档

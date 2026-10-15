@@ -48,7 +48,7 @@ def backfill_strategy(
             "strategy_code": strategy["code"],
             "strategy_name": strategy["name"],
             "catalog_backfill": {
-                "source": "mootdx",
+                "source": snapshot.get("source", "mootdx"),
                 "generated_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(),
                 "scope_start": start.isoformat(),
                 "scope_end": end.isoformat(),
@@ -99,7 +99,7 @@ def backfill_strategy(
                 "outcomes": day["outcomes"],
                 "summary": summary,
                 "kind": "historical_market_validation",
-                "source": "mootdx",
+                "source": snapshot.get("source", "mootdx"),
             },
             execution["execution_plan"].get("plan_id"),
         )

@@ -18,7 +18,8 @@ from .domain.intraday import (
     phase_at,
 )
 from .intraday import plan_for
-from .mootdx_provider import MootdxProvider
+from .data_provider import make_provider
+from .market_provider import TdxMarketProvider
 from .adapters.limit_up_history import LIMIT_UP_SORT_COLUMNS
 from .web_server import ReportStore
 from .strategy_config import ConfigConflict, ConfigError, StrategyConfig, StrategyConfigStore, revision_for
@@ -147,7 +148,7 @@ def _validate_watchlist_symbols(symbols: list[str]) -> list[str]:
     normalized = list(dict.fromkeys(symbol.strip() for symbol in symbols))
     for symbol in normalized:
         try:
-            MootdxProvider._validate_symbol(symbol)
+            TdxMarketProvider._validate_symbol(symbol)
         except ValueError as exc:
             raise ValueError(f"股票代码无效：{symbol or '空值'}") from exc
     return normalized
@@ -746,7 +747,16 @@ def create_api_app(services: ApiServices):
         return with_requested_date(plan)
 
     config_store = services.config_store or StrategyConfigStore(Path("config/strategy.json"))
-    history_provider = services.history_provider or MootdxProvider()
+    history_provider = services.history_provider or make_provider()
+    provider_source = getattr(history_provider, "source_name", "rustdx")
+
+    def data_sources(items, default="unknown"):
+        names = {
+            str(item.get("source") or (item.get("raw") or {}).get("source") or default)
+            for item in items
+        }
+        return ",".join(sorted(names)) if names else default
+
     market_history = services.market_history
     reference_repository = (
         services.repository
@@ -765,7 +775,7 @@ def create_api_app(services: ApiServices):
     def reference_metadata() -> dict[str, Any]:
         if reference_repository is None:
             return {
-                "source": getattr(history_provider, "source_name", "mootdx"),
+                "source": provider_source,
                 "snapshot": None,
             }
         snapshot = reference_repository.latest_market_reference_snapshot()
@@ -789,7 +799,7 @@ def create_api_app(services: ApiServices):
         }
 
     def reference_security(symbol: str):
-        MootdxProvider._validate_symbol(symbol)
+        TdxMarketProvider._validate_symbol(symbol)
         if reference_repository is not None:
             return reference_repository.get_security(symbol)
         return history_provider.security(symbol)
@@ -876,6 +886,10 @@ def create_api_app(services: ApiServices):
                     for item in fetched
                     if date.fromisoformat(item["date"]) >= start_date
                 ]
+        fetched = [
+            {**item, "raw": {"source": provider_source, **(item.get("raw") or {})}}
+            for item in fetched
+        ]
         if market_history is not None and fetched:
             market_history.upsert_history_bars(symbol, period, fetched)
             mark_sync = getattr(
@@ -890,7 +904,7 @@ def create_api_app(services: ApiServices):
                     row_count=len(fetched),
                     completed=max(limit, 800) >= 20000,
                 )
-        return fetched[-limit:], getattr(history_provider, "source_name", "mootdx")
+        return fetched[-limit:], provider_source
 
     def stock_quote(raw: Mapping[str, Any]):
         previous_close = raw.get("last_close", raw.get("previous_close"))
@@ -1266,7 +1280,7 @@ def create_api_app(services: ApiServices):
         payload = json.loads(ready.body)
         return {
             "server_time": _now(),
-            "collection": {"mode": "kafka", "source": "mootdx"},
+            "collection": {"mode": "kafka", "source": provider_source},
             "messaging": {"broker": payload["dependencies"].get("kafka", "unknown")},
             "storage": payload["dependencies"],
         }
@@ -1460,9 +1474,9 @@ def create_api_app(services: ApiServices):
             "sort": sort,
             "direction": direction,
             "source": "postgres",
-            "data_source": "mootdx",
+            "data_source": data_sources(result.get("items", [])),
             "capital_basis": "xdxr_history_with_snapshot_fallback",
-            "classification_basis": "current_mootdx_f10",
+            "classification_basis": "current_f10_snapshot",
         }
 
     @app.get("/api/v1/settings/new-boards")
@@ -1759,7 +1773,7 @@ def create_api_app(services: ApiServices):
             default=None,
         )
         return {
-            "source": "mootdx",
+            "source": data_sources(rows),
             "granularity": granularity,
             "start_date": start.isoformat(),
             "end_date": latest_date,
@@ -1868,7 +1882,7 @@ def create_api_app(services: ApiServices):
         payload: StockNewBoardRequest,
         request: Request,
     ):
-        MootdxProvider._validate_symbol(symbol)
+        TdxMarketProvider._validate_symbol(symbol)
         if request.state.user is None:
             raise HTTPException(status_code=401, detail="请先登录")
         writer = getattr(services.repository, "set_security_new_board", None)
@@ -1909,7 +1923,7 @@ def create_api_app(services: ApiServices):
         except Exception as exc:
             raise HTTPException(
                 status_code=503,
-                detail=f"mootdx 股票资料暂不可用：{exc}",
+                detail=f"{provider_source} 股票资料暂不可用：{exc}",
             ) from exc
         return {
             **security,
@@ -1917,7 +1931,7 @@ def create_api_app(services: ApiServices):
             "profile_source": getattr(
                 history_provider,
                 "source_name",
-                "mootdx",
+                "rustdx",
             ),
             "quote": stock_quote(quotes.get(symbol, {})),
             **profile,
@@ -1936,12 +1950,12 @@ def create_api_app(services: ApiServices):
         except Exception as exc:
             raise HTTPException(
                 status_code=503,
-                detail=f"mootdx 公司资料暂不可用：{exc}",
+                detail=f"{provider_source} 公司资料暂不可用：{exc}",
             ) from exc
         return {
             "symbol": symbol,
             "section": section,
-            "source": getattr(history_provider, "source_name", "mootdx"),
+            "source": provider_source,
             "content": content,
         }
 
@@ -2045,7 +2059,7 @@ def create_api_app(services: ApiServices):
             "symbol": symbol,
             "name": security["name"],
             "period": period,
-            "source": getattr(history_provider, "source_name", "mootdx"),
+            "source": data_sources(items) if served_by == "clickhouse" else provider_source,
             "served_by": served_by,
             "count": len(items),
             "items": items,
@@ -2500,13 +2514,13 @@ def create_api_app(services: ApiServices):
         except Exception as exc:
             raise HTTPException(
                 status_code=503,
-                detail=f"mootdx K线暂不可用：{exc}",
+                detail=f"{provider_source} K线暂不可用：{exc}",
             ) from exc
         return {
             "symbol": symbol,
             "period": period,
             "trade_date": plan["trade_date"],
-            "source": getattr(history_provider, "source_name", "mootdx"),
+            "source": provider_source,
             "items": items,
         }
 

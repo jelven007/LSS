@@ -283,7 +283,7 @@ def optimize(
         "schema_version": 1,
         "generated_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(),
         "status": "historically_profitable_research_candidate" if qualified else "holdout_rejected",
-        "source": "mootdx",
+        "source": source.get("source", "mootdx"),
         "source_strategy_id": strategy_id,
         "source_strategy_name": source["strategy_name"],
         "protocol": {
@@ -338,7 +338,7 @@ def write_report(result: Mapping[str, Any], output: Path) -> None:
         result["conclusion"],
         "",
         f"- 状态：`{result['status']}`",
-        f"- 数据源：{result.get('source', 'mootdx')}",
+        f"- 数据源：{result.get('source', 'unknown')}",
         f"- 成本：{result.get('protocol', {}).get('cost', result.get('cost_bps'))}",
     ]
     if "selected" in result:

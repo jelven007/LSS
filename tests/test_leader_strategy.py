@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from banxia_strategy.leader_strategy import leader_setups
-from banxia_strategy.mootdx_provider import _extract_pools, _strategy_rows_from_history
+from banxia_strategy.market_provider import _extract_pools, _strategy_rows_from_history
 from banxia_strategy.strategy import StrategyEngine, _normalize
 from banxia_strategy.strategy_archetypes import LEADER_FUSION, initial_strategy_config
 from banxia_strategy.strategy_config import StrategyConfig

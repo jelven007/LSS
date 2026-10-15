@@ -1,13 +1,10 @@
 from __future__ import annotations
 
 import math
-import tempfile
-import warnings
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
-from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
@@ -396,10 +393,10 @@ def _strategy_rows_from_history(
     return rows
 
 
-class MootdxProvider:
-    """Build limit-up pools from raw TongdaXin data exposed by mootdx."""
+class TdxMarketProvider:
+    """Shared normalization and derived pools over a market-data transport."""
 
-    source_name = "mootdx"
+    source_name = "rustdx"
 
     def __init__(
         self,
@@ -409,22 +406,8 @@ class MootdxProvider:
         client_factory: Optional[ClientFactory] = None,
     ) -> None:
         if client_factory is None:
-            try:
-                from mootdx.quotes import Quotes
-            except ImportError as exc:
-                raise RuntimeError(
-                    "mootdx is not installed. Run: python3 -m pip install -e ."
-                ) from exc
-
-            def client_factory(server: Server) -> Any:
-                return Quotes.factory(
-                    market="std",
-                    server=server,
-                    timeout=5,
-                    heartbeat=False,
-                    auto_retry=False,
-                    raise_exception=True,
-                )
+            from .rustdx_client import RustdxQuoteClient
+            client_factory = RustdxQuoteClient
 
         self.history_sessions = max(10, history_sessions)
         self.workers = max(1, workers)
@@ -478,7 +461,7 @@ class MootdxProvider:
                 if client is not None:
                     self._close(client)
         detail = f": {last_error}" if last_error else ""
-        raise RuntimeError(f"No usable mootdx quote server{detail}")
+        raise RuntimeError(f"No usable {self.source_name} quote server{detail}")
 
     def trading_dates(self) -> Sequence[date]:
         if self._calendar is not None:
@@ -489,7 +472,7 @@ class MootdxProvider:
         )
         sessions = sorted({_bar_date(row) for row in frame.to_dict(orient="records")})
         if not sessions:
-            raise RuntimeError("mootdx returned an empty trading calendar")
+            raise RuntimeError("rustdx returned an empty trading calendar")
 
         candidate = sessions[-1] + timedelta(days=1)
         for _ in range(14):
@@ -497,6 +480,8 @@ class MootdxProvider:
                 sessions.append(candidate)
                 break
             candidate += timedelta(days=1)
+        else:
+            raise RuntimeError("无法确认 rustdx 下一交易日")
         self._calendar = sessions
         return sessions
 
@@ -538,7 +523,7 @@ class MootdxProvider:
                 }
             )
         if not securities:
-            raise RuntimeError("mootdx returned no Shanghai/Shenzhen A-share stocks")
+            raise RuntimeError("rustdx returned no Shanghai/Shenzhen A-share stocks")
         self._securities = sorted(securities, key=lambda item: item["symbol"])
 
     def securities(self) -> List[Dict[str, Any]]:
@@ -575,12 +560,8 @@ class MootdxProvider:
 
     @staticmethod
     def _parse_block_records(content: bytes, filename: str) -> List[Dict[str, Any]]:
-        from tdxpy.reader.block_reader import BlockReader, BlockReader_TYPE_FLAT
-
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / filename
-            path.write_bytes(content)
-            return BlockReader().get_data(str(path), BlockReader_TYPE_FLAT)
+        from .rustdx_client import native_module, records
+        return records(native_module().block_records_json(content))
 
     def _load_stock_blocks(self) -> None:
         if self._stock_blocks is not None:
@@ -595,7 +576,7 @@ class MootdxProvider:
             (item["symbol"] for item in self._securities or ()),
         )
         if not self._stock_blocks:
-            raise RuntimeError("mootdx returned no stock block data")
+            raise RuntimeError("rustdx returned no stock block data")
 
     def stock_blocks(self) -> List[Dict[str, Any]]:
         self._load_stock_blocks()
@@ -631,7 +612,7 @@ class MootdxProvider:
             }
             if incomplete:
                 raise RuntimeError(
-                    f"incomplete mootdx security catalog: {incomplete}"
+                    f"incomplete rustdx security catalog: {incomplete}"
                 )
             files = {
                 filename: self._download_client_file(client, filename)
@@ -644,7 +625,7 @@ class MootdxProvider:
                     if not content
                 ]
                 raise RuntimeError(
-                    f"mootdx returned empty reference files: {', '.join(missing)}"
+                    f"rustdx returned empty reference files: {', '.join(missing)}"
                 )
             return {
                 "raw_securities": raw_securities,
@@ -697,7 +678,7 @@ class MootdxProvider:
             )
         )
         if not memberships:
-            raise RuntimeError("mootdx returned no reference memberships")
+            raise RuntimeError("rustdx returned no reference memberships")
         return {
             "source_node": f"{server[0]}:{server[1]}",
             "raw_securities": payload["raw_securities"],
@@ -739,7 +720,7 @@ class MootdxProvider:
                 }
             )
         if not securities:
-            raise RuntimeError("mootdx returned no Shanghai/Shenzhen A-share stocks")
+            raise RuntimeError("rustdx returned no Shanghai/Shenzhen A-share stocks")
         return sorted(securities, key=lambda item: item["symbol"])
 
     @staticmethod
@@ -1055,18 +1036,13 @@ class MootdxProvider:
     @staticmethod
     def _is_holiday(value: date) -> bool:
         try:
-            from mootdx.utils.holiday import _holiday
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", FutureWarning)
-                calendar = _holiday()
-                if calendar is None or calendar.empty or "中国" not in set(calendar["国家"]):
-                    raise ValueError("mootdx 未返回有效休市日历")
-                # mootdx's holiday() compares DatetimeIndex with datetime.date;
-                # pandas 3 no longer coerces that comparison and misses holidays.
-                closed = set(calendar[calendar["国家"] == "中国"].index.date)
-                return value.weekday() >= 5 or value in closed
+            from .rustdx_client import native_module
+            result = native_module().is_trading_day(value.isoformat())
+            if not isinstance(result, bool):
+                raise ValueError("invalid trading calendar response")
+            return not result
         except Exception as exc:
-            raise RuntimeError("无法验证 mootdx 休市日历，停止推测下一交易日") from exc
+            raise RuntimeError("无法验证 rustdx 休市日历，停止推测下一交易日") from exc
 
     def _load_universe(self) -> None:
         if self._names:
@@ -1077,7 +1053,7 @@ class MootdxProvider:
             if code.startswith(MAIN_BOARD_PREFIXES):
                 self._names[code] = row["name"]
         if not self._names:
-            raise RuntimeError("mootdx returned no Shanghai/Shenzhen main-board stocks")
+            raise RuntimeError("rustdx returned no Shanghai/Shenzhen main-board stocks")
 
     def _history_worker(
         self,
@@ -1131,7 +1107,7 @@ class MootdxProvider:
             retry_histories, _ = self._history_worker(servers[0], sorted(set(failed)))
             self._histories.update(retry_histories)
         if not self._histories:
-            raise RuntimeError("mootdx returned no daily bars for the stock universe")
+            raise RuntimeError("rustdx returned no daily bars for the stock universe")
 
         self._limit_pools, self._broken_pools = _extract_pools(
             self._histories,

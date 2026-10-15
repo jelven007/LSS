@@ -14,7 +14,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from banxia_strategy.limit_up_collector import daily_bars  # noqa: E402
-from banxia_strategy.mootdx_provider import MootdxProvider, _bar_date  # noqa: E402
+from banxia_strategy.data_provider import make_provider  # noqa: E402
+from banxia_strategy.rustdx_provider import RustdxProvider  # noqa: E402
+from banxia_strategy.market_provider import _bar_date  # noqa: E402
 
 
 LOG = logging.getLogger("pre-breakout")
@@ -132,7 +134,7 @@ def analyze_bars(symbol: str, name: str, bars: list[dict]) -> dict | None:
     }
 
 
-def worker(number: int, partition: list[dict], provider: MootdxProvider) -> tuple[list[dict], Counter]:
+def worker(number: int, partition: list[dict], provider: RustdxProvider) -> tuple[list[dict], Counter]:
     client = None
     active_server = None
     hits: list[dict] = []
@@ -183,7 +185,7 @@ def worker(number: int, partition: list[dict], provider: MootdxProvider) -> tupl
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 
-    provider = MootdxProvider()
+    provider = make_provider()
     all_securities = provider.securities()
     universe = [sec for sec in all_securities if eligible(sec)]
     LOG.info("universe size=%s (filtered from %s)", len(universe), len(all_securities))

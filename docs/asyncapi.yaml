@@ -15,7 +15,7 @@ servers:
     description: Production Kafka
 channels:
   market.quote.snapshot.v1:
-    description: mootdx 盘口采样事件，不等同于交易所逐笔 Tick
+    description: rustdx 盘口采样事件，不等同于交易所逐笔 Tick
     bindings:
       kafka:
         partitions: 12

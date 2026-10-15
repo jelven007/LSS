@@ -1,4 +1,4 @@
-"""Mootdx-only research for a 5% monthly T+1 portfolio target."""
+"""Market-data research for a 5% monthly T+1 portfolio target."""
 from __future__ import annotations
 
 import argparse
@@ -16,7 +16,9 @@ from pathlib import Path
 from statistics import mean
 from typing import Any, Iterable, Mapping, Sequence
 
-from .mootdx_provider import MootdxProvider, _bar_date, _json_value
+from .data_provider import make_provider
+from .rustdx_provider import RustdxProvider
+from .market_provider import _bar_date, _json_value
 from .t1_research import cash_paid, cents, minute_quality, sell_proxy
 
 
@@ -73,7 +75,7 @@ def csv_save(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
 
 
 def _request_with_retry(
-    provider: MootdxProvider,
+    provider: RustdxProvider,
     worker: int,
     state: dict[str, Any],
     action,
@@ -101,29 +103,33 @@ def collect_daily(
     output: Path,
     snapshots: Sequence[Path] = DEFAULT_SNAPSHOTS,
 ) -> Mapping[str, Any]:
-    provider = MootdxProvider()
+    provider = make_provider()
     securities = provider.securities()
     by_symbol = {item["symbol"]: item for item in securities}
     save(
         output / "universe.json",
         {
             "collected_at": datetime.now(timezone.utc).isoformat(),
-            "source": "mootdx",
+            "source": provider.source_name,
             "securities": securities,
         },
     )
 
     histories: dict[str, dict[str, Mapping[str, Any]]] = defaultdict(dict)
     calendars = set()
+    snapshot_sources = set()
     for snapshot_path in snapshots:
         snapshot = load(snapshot_path)
+        snapshot_sources.add(snapshot.get("source", "mootdx"))
         calendars.update(snapshot["calendar"])
         for symbol, rows in snapshot["histories"].items():
             if symbol not in by_symbol:
                 continue
             target = histories[symbol]
             for row in rows:
-                target[str(row["datetime"])[:10]] = row
+                target[str(row["datetime"])[:10]] = {
+                    "source": snapshot.get("source", "mootdx"), **row,
+                }
         del snapshot
 
     counts = Counter()
@@ -136,7 +142,7 @@ def collect_daily(
                     "symbol": symbol,
                     "bars": [rows[key] for key in sorted(rows)],
                     "actions": [],
-                    "source": "mootdx_research_snapshot",
+                    "source": ",".join(sorted({row["source"] for row in rows.values()})),
                 },
             )
         counts["snapshot_symbols"] += 1
@@ -176,7 +182,7 @@ def collect_daily(
                             "symbol": symbol,
                             "bars": _json_value(frame.to_dict(orient="records")),
                             "actions": _json_value(actions),
-                            "source": "mootdx",
+                            "source": provider.source_name,
                         }
 
                     save(
@@ -216,7 +222,8 @@ def collect_daily(
 
     manifest = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "source": "mootdx",
+        "source": ",".join(sorted(snapshot_sources | {provider.source_name})),
+        "collection_source": provider.source_name,
         "protocol_sha256": sha256(DEFAULT_PROTOCOL),
         "snapshot_sha256": {
             str(path.relative_to(ROOT)): sha256(path) for path in snapshots
@@ -502,7 +509,7 @@ def collect_minutes(
             )
             imported += 1
 
-    provider = MootdxProvider()
+    provider = make_provider()
     symbols = sorted(needed)
 
     def worker(number: int, partition: Sequence[str]) -> Counter:
@@ -569,7 +576,7 @@ def collect_minutes(
                                 "symbol": symbol,
                                 "prices": prices,
                                 "volumes": volumes,
-                                "source": "mootdx",
+                                "source": provider.source_name,
                             }
 
                         save(

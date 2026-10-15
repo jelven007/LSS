@@ -74,7 +74,8 @@ def bootstrap(repository, roots, config_path):
                               "missing" if summary["missing_count"] else "complete")
                     repository.save_day_actuals(sid, day["plan_date"], {
                         "status": status, "outcomes": day["outcomes"], "summary": summary,
-                        "kind": "historical_market_validation", "source": "mootdx",
+                        "kind": "historical_market_validation",
+                        "source": result.get("source", "mootdx"),
                     })
     # Local live reports take precedence over research, but never replace an
     # already newer daily record. Persist existing identity; keep audit versions.
@@ -105,7 +106,7 @@ def bootstrap(repository, roots, config_path):
             AND EXISTS(SELECT 1 FROM banxia.strategy_plan p WHERE p.plan_id::text=d.execution_plan->>'plan_id'
                        AND p.trade_date<>d.trade_date)""")
     # Validate remaining imported execution plans using the same immutable
-    # mootdx snapshot as the research, including locally generated live plans.
+    # input snapshot as the research, including locally generated live plans.
     if research:
         from .research import label_candidate, summarize
         from .intraday import plan_for
@@ -125,7 +126,7 @@ def bootstrap(repository, roots, config_path):
                     repository.save_day_actuals(item["strategy_id"], row["trade_date"], {
                         "status": "complete" if all(o["status"] == "observed" for o in outcomes) else "missing",
                         "outcomes": outcomes, "summary": summarize(outcomes),
-                        "source": "mootdx", "kind": "historical_market_validation",
+                        "source": snapshot.get("source", "mootdx"), "kind": "historical_market_validation",
                     }, execution.get("plan_id"))
     repository.ensure_strategy_days(datetime.now(ZoneInfo("Asia/Shanghai")).date())
     return {"imported_reports": imported, "strategies": len(repository.list_strategies())}

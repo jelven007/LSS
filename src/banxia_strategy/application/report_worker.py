@@ -8,7 +8,7 @@ from typing import Any, Mapping, Optional
 from zoneinfo import ZoneInfo
 
 from ..application.persistence import PersistenceResult, persist_report_copy
-from ..mootdx_provider import MootdxProvider
+from ..data_provider import make_provider
 from ..storage_config import StorageSettings
 from ..strategy import DailyReport, StrategyConfig, StrategyEngine, write_report
 from ..strategy_config import stamp_report
@@ -62,7 +62,7 @@ class ReportWorker:
         self.strategy_config_path = strategy_config_path
         self.output_dir = output_dir
         self.storage_settings = storage_settings
-        self.provider = provider or MootdxProvider()
+        self.provider = provider or make_provider()
         self.strategy_id = strategy_id
 
     def run(
@@ -156,5 +156,5 @@ class ReportWorker:
             "status": "complete" if all(item["status"] == "observed" for item in outcomes) else "missing",
             "outcomes": outcomes, "summary": summarize(outcomes),
             "stocks": day.get("actuals", {}).get("stocks", {}),
-            "source": "mootdx", "kind": "market_validation",
+            "source": self.provider.source_name, "kind": "market_validation",
         }, execution.get("plan_id"))

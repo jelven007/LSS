@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping, Optional, Tuple
 
+from .data_provider import DEFAULT_PROVIDER, resolve_provider_name
 from .storage_config import StorageSettings
 
 
@@ -98,7 +99,7 @@ class RuntimeSettings:
     smtp_timeout_seconds: int = 10
     metrics_port: Optional[int] = None
     storage: StorageSettings = field(default_factory=StorageSettings)
-    data_provider: str = "mootdx"
+    data_provider: str = DEFAULT_PROVIDER
 
     def topic(self, name: str) -> str:
         return f"{self.kafka_topic_prefix}{name}"
@@ -212,5 +213,5 @@ class RuntimeSettings:
                 else None
             ),
             storage=StorageSettings.from_env(source),
-            data_provider=source.get("BANXIA_DATA_PROVIDER", "mootdx"),
+            data_provider=resolve_provider_name(source.get("BANXIA_DATA_PROVIDER")),
         )

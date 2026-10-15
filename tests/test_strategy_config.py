@@ -247,7 +247,7 @@ class StrategyConfigTest(unittest.TestCase):
         stop.wait.return_value = False
         scheduled_at = datetime(2026, 9, 23, 16, 30, tzinfo=ZoneInfo("Asia/Shanghai"))
         identity = ReportIdentity("run-id", "version-id", "plan-id")
-        with patch("banxia_strategy.application.report_worker.MootdxProvider", return_value=FakeProvider()), patch(
+        with patch("banxia_strategy.application.report_worker.make_provider", return_value=FakeProvider()), patch(
             "banxia_strategy.application.report_worker.persist_report_copy",
             return_value=PersistenceResult(enabled=True, identity=identity),
         ):
@@ -290,7 +290,7 @@ class StrategyConfigTest(unittest.TestCase):
         repository.claim_report_refresh.return_value = {"job_id": "invalid-config", "payload": {"trade_date": "2026-09-23"}}
         stop = Mock()
         stop.wait.return_value = False
-        with patch("banxia_strategy.application.report_worker.MootdxProvider", return_value=FakeProvider()), patch(
+        with patch("banxia_strategy.application.report_worker.make_provider", return_value=FakeProvider()), patch(
             "banxia_strategy.application.report_worker.persist_report_copy"
         ) as persist:
             _consume_report_refresh(repository, settings, Mock(), stop)

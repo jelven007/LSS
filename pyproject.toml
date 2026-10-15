@@ -8,11 +8,13 @@ version = "0.1.0"
 description = "A-share daily first-board to second-board research screener"
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = [
-  "mootdx>=0.11.7,<0.12",
-]
+dependencies = []
 
 [project.optional-dependencies]
+test = [
+  "httpx>=0.27,<1",
+  "PyYAML>=6,<7",
+]
 storage = [
   "clickhouse-connect>=0.8,<0.11",
   "minio>=7.2,<8",

@@ -1,5 +1,8 @@
 .git
 .venv
+native/**/target
+native/**/*.so
+native/**/*.dylib
 build
 data
 logs

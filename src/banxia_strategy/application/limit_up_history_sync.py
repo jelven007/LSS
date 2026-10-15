@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Mapping, Optional
 from zoneinfo import ZoneInfo
 
-from ..mootdx_provider import MootdxProvider
+from ..data_provider import DataProvider, make_provider
 
 
 DEFAULT_LIMIT_UP_HISTORY_START = date(2025, 1, 1)
@@ -12,16 +12,16 @@ INCREMENTAL_LOOKBACK_DAYS = 14
 
 
 class LimitUpHistorySync:
-    """Backfill and incrementally refresh limit-up facts from mootdx."""
+    """Backfill and incrementally refresh limit-up facts."""
 
     def __init__(
         self,
         *,
         repository: Any,
-        provider: Optional[MootdxProvider] = None,
+        provider: Optional[DataProvider] = None,
     ) -> None:
         self.repository = repository
-        self.provider = provider or MootdxProvider()
+        self.provider = provider or make_provider()
 
     def run(
         self,

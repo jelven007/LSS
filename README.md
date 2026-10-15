@@ -10,12 +10,12 @@
 当前仓库已实现可运行的多服务研究系统：
 
 ```text
-mootdx -> SQLite WAL -> Kafka -> Flink / 策略状态机
+rustdx native -> SQLite WAL -> Kafka -> Flink / 策略状态机
        -> PostgreSQL + ClickHouse + Redis + S3/MinIO
        -> /api/v1 -> Web 看板
 ```
 
-生产环境已部署到火山引擎 VKE，通过 <https://shanao.asia> 提供服务；本地 Compose
+本地代码已迁移至 rustdx，迁移尚未发布到线上。生产环境部署在火山引擎 VKE，通过 <https://shanao.asia> 提供服务；本地 Compose
 保留为开发和集成验证环境。当前生产采用应用多副本、数据服务单副本 StatefulSet 的
 成本优先拓扑，仍需继续完成托管高可用迁移和备份恢复演练。当前行为以本 README 的运行
 说明为准，完整文档以 [docs/README.md](docs/README.md) 为统一入口：
@@ -30,7 +30,8 @@ mootdx -> SQLite WAL -> Kafka -> Flink / 策略状态机
 - [策略研究](docs/08-strategy-research.md)
 - [多策略管理](docs/09-multi-strategy.md)
 - [Web UI 标准](docs/10-web-ui-standard.md)
-- [mootdx 非实时数据持久化](docs/11-mootdx-persistence.md)
+- [rustdx 数据源迁移](docs/30-rustdx-migration.md)
+- [迁移前非实时数据持久化设计](docs/11-mootdx-persistence.md)
 - [游资策略原型库 PRD](docs/12-yu-zi-strategy-library-prd.md)
 - [当前生产技术方案](docs/13-current-production-solution.md)
 - [OpenAPI](docs/openapi.yaml) / [AsyncAPI](docs/asyncapi.yaml)
@@ -66,11 +67,13 @@ make infra-status
 
 ## 安装
 
-需要 Python 3.9 或更高版本：
+需要 Python 3.9 或更高版本、Rust 1.89 或更高版本及 C/C++ 构建工具。首次构建需要
+访问 crates.io 和 GitHub；Docker 镜像会在独立构建阶段安装原生桥接：
 
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install ./native/rustdx_native
 .venv/bin/pip install -e .
 ```
 
@@ -80,6 +83,9 @@ python3 -m venv .venv
 .venv/bin/pip install -e '.[storage]'
 ```
 
+默认 `BANXIA_DATA_PROVIDER=rustdx`；旧配置值 `mootdx` 自动归一化为 rustdx。
+可通过 `BANXIA_RUSTDX_SERVERS=IP:端口,IP:端口` 指定节点，
+`BANXIA_RUSTDX_TIMEOUT_SECONDS=5` 设置超时。连接在进程内复用，无需额外行情 HTTP 服务。
 检查行情连接：
 
 ```bash
@@ -152,8 +158,8 @@ python3 -m venv .venv
 .venv/bin/banxia-strategy serve --watch-date 2026-09-23
 ```
 
-- 后台启动时立即采集。集合竞价、等待开盘和连续竞价阶段，每1秒通过 mootdx 批量获取
-  全部监控股票的盘口；一分钟线按 mootdx 支持的最小K线粒度每60秒刷新。午休、收盘后
+- 后台启动时立即采集。集合竞价、等待开盘和连续竞价阶段，每1秒通过 rustdx 批量获取
+  全部监控股票的盘口；一分钟线按 rustdx 支持的最小K线粒度每60秒刷新。午休、收盘后
   及其他非交易时段自动降为每60秒采集。行情连接会复用，失败时自动切换备用服务器。
   多个页面共享采集结果，关闭页面后，只要 Web 服务仍运行就会继续采集。
 - 页面每1秒同步后台缓存，显示下次采集倒计时、盘口时间、行情、建议依据、分时走势和
@@ -219,7 +225,8 @@ make integration-test
 ## 自动运行
 
 脚本默认在每周一至周五 16:30 生成初版，并于 23:30 基于最新行情覆盖更新。任务会通过
-mootdx 交易日历确认日期，周末和节假日不生成报告，也不会回退覆盖前一交易日：
+rustdx 交易日历确认日期，周末和节假日不生成报告，也不会回退覆盖前一交易日。
+当前锁定版本的休市日历覆盖 2024–2026 年，超出范围明确失败，升级后才能继续推断：
 
 ```bash
 chmod +x scripts/run_daily.sh scripts/install_launchd.sh
@@ -252,7 +259,7 @@ rm "$HOME/Library/LaunchAgents/com.jelven.banxia-strategy.plist"
 - “恢复默认值”只填入草稿，保存后生效；“撤销修改”恢复本页最近加载/保存的值。
   多页面同时编辑时，通过配置版本检测冲突，避免覆盖其他页面的修改。
 - 评分权重、理想区间、历史炸板扣分、题材门槛、入场时间、跌破昨收开关、
-  板块确认比例、仓位及回撤预警均可调整。沪深主板、排除 ST、mootdx、
+  板块确认比例、仓位及回撤预警均可调整。沪深主板、排除 ST、rustdx、
   北京时间、T+1 和不自动下单为当前系统固定约束。
 - 激活后，手动刷新或定时报表使用该策略；新报告的 JSON 包含 `strategy_config`、
   `strategy_version`、`code_commit`，每只候选的 `plan` 保存结构化入场规则。
@@ -315,7 +322,8 @@ MinIO，并写入 PostgreSQL 研究表。已有数据库需先应用
 - 板块地位：15 分。
 - 市场环境：10 分。
 
-行情统一来自 `mootdx` 接入的通达信公开行情服务器。工具从沪深主板日线自行计算涨停、
+新采集行情统一来自 `rustdx` 接入的通达信公开行情服务器；归档数据保留采集时的数据源。
+工具从沪深主板日线自行计算涨停、
 炸板和连板，并结合历史分时、收盘盘口、流通股本及通达信概念板块生成评分字段。首次
 运行通常需要约 20～40 秒；数据源可能延迟或临时不可用，因此日报会保留数据来源、
 生成时间和实际数据交易日，交易前仍应与券商行情核对。
@@ -323,10 +331,11 @@ MinIO，并写入 PostgreSQL 研究表。已有数据库需先应用
 ## 验证
 
 ```bash
+.venv/bin/python -m pip install -e '.[production,test]'
 PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -v
 ```
 
-当前快速测试基线为 158 项通过、8 项按环境跳过。真实存储集成测试需先启动 Compose：
+测试包含原生适配契约、时间/成交量口径、节点重试和历史来源保留。真实存储集成测试需先启动 Compose：
 
 ```bash
 make infra-check

@@ -6,7 +6,7 @@ from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Mapping, Optional, Sequence
 
-from .mootdx_provider import _bar_date, _finite_number, _json_value
+from .market_provider import _bar_date, _finite_number, _json_value
 
 
 GEM_PRICE_LIMIT_REFORM = date(2020, 8, 24)
@@ -93,6 +93,7 @@ def build_limit_up_history_rows(
     collected_at: datetime,
     actions: Optional[Mapping[str, Sequence[Mapping[str, Any]]]] = None,
     industries: Optional[Mapping[str, str]] = None,
+    source: str = "rustdx",
 ) -> list[dict[str, Any]]:
     """Derive close-at-limit observations; retain the evidence/uncertainty per row."""
     results = []
@@ -130,7 +131,7 @@ def build_limit_up_history_rows(
             reference = reference_price(previous, relevant_actions)
             if reference is None or index in unlimited:
                 continue
-            # mootdx has no historical ST status. Match the 5/10% price bands,
+            # The feed has no historical ST status. Match the 5/10% price bands,
             # and explicitly identify the 5% cases as unverified candidates.
             board = str(security["board"])
             ratios = (Decimal("0.20"),) if board in ("gem", "star") else (Decimal("0.10"), Decimal("0.05"))
@@ -172,12 +173,12 @@ def build_limit_up_history_rows(
                 "consecutive_limit_days": consecutive,
                 "capital_as_of_date": capital_date,
                 "classification_as_of_date": collected_at.date(),
-                "source": "mootdx", "collected_at": collected_at,
+                "source": source, "collected_at": collected_at,
                 "raw": {
                     "bar": _json_value(current), "unadjusted_previous_close": previous,
                     "reference_basis": "xdxr" if relevant_actions else "previous_close",
                     "capital_basis": basis,
-                    "classification_basis": "current_mootdx_f10",
+                    "classification_basis": f"current_{source}_f10",
                     "industry_full": industry_full,
                     "limit_ratio": float(matched),
                     "limit_rule_basis": "unverified_5pct_candidate" if matched == Decimal("0.05") else "board_price_band",

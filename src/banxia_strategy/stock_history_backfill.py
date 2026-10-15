@@ -1,4 +1,4 @@
-"""Resumable full-market daily-bar backfill from mootdx into ClickHouse."""
+"""Resumable full-market daily-bar backfill from rustdx into ClickHouse."""
 from __future__ import annotations
 
 import argparse
@@ -11,7 +11,9 @@ from zoneinfo import ZoneInfo
 
 from .adapters.clickhouse import ClickHouseMarketHistoryStore
 from .limit_up_collector import daily_bars, unlisted_evidence
-from .mootdx_provider import MootdxProvider, _bar_date, _finite_number, _json_value
+from .data_provider import make_provider
+from .rustdx_provider import RustdxProvider
+from .market_provider import _bar_date, _finite_number, _json_value
 from .storage_config import StorageSettings
 
 
@@ -72,7 +74,7 @@ class StockHistoryBackfill:
     def __init__(
         self,
         *,
-        provider: MootdxProvider,
+        provider: RustdxProvider,
         store: ClickHouseMarketHistoryStore,
         start_date: date = DEFAULT_START_DATE,
         end_date: Optional[date] = None,
@@ -254,7 +256,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     settings = StorageSettings.from_env()
-    provider = MootdxProvider(workers=args.workers)
+    provider = make_provider(workers=args.workers)
     store = ClickHouseMarketHistoryStore(
         host=settings.clickhouse_host,
         port=settings.clickhouse_port,

@@ -835,7 +835,7 @@ class ApiV1Test(unittest.TestCase):
         self.assertEqual(options.status_code, 200)
         self.assertEqual(options.json()["industries"][0]["name"], "机器人")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["data_source"], "mootdx")
+        self.assertEqual(response.json()["data_source"], "unknown")
         call = self.services.repository.limit_up_calls[-1]
         self.assertEqual(call["start_date"], date(2025, 1, 1))
         self.assertEqual(call["end_date"], date(2026, 9, 24))
@@ -1103,7 +1103,29 @@ class ApiV1Test(unittest.TestCase):
 
         self.assertEqual(first.json()["served_by"], "mootdx")
         self.assertEqual(second.json()["served_by"], "clickhouse")
+        self.assertEqual(second.json()["source"], "mootdx")
         self.assertEqual(store.writes[0][0:2], ("002635", "day"))
+
+    def test_migration_preserves_mixed_and_unrecorded_history_sources(self):
+        store = FakeMarketHistory()
+        store.rows[("002635", "day")] = [
+            {"date": "2026-09-23", "close": 10, "raw": {"source": "mootdx"}},
+            {"date": "2026-09-24", "close": 11, "raw": {"source": "rustdx"}},
+        ]
+        provider = FakeHistoryProvider()
+        provider.source_name = "rustdx"
+        services = ApiServices(
+            reports=self.services.reports, repository=self.services.repository,
+            cache=self.services.cache, history_provider=provider, market_history=store,
+        )
+        client = TestClient(create_api_app(services))
+        payload = client.get("/api/v1/stocks/002635/history?period=day&limit=800").json()
+        self.assertEqual(payload["source"], "mootdx,rustdx")
+        self.assertEqual(payload["served_by"], "clickhouse")
+        store.rows[("002635", "day")][0]["raw"] = {}
+        payload = client.get("/api/v1/stocks/002635/history?period=day&limit=800").json()
+        self.assertEqual(payload["source"], "rustdx,unknown")
+        self.assertEqual(provider.history_calls, [])
 
     def test_historical_monitor_reads_clickhouse_without_redis_quotes(self):
         store = FakeMarketHistory()
@@ -1434,7 +1456,7 @@ class ApiV1Test(unittest.TestCase):
         self.assertIn("/stock.js?v=20260927.2", stock.text)
 
         history = self.client.get("/stocks/002635/history")
-        self.assertIn("/stock-history.js?v=20260927.2", history.text)
+        self.assertIn("/stock-history.js?v=20261015.1", history.text)
 
         limit_ups = self.client.get("/limit-ups")
         self.assertEqual(limit_ups.status_code, 200)

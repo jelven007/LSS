@@ -9,7 +9,8 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Mapping, Optional
 from zoneinfo import ZoneInfo
 
-from ..mootdx_provider import REFERENCE_FILES, MootdxProvider
+from ..data_provider import DataProvider, make_provider
+from ..market_provider import REFERENCE_FILES
 
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
@@ -72,11 +73,11 @@ class MarketReferenceSync:
         *,
         repository: Any,
         object_store: Any,
-        provider: Optional[MootdxProvider] = None,
+        provider: Optional[DataProvider] = None,
     ) -> None:
         self.repository = repository
         self.object_store = object_store
-        self.provider = provider or MootdxProvider()
+        self.provider = provider or make_provider()
 
     def run(self, as_of_date: date) -> Mapping[str, Any]:
         snapshot_id = self.repository.begin_market_reference_snapshot(
@@ -107,7 +108,7 @@ class MarketReferenceSync:
                 )
                 if available_count / len(daily_snapshots) < 0.99:
                     raise RuntimeError(
-                        "incomplete mootdx daily quotes: "
+                        f"incomplete {getattr(self.provider, 'source_name', 'rustdx')} daily quotes: "
                         f"{available_count}/{len(daily_snapshots)} available"
                     )
                 quote_content = _json_bytes(
@@ -175,8 +176,8 @@ class MarketReferenceSync:
             }
             content_sha256 = _sha256(_json_bytes(content_manifest))
             source_version = (
-                f"mootdx/{_package_version('mootdx')} "
-                f"tdxpy/{_package_version('tdxpy')}"
+                f"{getattr(self.provider, 'source_name', 'rustdx')}/1.12.2 "
+                f"bridge/{_package_version('banxia-rustdx-native')}"
             )
             manifest = {
                 "snapshot_id": snapshot_id,

@@ -9,7 +9,7 @@ from typing import Optional, Sequence
 
 from .application.persistence import persist_report_copy
 from .application.report_worker import write_completion_marker
-from .mootdx_provider import MootdxProvider
+from .data_provider import make_provider
 from .storage_config import StorageSettings
 from .strategy import StrategyConfig, StrategyEngine, write_report
 from .web_server import serve_dashboard
@@ -80,7 +80,7 @@ def _run(args: argparse.Namespace) -> int:
     from .strategy_config import stamp_report
 
     config = StrategyConfig.from_file(args.config)
-    report = StrategyEngine(MootdxProvider(), config).run(args.date)
+    report = StrategyEngine(make_provider(), config).run(args.date)
     settings = StorageSettings.from_env()
     stamp_report(report, settings)
     paths = write_report(report, args.output)
@@ -118,7 +118,7 @@ def _run(args: argparse.Namespace) -> int:
 
 def _doctor(args: argparse.Namespace) -> int:
     StrategyConfig.from_file(args.config)
-    provider = MootdxProvider()
+    provider = make_provider()
     dates = [session for session in provider.trading_dates() if session <= date.today()]
     if not dates:
         raise RuntimeError("Trading calendar is empty")

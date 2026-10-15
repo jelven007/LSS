@@ -9,7 +9,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .limit_up_history import build_limit_up_history_rows, industry_from_f10
-from .mootdx_provider import _bar_date, _finite_number
+from .market_provider import _bar_date, _finite_number
 
 
 logger = logging.getLogger(__name__)
@@ -52,6 +52,7 @@ def daily_bars(client: Any, symbol: str, start_date: date, *, index: bool = Fals
 
 def collect_limit_up_history(provider: Any, start_date: date, end_date: date) -> dict:
     now = datetime.now(ZoneInfo("Asia/Shanghai"))
+    source = getattr(provider, "source_name", "rustdx")
     if start_date > end_date or end_date > now.date():
         raise ValueError("invalid history date range")
     # Never persist an intraday bar as a daily closing observation.
@@ -63,7 +64,7 @@ def collect_limit_up_history(provider: Any, start_date: date, end_date: date) ->
     securities = provider.securities()
     if not sessions:
         return {
-            "source": "mootdx", "start_date": start_date, "end_date": cutoff,
+            "source": source, "start_date": start_date, "end_date": cutoff,
             "collected_at": now, "universe_count": len(securities), "history_count": 0,
             "missing_symbols": [], "successful_symbols": [], "coverage": [], "rows": [],
             "excluded_symbols": [],
@@ -107,6 +108,7 @@ def collect_limit_up_history(provider: Any, start_date: date, end_date: date) ->
                         histories={symbol: bars}, securities={symbol: security},
                         finances={symbol: finance}, actions={symbol: actions},
                         start_date=start_date, end_date=end, collected_at=now,
+                        source=source,
                     )
                     if derived:
                         text = client.F10(symbol=symbol, name="公司概况")
@@ -147,10 +149,10 @@ def collect_limit_up_history(provider: Any, start_date: date, end_date: date) ->
             excluded.extend(result["excluded"])
             observed.update(result["coverage"])
     if not successful:
-        raise RuntimeError("mootdx returned no usable stock histories")
+        raise RuntimeError(f"{source} returned no usable stock histories")
     row_counts = Counter(row["trade_date"] for row in all_rows)
     return {
-        "source": "mootdx", "start_date": start_date, "end_date": end,
+        "source": source, "start_date": start_date, "end_date": end,
         "collected_at": now, "universe_count": len(securities) - len(excluded),
         "history_count": len(successful), "missing_symbols": sorted(missing),
         "successful_symbols": sorted(successful),

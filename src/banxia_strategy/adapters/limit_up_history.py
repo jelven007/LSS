@@ -529,7 +529,7 @@ class LimitUpHistoryMixin:
             item.get("consecutive_limit_days", 1),
             item.get("capital_as_of_date"),
             item["classification_as_of_date"],
-            item.get("source", "mootdx"),
+            item.get("source", "rustdx"),
             item["collected_at"],
             _json(item.get("raw") or {}),
         )

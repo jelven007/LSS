@@ -368,9 +368,9 @@ async function renderSelectedChart(stock) {
   const key = `${latest.plan_id}:${latest.plan_date}:${stock.code}:${selectedPeriod}`;
   if (displayedChartKey === key) return;
   const version = ++chartRenderVersion;
-  write("chart-status", `正在读取${periodLabels[selectedPeriod]} · mootdx`);
+  write("chart-status", `正在读取${periodLabels[selectedPeriod]} · rustdx`);
   write("chart-primary-label", "历史行情加载中");
-  write("chart-reference-label", "数据源：mootdx");
+  write("chart-reference-label", "数据源：rustdx");
   write("bar-time", `截至 ${dateLabel(latest.plan_date)}`);
   byId("chart").dataset.period = selectedPeriod;
   byId("chart").replaceChildren(
@@ -607,7 +607,7 @@ setInterval(() => {
   write(
     "countdown",
     latest?.plan_date && latest.plan_date < today
-      ? "历史收盘快照 · mootdx 已验证"
+      ? "历史收盘快照 · 已验证"
       : age === null
         ? "等待首次行情"
         : `行情年龄 ${age}秒 · SSE 实时推送 · 5秒轮询兜底`,

@@ -4,9 +4,9 @@ import unittest
 from datetime import date
 from unittest.mock import patch
 
-from banxia_strategy.mootdx_provider import (
+from banxia_strategy.market_provider import (
     REFERENCE_FILES,
-    MootdxProvider,
+    TdxMarketProvider,
     _extract_pools,
     _json_value,
     _limit_price,
@@ -27,7 +27,7 @@ def bar(day: int, close: float, high: float, amount: float = 500_000_000):
     }
 
 
-class MootdxCalculationTest(unittest.TestCase):
+class MarketCalculationTest(unittest.TestCase):
     def test_json_values_remove_postgres_incompatible_nul_characters(self):
         self.assertEqual(
             _json_value(
@@ -96,7 +96,7 @@ class MootdxCalculationTest(unittest.TestCase):
             def close():
                 pass
 
-        provider = MootdxProvider(
+        provider = TdxMarketProvider(
             servers=[("example", 7709)],
             client_factory=lambda _server: Client(),
         )
@@ -157,7 +157,7 @@ class MootdxCalculationTest(unittest.TestCase):
             def close():
                 pass
 
-        provider = MootdxProvider(
+        provider = TdxMarketProvider(
             servers=[("example", 7709)],
             client_factory=lambda _server: Client(),
         )
@@ -214,7 +214,7 @@ class MootdxCalculationTest(unittest.TestCase):
                 pass
 
         client = Client()
-        provider = MootdxProvider(
+        provider = TdxMarketProvider(
             servers=[("example", 7709)],
             client_factory=lambda _server: client,
         )
@@ -247,7 +247,7 @@ class MootdxCalculationTest(unittest.TestCase):
             def close():
                 pass
 
-        provider = MootdxProvider(
+        provider = TdxMarketProvider(
             servers=[("example", 7709)],
             client_factory=lambda _server: Client(),
         )
@@ -283,7 +283,7 @@ class MootdxCalculationTest(unittest.TestCase):
                 pass
 
         client = Client()
-        provider = MootdxProvider(
+        provider = TdxMarketProvider(
             servers=[("example", 7709)],
             client_factory=lambda _server: client,
         )
@@ -313,7 +313,7 @@ class MootdxCalculationTest(unittest.TestCase):
         )
 
     def test_kline_bars_reject_invalid_period(self):
-        provider = MootdxProvider(
+        provider = TdxMarketProvider(
             servers=[("example", 7709)],
             client_factory=lambda _server: None,
         )
@@ -328,16 +328,20 @@ class MootdxCalculationTest(unittest.TestCase):
     def test_missing_holiday_data_never_guesses_a_trading_day(self):
         for result in (None, RuntimeError("unavailable")):
             options = {"side_effect": result} if isinstance(result, Exception) else {"return_value": result}
-            with patch("mootdx.utils.holiday._holiday", **options):
+            with patch("banxia_strategy.rustdx_client.native_module") as native:
+                native.return_value.is_trading_day.configure_mock(**options)
                 with self.assertRaisesRegex(RuntimeError, "停止推测"):
-                    MootdxProvider._is_holiday(date(2026, 9, 25))
+                    TdxMarketProvider._is_holiday(date(2026, 9, 25))
 
-    def test_holiday_comparison_normalizes_timestamp_index_to_dates(self):
-        import pandas as pd
-        calendar = pd.DataFrame({"国家": ["中国"]}, index=pd.to_datetime(["2026-09-25"]))
-        with patch("mootdx.utils.holiday._holiday", return_value=calendar):
-            self.assertTrue(MootdxProvider._is_holiday(date(2026, 9, 25)))
-            self.assertFalse(MootdxProvider._is_holiday(date(2026, 9, 28)))
+    def test_holidays_use_native_calendar(self):
+        with patch("banxia_strategy.rustdx_client.native_module") as native:
+            native.return_value.is_trading_day.side_effect = [False, True]
+            self.assertTrue(TdxMarketProvider._is_holiday(date(2026, 10, 1)))
+            self.assertFalse(TdxMarketProvider._is_holiday(date(2026, 10, 9)))
+            self.assertEqual(
+                native.return_value.is_trading_day.call_args_list,
+                [unittest.mock.call("2026-10-01"), unittest.mock.call("2026-10-09")],
+            )
 
     def test_limit_price_uses_exchange_rounding(self):
         self.assertEqual(_limit_price(10.01, "普通股份"), 11.01)

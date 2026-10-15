@@ -13,7 +13,8 @@ from typing import Any, Iterable, Mapping, Optional, Sequence
 from zoneinfo import ZoneInfo
 
 from .adapters.postgres import PostgresStorage
-from .mootdx_provider import DEFAULT_SERVERS, MootdxProvider, _at_price_limit, _limit_price, _minute_label
+from .data_provider import make_provider
+from .market_provider import DEFAULT_SERVERS, _at_price_limit, _limit_price, _minute_label
 from .research_data import write_json
 from .storage_config import StorageSettings
 
@@ -30,7 +31,7 @@ METRIC = {
         "截至可买窗口的炸板次数不超过计划上限；不使用之后是否回封的信息",
     ],
     "limitation": (
-        "mootdx 历史分钟线没有逐笔委托、买卖队列和板块分钟成分数据；"
+        "历史分钟线没有逐笔委托、买卖队列和板块分钟成分数据；"
         "结果是保守的分钟级可买入代理，不等同券商真实成交。"
     ),
 }
@@ -474,7 +475,7 @@ def _fetch_partition(
     server: tuple[str, int],
     pairs: Sequence[tuple[str, str]],
 ) -> tuple[dict[str, dict[str, list[Any]]], list[tuple[str, str]]]:
-    provider = MootdxProvider(servers=(server,))
+    provider = make_provider(servers=(server,))
     client = None
     results: dict[str, dict[str, list[Any]]] = {}
     failed = []
@@ -575,7 +576,7 @@ def write_reports(result: Mapping[str, Any], output: Path) -> None:
         "# 双策略实盘可执行性对比",
         "",
         f"- 区间：{result['start']} 至 {result['end']}",
-        "- 数据源：mootdx",
+        f"- 数据源：{result.get('source', 'unknown')}",
         f"- 主指标：{METRIC['formula']}",
         f"- 可买后封板率：{METRIC['buyable_formula']}",
         f"- 限制：{METRIC['limitation']}",
@@ -636,7 +637,7 @@ def analyze(
         "generated_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(),
         "start": start.isoformat(),
         "end": end.isoformat(),
-        "source": "mootdx",
+        "source": snapshot.get("source", "mootdx"),
         "metric": METRIC,
         "strategies": [
             build_strategy_result(

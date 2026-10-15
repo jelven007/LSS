@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="/ui-standard.css?v=20260926.2">
     <link rel="stylesheet" href="/market.css?v=20260926.1">
     <script src="/auth.js?v=20260927.1" defer></script>
-    <script src="/stock-history.js?v=20260927.2" defer></script>
+    <script src="/stock-history.js?v=20261015.1" defer></script>
   </head>
   <body class="market-body history-body">
     <header class="topbar market-topbar">
@@ -18,7 +18,7 @@
         <span class="brand-mark" aria-hidden="true">BX</span>
         <strong>一进二</strong>
       </a>
-      <span class="app-source">mootdx · 个股历史行情</span>
+      <span class="app-source">个股历史行情</span>
     </header>
     <nav class="primary-nav" aria-label="主导航">
       <a href="/" aria-current="page">首页</a>
@@ -36,9 +36,9 @@
         <div class="page-header-copy">
           <p class="stock-breadcrumb"><a id="stock-list-link" href="/">沪深股票</a> / <a id="detail-link" href="/stocks">个股资料</a></p>
           <h1><span id="history-name">读取中</span> <code id="history-code">—</code></h1>
-          <p class="page-header-meta">历史行情独立存储 · 数据源 mootdx · <span id="history-storage">—</span></p>
+          <p class="page-header-meta">历史行情独立存储 · 数据源 <span id="history-source">—</span> · <span id="history-storage">—</span></p>
         </div>
-        <button id="history-refresh" class="ui-button" type="button">从 mootdx 刷新</button>
+        <button id="history-refresh" class="ui-button" type="button">从 rustdx 刷新</button>
       </header>
 
       <section class="history-toolbar" aria-label="历史行情周期">
@@ -76,7 +76,7 @@
 
       <section class="history-ledger" aria-labelledby="history-ledger-title">
         <div class="content-heading">
-          <div><h2 id="history-ledger-title">历史明细</h2><p>价格、成交量与成交额均来自 mootdx。</p></div>
+          <div><h2 id="history-ledger-title">历史明细</h2><p>保留采集时的价格、成交量与成交额。</p></div>
         </div>
         <div class="market-table-wrap" tabindex="0" role="region" aria-label="股票历史行情明细">
           <table class="data-table history-table">

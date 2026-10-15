@@ -33,6 +33,7 @@ from banxia_strategy.strategy import DailyReport
 
 
 class CalendarProvider:
+    source_name = "rustdx"
     def __init__(self, *sessions: date):
         self.sessions = sessions
 
@@ -113,7 +114,7 @@ class ReportSchedulerTest(unittest.TestCase):
 
         repository.is_trading_session.assert_not_called()
 
-    def test_non_trading_day_scheduler_never_initializes_mootdx(self):
+    def test_non_trading_day_scheduler_never_initializes_provider(self):
         timezone = ZoneInfo("Asia/Shanghai")
         holiday = datetime(2026, 9, 25, 9, 30, tzinfo=timezone)
         repository = Mock()
@@ -139,7 +140,7 @@ class ReportSchedulerTest(unittest.TestCase):
             "banxia_strategy.service.datetime",
             clock,
         ), patch(
-            "banxia_strategy.mootdx_provider.MootdxProvider",
+            "banxia_strategy.service.make_provider",
         ) as provider:
             run_report_scheduler(
                 RuntimeSettings(report_output_dir=Path("reports")),

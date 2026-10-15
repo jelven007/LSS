@@ -1,4 +1,4 @@
-"""Dated, resumable mootdx inputs for retrospective strategy research."""
+"""Dated, resumable inputs for retrospective strategy research."""
 from __future__ import annotations
 
 import copy
@@ -8,8 +8,8 @@ from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from .mootdx_provider import (
-    MootdxProvider,
+from .rustdx_provider import RustdxProvider
+from .market_provider import (
     _bar_date,
     _extract_pools,
     _strategy_rows_from_history,
@@ -26,7 +26,7 @@ def write_json(path: Path, value):
     temporary.replace(path)
 
 
-class ResearchCollector(MootdxProvider):
+class ResearchCollector(RustdxProvider):
     """Never enrich past dates with today's order book."""
 
     def __init__(self, *args, **kwargs):
@@ -62,7 +62,7 @@ class ResearchCollector(MootdxProvider):
             self._calendar = [date.fromisoformat(value) for value in raw["calendar"]]
             self._limit_pools, self._broken_pools = _extract_pools(self._histories, self._names)
         else:
-            print("采集 mootdx 主板日线与交易日历…", flush=True)
+            print("采集 rustdx 主板日线与交易日历…", flush=True)
             self.trading_dates()
             self._load_histories()
             self._histories = {
@@ -71,6 +71,7 @@ class ResearchCollector(MootdxProvider):
             }
             self._limit_pools, self._broken_pools = _extract_pools(self._histories, self._names)
             raw = {
+                "source": self.source_name,
                 "requested_start": start.isoformat(), "requested_end": end.isoformat(),
                 "collected_at": now.isoformat(), "names": self._names,
                 "histories": self._histories, "concepts": self._concepts,
@@ -78,12 +79,13 @@ class ResearchCollector(MootdxProvider):
                 "calendar": [value.isoformat() for value in self._calendar],
             }
             write_json(raw_path, raw)
+        sources = {raw.get("source", "mootdx")}
         sessions = [session for session in self._calendar if start <= session <= end]
         if not sessions or not any(_bar_date(row) == end for rows in self._histories.values() for row in rows):
             # Weekends are accepted if the last market session is present.
             last = max((s for s in self._calendar if s <= end), default=None)
             if not sessions or not any(_bar_date(row) == last for rows in self._histories.values() for row in rows):
-                raise RuntimeError("mootdx 未提供指定区间的最新完整日线")
+                raise RuntimeError("rustdx 未提供指定区间的最新完整日线")
         for index, session in enumerate(sessions):
             path = output / "sessions" / f"{session}.json"
             if path.exists():
@@ -93,14 +95,16 @@ class ResearchCollector(MootdxProvider):
             else:
                 self._enrich_session(session)
                 detail = {
+                    "source": self.source_name,
                     "pool": self._limit_pools.get(session, []),
                     "minutes": {key: value for key, value in self.minute_prices.items()
                                 if key.startswith(str(session) + ":")},
                 }
                 write_json(path, detail)
+            sources.add(detail.get("source", raw.get("source", "mootdx")))
             print(f"历史输入 {index + 1}/{len(sessions)} · {session} · 涨停 {len(detail['pool'])}", flush=True)
         snapshot = {
-            "schema_version": 1, "source": "mootdx",
+            "schema_version": 1, "source": ",".join(sorted(sources)),
             "requested_start": str(start), "requested_end": str(end),
             "collected_at": raw["collected_at"],
             "calendar": raw["calendar"], "names": self._names,
@@ -128,13 +132,13 @@ class ResearchCollector(MootdxProvider):
 
 
 class DatedResearchProvider:
-    source_name = "mootdx 历史重建"
 
     def __init__(self, snapshot, reference: date):
         self.snapshot = snapshot
         self.reference = reference
+        self.source_name = f"{snapshot.get('source', 'mootdx')} 历史重建"
         # Fresh copies prevent a later run's theme assignment contaminating an earlier run.
-        provider = MootdxProvider(client_factory=lambda _: None)
+        provider = RustdxProvider(client_factory=lambda _: None)
         provider._limit_pools = {
             date.fromisoformat(key): copy.deepcopy(value)
             for key, value in snapshot["pools"].items() if key <= str(reference)

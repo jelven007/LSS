@@ -11,7 +11,9 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 from zoneinfo import ZoneInfo
 
 from .adapters.clickhouse import ClickHouseMarketHistoryStore
-from .mootdx_provider import MootdxProvider, _bar_date, _finite_number, _json_value
+from .data_provider import make_provider
+from .rustdx_provider import RustdxProvider
+from .market_provider import _bar_date, _finite_number, _json_value
 from .storage_config import StorageSettings
 
 
@@ -92,7 +94,7 @@ class BoardCapitalBackfill:
     def __init__(
         self,
         *,
-        provider: MootdxProvider,
+        provider: RustdxProvider,
         store: ClickHouseMarketHistoryStore,
         start_date: date = DEFAULT_START_DATE,
         end_date: Optional[date] = None,
@@ -320,7 +322,7 @@ class BoardCapitalBackfill:
                 "total_cap_stock_count": values["total_stocks"],
                 "float_cap_stock_count": values["float_stocks"],
                 "estimated_stock_count": values["estimated"],
-                "source": "mootdx",
+                "source": getattr(self.provider, "source_name", "rustdx"),
             }
             for (session, board_code), values in sorted(aggregates.items())
         ]
@@ -375,7 +377,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     try:
         result = BoardCapitalBackfill(
-            provider=MootdxProvider(workers=args.workers),
+            provider=make_provider(workers=args.workers),
             store=store,
             start_date=args.start_date,
             end_date=args.end_date,

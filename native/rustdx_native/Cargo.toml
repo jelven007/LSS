@@ -1,0 +1,17 @@
+[package]
+name = "banxia-rustdx-native"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT"
+
+[lib]
+name = "banxia_rustdx_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.25", features = ["abi3-py39"] }
+jelven-rustdx-complete = { git = "https://github.com/jelven007/rustdx.git", rev = "904b33e514d4e368e633622c96a9e63af8a53d37" }
+chrono = "0.4"
+serde = "1"
+serde_json = "1"

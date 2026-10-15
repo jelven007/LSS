@@ -20,7 +20,7 @@ from .domain.intraday import (
     evaluate,
     phase_at,
 )
-from .mootdx_provider import MootdxProvider
+from .data_provider import make_provider
 from .strategy_config import StrategyConfigStore
 
 
@@ -55,8 +55,8 @@ def load_watchlist(path):
         datetime.strptime(payload.get(key, ""), "%Y-%m-%d")
     if payload["next_session"] <= payload["as_of"]:
         raise ValueError("监控计划交易日必须晚于昨收日期")
-    if payload.get("data_source") != "mootdx":
-        raise ValueError("监控补充数据必须来自 mootdx")
+    if payload.get("data_source") not in ("rustdx", "mootdx"):
+        raise ValueError("监控补充数据必须来自 rustdx 或已归档的 mootdx 数据")
     result = []
     codes = set()
     for item in payload["candidates"]:
@@ -208,11 +208,11 @@ def normalize_quote(raw, bars, now, plan):
     }
 
 
-class MootdxLiveSource:
+class MarketLiveSource:
     """Reuse one quote connection and refresh minute bars on their native cadence."""
 
     def __init__(self, provider=None, bar_interval=60, clock=None):
-        self.provider = provider or MootdxProvider(
+        self.provider = provider or make_provider(
             servers=[("117.34.114.14", 7709), ("117.34.114.15", 7709)]
         )
         self.bar_interval = max(1, bar_interval)
@@ -275,7 +275,7 @@ class MootdxLiveSource:
             except Exception as exc:
                 last_error = exc
                 self.close()
-        raise RuntimeError(f"mootdx 行情连接失败：{last_error}")
+        raise RuntimeError(f"行情连接失败：{last_error}")
 
 
 class IntradayMonitor:
@@ -307,7 +307,7 @@ class IntradayMonitor:
         self.bar_interval = max(1, bar_interval)
         self.idle_interval = max(self.quote_interval, idle_interval)
         self.interval = self.quote_interval
-        self.source = source or MootdxLiveSource(bar_interval=self.bar_interval)
+        self.source = source or MarketLiveSource(bar_interval=self.bar_interval)
         self.storage_sink = storage_sink
         self.log_dir = Path(log_dir) if log_dir is not None else None
         self.clock = clock or now_shanghai
@@ -323,7 +323,7 @@ class IntradayMonitor:
 
     def start(self):
         if self.thread is None:
-            self.thread = threading.Thread(target=self._run, name="mootdx-monitor", daemon=True)
+            self.thread = threading.Thread(target=self._run, name="market-monitor", daemon=True)
             self.thread.start()
 
     def stop(self):
@@ -456,7 +456,8 @@ class IntradayMonitor:
             idle_interval_seconds=self.idle_interval,
             phase=phase, phase_label=PHASE_LABELS[phase],
             report_date=self.report.get("as_of"), plan_date=self.report.get("next_session"),
-            source="mootdx", age_seconds=round(age, 1) if age is not None else None,
+            source=getattr(getattr(self.source, "provider", None), "source_name", "rustdx"),
+            age_seconds=round(age, 1) if age is not None else None,
             delayed=delayed, events=events, requested_codes=list(self.codes),
             watchlist=[{"code": item["code"], "name": item["name"]} for item in self.candidates],
         )

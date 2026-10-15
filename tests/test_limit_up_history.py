@@ -223,7 +223,7 @@ class LimitUpHistorySyncTest(unittest.TestCase):
         self.assertEqual(repository.calls[0][1], date(2026, 9, 16))
 
     def test_history_paging_keeps_five_prior_bars(self):
-        import pandas as pd
+        from banxia_strategy.rustdx_client import RecordFrame
 
         class Client:
             positions = []
@@ -231,7 +231,7 @@ class LimitUpHistorySyncTest(unittest.TestCase):
             def bars(self, **kwargs):
                 self.positions.append(kwargs["start"])
                 end = date(2026, 10, 1) - timedelta(days=kwargs["start"])
-                return pd.DataFrame([
+                return RecordFrame([
                     {"datetime": str(end - timedelta(days=i)), "close": 10}
                     for i in range(800)
                 ])
@@ -242,11 +242,11 @@ class LimitUpHistorySyncTest(unittest.TestCase):
         self.assertGreaterEqual(sum(date.fromisoformat(b["datetime"]) < date(2024, 7, 26) for b in records), 5)
 
     def test_pagination_detects_repeated_source_page(self):
-        import pandas as pd
+        from banxia_strategy.rustdx_client import RecordFrame
 
         class Client:
             def bars(self, **kwargs):
-                return pd.DataFrame([
+                return RecordFrame([
                     {"datetime": str(date(2026, 10, 1) - timedelta(days=i)), "close": 10}
                     for i in range(800)
                 ])
@@ -273,7 +273,7 @@ class LimitUpCollectorTest(unittest.TestCase):
                 self.assertIsNone(unlisted_evidence(bars, fields, f10))
 
     def test_collector_excludes_unlisted_but_retries_real_missing_history(self):
-        import pandas as pd
+        from banxia_strategy.rustdx_client import RecordFrame
         from unittest.mock import Mock
 
         securities = [
@@ -281,18 +281,18 @@ class LimitUpCollectorTest(unittest.TestCase):
             for symbol in ("600001", "600002", "600003", "600004")
         ]
         client = Mock()
-        client.index.return_value = pd.DataFrame([{"datetime": "2025-01-02"}])
-        client.bars.side_effect = lambda **kw: pd.DataFrame([
+        client.index.return_value = RecordFrame([{"datetime": "2025-01-02"}])
+        client.bars.side_effect = lambda **kw: RecordFrame([
             {"datetime": "2024-12-31", "open": 10, "close": 10, "high": 10, "low": 10},
             {"datetime": "2025-01-02", "open": 10, "close": 11, "high": 11, "low": 10},
         ] if kw["symbol"] == "600001" else [])
-        client.finance.side_effect = lambda **kw: pd.DataFrame([{
+        client.finance.side_effect = lambda **kw: RecordFrame([{
             "ipo_date": 20200101 if kw["symbol"] == "600003" else 0,
             "zongguben": 0, "liutongguben": 0,
         }])
         client.F10.side_effect = lambda **kw: "" if kw["symbol"] == "600004" else "│上市日期 ｜-｜"
         client.client.get_xdxr_info.return_value = []
-        provider = Mock(workers=1, servers=["node"])
+        provider = Mock(source_name="rustdx", workers=1, servers=["node"])
         provider._first_result.side_effect = lambda action: action(client)
         provider._client.return_value = client
         provider.securities.return_value = securities

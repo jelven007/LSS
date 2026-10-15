@@ -124,7 +124,7 @@ class PostgresStorage(
                         strategy_id_seed,
                         strategy_code,
                         report.get("strategy_name") or "首板晋级二板策略",
-                        "基于 mootdx 的沪深主板一进二条件筛选与当日实盘",
+                        "沪深主板策略条件筛选与盘中监控",
                     ),
                 )
                 strategy_id = str(cursor.fetchone()[0])

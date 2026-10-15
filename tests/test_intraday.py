@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.request import urlopen
 
 from banxia_strategy.intraday import (
-    SHANGHAI, WATCH_CODES, IntradayMonitor, MootdxLiveSource, evaluate, load_watchlist,
+    SHANGHAI, WATCH_CODES, IntradayMonitor, MarketLiveSource, evaluate, load_watchlist,
     normalize_quote, phase_at, plan_for,
 )
 from banxia_strategy.web_server import make_server
@@ -327,7 +327,7 @@ class LiveSourceTest(unittest.TestCase):
     def test_connection_is_reused_and_minute_bars_refresh_every_sixty_seconds(self):
         now = [100.0]
         client = FakeQuoteClient()
-        source = MootdxLiveSource(
+        source = MarketLiveSource(
             provider=FakeProvider([client]), bar_interval=60, clock=lambda: now[0],
         )
 
@@ -348,7 +348,7 @@ class LiveSourceTest(unittest.TestCase):
         failed = FakeQuoteClient(fail_quotes=True)
         healthy = FakeQuoteClient()
         provider = FakeProvider([failed, healthy])
-        source = MootdxLiveSource(provider=provider)
+        source = MarketLiveSource(provider=provider)
 
         result = source.fetch(["002635"])
         self.assertTrue(failed.closed)

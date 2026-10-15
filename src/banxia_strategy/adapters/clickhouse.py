@@ -198,7 +198,7 @@ class ClickHouseMarketHistoryStore:
                     _integer(data.get("bid1_volume")),
                     _decimal(data.get("ask1")),
                     _integer(data.get("ask1_volume")),
-                    str(data.get("source_node") or "mootdx"),
+                    str(data.get("source_node") or "rustdx"),
                     _version(data.get("ingest_version"), published_at),
                 )
             )
@@ -418,7 +418,7 @@ class ClickHouseMarketHistoryStore:
                 max(0, int(row["total_cap_stock_count"])),
                 max(0, int(row["float_cap_stock_count"])),
                 max(0, int(row["estimated_stock_count"])),
-                str(row.get("source") or "mootdx"),
+                str(row.get("source") or "rustdx"),
                 calculated_at,
                 revision,
             )

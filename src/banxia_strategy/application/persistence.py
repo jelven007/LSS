@@ -166,6 +166,7 @@ def _snapshot_time(snapshot: Mapping[str, Any]) -> datetime:
 def _quote_event(
     stock: Mapping[str, Any],
     collected_at: datetime,
+    source: str = "unknown",
 ) -> Optional[EventEnvelope]:
     quote = stock.get("quote", {})
     if not quote.get("quote_time"):
@@ -189,7 +190,7 @@ def _quote_event(
         "bid1_volume": quote.get("bid_volume"),
         "ask1": quote.get("ask"),
         "ask1_volume": quote.get("ask_volume"),
-        "source_node": "mootdx",
+        "source_node": source,
     }
     identity = {
         key: payload[key]
@@ -264,7 +265,9 @@ def snapshot_market_events(
     source_ids: Dict[str, str] = {}
     unavailable = bool(snapshot.get("error") or snapshot.get("delayed"))
     for stock in snapshot.get("stocks", []):
-        quote_event = None if unavailable else _quote_event(stock, collected_at)
+        quote_event = None if unavailable else _quote_event(
+            stock, collected_at, str(snapshot.get("source") or "unknown"),
+        )
         if quote_event is not None:
             quotes.append(quote_event)
             source_ids[str(stock["code"])] = quote_event.event_id

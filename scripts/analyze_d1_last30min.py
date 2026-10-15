@@ -2,7 +2,7 @@
 
 Reads the profitable-trade list from research/profitable-trade-counts/trades_open.csv
 and the matching unprofitable set from replay.json.gz. For each (symbol, D1_date),
-pull the D1 minute bars via mootdx if not cached and compute:
+pull the D1 minute bars via rustdx if not cached and compute:
 
 - Late-session returns:   r_last30, r_last15, r_last5 (%)
 - Late-session momentum:  slope of close over last 30 min, VWAP vs close
@@ -30,7 +30,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from banxia_strategy.monthly_target_research import _request_with_retry, load, save
-from banxia_strategy.mootdx_provider import MootdxProvider
+from banxia_strategy.data_provider import make_provider
 
 ROOT = Path(__file__).resolve().parent.parent
 REPLAY = ROOT / "research" / "monthly-target-v1" / "replay.json.gz"
@@ -63,13 +63,13 @@ def enumerate_candidates() -> list[dict]:
 
 
 def fetch_missing_d1_minutes(targets: list[tuple[str, str]]) -> dict[str, int]:
-    """Pull D1 minute series via mootdx for keys not already cached."""
+    """Pull D1 minute series via rustdx for keys not already cached."""
     missing = [(sym, day) for sym, day in targets if not (MINUTE_DIR / f"{day}_{sym}.json.gz").exists()]
     if not missing:
         return {"cached": len(targets), "downloaded": 0, "errors": 0}
     print(f"need to download D1 minutes: {len(missing)} / {len(targets)}")
 
-    provider = MootdxProvider()
+    provider = make_provider()
     workers = min(len(provider.servers), max(1, len(missing)))
 
     def worker(number: int, partition: list[tuple[str, str]]):
@@ -96,7 +96,7 @@ def fetch_missing_d1_minutes(targets: list[tuple[str, str]]) -> dict[str, int]:
                             "symbol": symbol,
                             "prices": prices,
                             "volumes": volumes,
-                            "source": "mootdx",
+                            "source": provider.source_name,
                         }
 
                     save(path, _request_with_retry(provider, number, state, fetch))

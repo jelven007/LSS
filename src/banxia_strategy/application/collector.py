@@ -7,7 +7,7 @@ from typing import Any, Dict, Mapping, Optional, Sequence
 
 from ..contracts.topics import topic_for_event
 from ..intraday import (
-    MootdxLiveSource,
+    MarketLiveSource,
     normalize_quote,
     now_shanghai,
     plan_for,
@@ -40,7 +40,7 @@ class MarketCollector:
         self.candidates = tuple(dict(item) for item in candidates)
         self.codes = tuple(dict.fromkeys(str(item["code"]) for item in candidates))
         self.publisher = publisher
-        self.source = source or MootdxLiveSource()
+        self.source = source or MarketLiveSource()
         self.lease = lease
         self.clock = clock or now_shanghai
         self.quote_interval_seconds = quote_interval_seconds
@@ -147,6 +147,7 @@ class MarketCollector:
         snapshot = {
             "collected_at": collected_at.isoformat(timespec="milliseconds"),
             "stocks": stocks,
+            "source": getattr(getattr(self.source, "provider", None), "source_name", "rustdx"),
         }
         quotes, bars, _ = snapshot_market_events(snapshot)
         events = [*quotes]

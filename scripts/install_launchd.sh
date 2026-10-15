@@ -17,6 +17,7 @@ if [ ! -x "$VENV/bin/python" ]; then
   python3 -m venv "$VENV"
 fi
 "$VENV/bin/python" -m pip install --quiet --upgrade pip
+"$VENV/bin/python" -m pip install --quiet --upgrade "$PROJECT_ROOT/native/rustdx_native"
 "$VENV/bin/python" -m pip install --quiet --upgrade "$PROJECT_ROOT"
 cp "$PROJECT_ROOT/config/strategy.json" "$CONFIG_DIR/strategy.json"
 
@@ -25,6 +26,7 @@ cat >"$RUNNER" <<EOF
 set -eu
 cd "$RUNTIME_ROOT"
 export TZ="Asia/Shanghai"
+export BANXIA_DATA_PROVIDER="rustdx"
 export BANXIA_STRATEGY_CONFIG="$CONFIG_DIR/strategy.json"
 export BANXIA_REPORT_DIRS="$REPORT_DIR"
 export BANXIA_REPORT_OUTPUT_DIR="$REPORT_DIR"

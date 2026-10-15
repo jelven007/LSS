@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reproducible mootdx-only T+1 research. Raw responses stay outside Git."""
+"""Reproducible T+1 research. Raw responses stay outside Git."""
 from __future__ import annotations
 
 import argparse
@@ -15,7 +15,8 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from banxia_strategy.limit_up_collector import daily_bars
-from banxia_strategy.mootdx_provider import MootdxProvider, _bar_date, _json_value
+from banxia_strategy.data_provider import make_provider
+from banxia_strategy.market_provider import _bar_date, _json_value
 from banxia_strategy.t1_research import (
     buy_proxy, cents, cluster_interval, matches, minute_quality, net_return,
     rules, sell_proxy, split_name, summary,
@@ -68,7 +69,7 @@ def events_and_calendar(output):
 def collect(output, legacy_cache=None):
     events, calendar = events_and_calendar(output)
     securities = {r["symbol"]: r for r in events if r["sell_date"]}
-    provider = MootdxProvider()
+    provider = make_provider()
     symbols = sorted(securities)
     if legacy_cache:
         legacy = load(legacy_cache)
@@ -116,7 +117,7 @@ def collect(output, legacy_cache=None):
                         if actions is None or not bars:
                             raise ValueError("empty daily or missing action response")
                         return {"symbol": symbol, "bars": _json_value(bars),
-                                "actions": _json_value(actions), "source": "mootdx",
+                                "actions": _json_value(actions), "source": provider.source_name,
                                 "collected_at": datetime.now(timezone.utc).isoformat()}
                     save(daily_path, request(get_daily))
                 daily = load(daily_path)
@@ -141,7 +142,7 @@ def collect(output, legacy_cache=None):
                             if not all(math.isfinite(v) for v in prices + volumes):
                                 raise ValueError("non-finite minute sample")
                             return {"date": day, "symbol": symbol, "prices": prices,
-                                    "volumes": volumes, "source": "mootdx",
+                                    "volumes": volumes, "source": provider.source_name,
                                     "collected_at": datetime.now(timezone.utc).isoformat()}
                         save(path, request(get_minutes))
                         counts["downloaded"] += 1
@@ -421,7 +422,7 @@ def evidence(output):
     losers = [r for r in base if r.get("target_net_return_pct", 0) < -5]
     examples.extend({**r, "example_reason": "first_three_baseline_losses_below_minus5"}
                     for r in losers[:3])
-    provider = MootdxProvider()
+    provider = make_provider()
     proofs = []
     for row in examples:
         proof = dict(row)
@@ -443,7 +444,7 @@ def evidence(output):
                         batch = frame.to_dict(orient="records")
                         pages.append({"start": start, "rows": _json_value(batch)})
                         if len(batch) < 1800:
-                            return {"pages": pages, "source": "mootdx", "date": day,
+                            return {"pages": pages, "source": provider.source_name, "date": day,
                                     "symbol": row["symbol"]}
                     raise ValueError("transaction pagination cap reached")
                 save(path, provider._first_result(fetch))

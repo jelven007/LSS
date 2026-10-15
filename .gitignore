@@ -11,3 +11,6 @@ deploy/compose/.env
 config/strategy.lock
 config/.strategy-*
 research/
+native/**/target/
+*.so
+*.dylib

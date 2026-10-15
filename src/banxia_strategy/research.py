@@ -13,7 +13,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from .mootdx_provider import _at_price_limit, _limit_price, _minute_label
+from .market_provider import _at_price_limit, _limit_price, _minute_label
 from .research_data import DatedResearchProvider, ResearchCollector, snapshot_hash, write_json
 from .strategy import StrategyEngine
 from .strategy_config import StrategyConfig, revision_for, version_for
@@ -450,7 +450,7 @@ def optimize(snapshot, base, output: Path, *, commit="research", prior_run_id=No
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="mootdx 历史计划重建、复盘和时间留出优化")
+    parser = argparse.ArgumentParser(description="rustdx 历史计划重建、复盘和时间留出优化")
     today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
     previous_month = (today.replace(day=1) - timedelta(days=1))
     default_start = previous_month.replace(day=min(today.day, calendar.monthrange(previous_month.year, previous_month.month)[1]))

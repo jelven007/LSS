@@ -7,8 +7,8 @@ StatefulSet 运行，并使用独立 EBS 云盘持久化。
 
 截至 `2026-10-01`，该 overlay 已部署到集群 `cdaus2p98m08ce3b12nn0`，生产入口为
 <https://shanao.asia>。架构和数据链路说明见
-[当前生产技术方案](../../docs/13-current-production-solution.md)，mootdx 接口和数据落点见
-[mootdx 能力与项目使用矩阵](../../docs/26-mootdx-capability-matrix.md)。
+[当前生产技术方案](../../docs/13-current-production-solution.md)，最新数据源实现见
+[rustdx 数据源迁移](../../docs/30-rustdx-migration.md)。仓库已切换至原生桥接，线上镜像尚需发布。
 
 VKE overlay 包含：
 
@@ -26,7 +26,7 @@ VKE overlay 包含：
 
 1. VKE 集群已安装 NAS CSI、ALB Ingress Controller 和 metrics-server。
 2. `ssl-redirect` 要求 ALB Ingress Controller `v0.35.0` 或更高版本。
-3. VKE Worker 子网可通过 NAT 访问 mootdx 行情节点。
+3. VKE Worker 子网可通过 NAT 访问 rustdx 使用的通达信行情节点。
 4. 已创建 CR 镜像仓库，并镜像应用、Flink 及全部基础镜像。
 5. 已开通 ALB 服务授权，并准备证书中心证书。
 6. 已准备 NAS 文件系统；集群已提供 `ebs-ssd` StorageClass。
@@ -146,5 +146,5 @@ kubectl apply -f \
   deploy/kubernetes/overlays/volcengine/servicemonitor.yaml
 ```
 
-每次生产发布后都应验证桌面端和移动端页面、mootdx 出网、数据库备份状态、
+每次生产发布后都应验证桌面端和移动端页面、rustdx 出网、数据库备份状态、
 collector 主备、Pod 驱逐和 ALB 健康检查。

@@ -1,14 +1,8 @@
-"""Frozen data-provider contract shared by the mootdx and rustdx backends.
+"""Market-data contract and the single construction entry point.
 
-This Protocol pins the market-data surface the strategy system depends on so a
-second backend (rustdx) can be introduced without touching call sites. It is a
-structural type: :class:`~banxia_strategy.mootdx_provider.MootdxProvider` and the
-forthcoming ``RustdxProvider`` both satisfy it by shape, not inheritance.
+Return shapes are asserted by ``tests/test_data_provider_contract.py``:
 
-Return shapes are documented per method and asserted by the provider contract
-tests (``tests/test_data_provider_contract.py``). Both backends must preserve:
-
-- 分钟线 ``historical_minutes`` 恰好 240 根、每根含 open/high/low/close/volume；
+- 分钟采样 ``historical_minutes`` 至多 240 点，不填补缺失数据；
 - 交易日历 ``trading_dates`` 升序且追加下一交易日；
 - A 股 T+1 语义不变：缺数据按可重试处理，不得伪造当日成交。
 """
@@ -20,7 +14,7 @@ from typing import Any, Dict, List, Mapping, Optional, Protocol, Sequence, Tuple
 
 @runtime_checkable
 class DataProvider(Protocol):
-    """沪深行情数据源契约。mootdx 与 rustdx 两个后端均须等价实现。"""
+    """沪深行情数据源契约。"""
 
     source_name: str
 
@@ -106,7 +100,7 @@ class DataProvider(Protocol):
         """按策略原型装配的候选池（含题材归属）。"""
 
 
-# The 17 methods plus ``source_name`` constitute the frozen surface. Any backend
+# The 16 methods plus ``source_name`` constitute the frozen surface. Any backend
 # must implement all of them; contract tests enumerate this tuple.
 PROVIDER_METHODS: Tuple[str, ...] = (
     "trading_dates",
@@ -127,13 +121,15 @@ PROVIDER_METHODS: Tuple[str, ...] = (
     "strategy_pool",
 )
 
-DEFAULT_PROVIDER = "mootdx"
-SUPPORTED_PROVIDERS: Tuple[str, ...] = ("mootdx", "rustdx")
+DEFAULT_PROVIDER = "rustdx"
+SUPPORTED_PROVIDERS: Tuple[str, ...] = ("rustdx",)
 
 
 def resolve_provider_name(name: Optional[str]) -> str:
-    """校验数据源名；None/空回落到默认 mootdx。"""
-    resolved = (name or DEFAULT_PROVIDER).strip().lower()
+    """旧配置中的 mootdx 名称归一化为 rustdx，不加载退役依赖。"""
+    resolved = (name or DEFAULT_PROVIDER).strip().lower() or DEFAULT_PROVIDER
+    if resolved == "mootdx":
+        resolved = DEFAULT_PROVIDER
     if resolved not in SUPPORTED_PROVIDERS:
         raise ValueError(
             f"BANXIA_DATA_PROVIDER 必须是 {', '.join(SUPPORTED_PROVIDERS)}，"
@@ -145,19 +141,14 @@ def resolve_provider_name(name: Optional[str]) -> str:
 def make_provider(name: Optional[str] = None, **kwargs: Any) -> DataProvider:
     """按名称构造数据源后端。
 
-    name 为 None 时读环境变量 ``BANXIA_DATA_PROVIDER``，仍为空则用 mootdx。
+    name 为 None 时读环境变量 ``BANXIA_DATA_PROVIDER``，仍为空则用 rustdx。
     kwargs 透传给具体后端构造器（如 history_sessions/workers/servers）。
     这是所有调用点应使用的唯一构造入口，使数据源可通过配置灰度切换。
     """
     import os
 
-    resolved = resolve_provider_name(
+    resolve_provider_name(
         name if name is not None else os.environ.get("BANXIA_DATA_PROVIDER")
     )
-    if resolved == "rustdx":
-        from .rustdx_provider import RustdxProvider
-
-        return RustdxProvider(**kwargs)
-    from .mootdx_provider import MootdxProvider
-
-    return MootdxProvider(**kwargs)
+    from .rustdx_provider import RustdxProvider
+    return RustdxProvider(**kwargs)

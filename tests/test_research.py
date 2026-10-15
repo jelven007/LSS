@@ -16,7 +16,7 @@ from banxia_strategy.research import (
     aggregate_days, enough_samples, experiment_specs, group_periods,
     label_candidate, optimize, summarize,
 )
-from banxia_strategy.research_data import DatedResearchProvider
+from banxia_strategy.research_data import DatedResearchProvider, ResearchCollector
 from banxia_strategy.research_files import LocalResearchStore
 from banxia_strategy.research_storage import save_research
 from banxia_strategy.strategy_config import StrategyConfig
@@ -140,7 +140,7 @@ class ResearchLabelsTest(unittest.TestCase):
         def assign(provider, reference):
             self.assertTrue(all(day <= reference for day in provider._limit_pools))
             provider._limit_pools[reference][0]["industry"] = "当日计算"
-        with patch("banxia_strategy.research_data.MootdxProvider._assign_themes", assign):
+        with patch("banxia_strategy.research_data.RustdxProvider._assign_themes", assign):
             provider = DatedResearchProvider(snapshot, date(2026, 9, 23))
         self.assertEqual(snapshot, original)
         with self.assertRaises(ValueError):
@@ -150,6 +150,31 @@ class ResearchLabelsTest(unittest.TestCase):
         first = provider.limit_up_pool(date(2026, 9, 23))
         first[0]["industry"] = "外部修改"
         self.assertEqual(provider.limit_up_pool(date(2026, 9, 23))[0]["industry"], "当日计算")
+
+
+class ResearchSourceMigrationTest(unittest.TestCase):
+    def test_enriching_legacy_daily_cache_records_both_sources(self):
+        day = date(2026, 9, 23)
+        raw = {
+            "requested_start": str(day), "requested_end": str(day),
+            "collected_at": "2026-09-24T16:00:00+08:00",
+            "names": {"600001": "样本股份"},
+            "histories": {"600001": [
+                {"datetime": "2026-09-22 15:00", "close": 10, "high": 10},
+                {"datetime": "2026-09-23 15:00", "close": 11, "high": 11},
+            ]},
+            "concepts": {}, "concept_sizes": {}, "industry_codes": {}, "calendar": [str(day)],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            (output / "raw.json").write_text(json.dumps(raw), encoding="utf-8")
+            collector = ResearchCollector(client_factory=lambda _: None)
+            with patch.object(collector, "_enrich_session"), redirect_stdout(io.StringIO()):
+                snapshot = collector.collect(day, day, output)
+            self.assertEqual(snapshot["source"], "mootdx,rustdx")
+            detail = json.loads((output / "sessions" / f"{day}.json").read_text())
+            self.assertEqual(detail["source"], "rustdx")
+            self.assertEqual(json.loads((output / "raw.json").read_text()), raw)
 
 
 class ResearchSelectionTest(unittest.TestCase):

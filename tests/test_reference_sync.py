@@ -4,7 +4,7 @@ import unittest
 from datetime import date
 
 from banxia_strategy.application.reference_sync import MarketReferenceSync
-from banxia_strategy.mootdx_provider import REFERENCE_FILES
+from banxia_strategy.market_provider import REFERENCE_FILES
 from banxia_strategy.ports.storage import ReportAsset
 
 
@@ -169,7 +169,7 @@ class MarketReferenceSyncTest(unittest.TestCase):
 
         with self.assertRaisesRegex(
             RuntimeError,
-            "incomplete mootdx daily quotes",
+            "incomplete rustdx daily quotes",
         ):
             worker.run(date(2026, 9, 24))
 

@@ -1,0 +1,59 @@
+{
+  "checked_at": "2026-10-15T08:01:42.850317",
+  "server": "117.34.114.14:7709",
+  "rustdx_version": "1.12.2",
+  "rustdx_rev": "904b33e514d4e368e633622c96a9e63af8a53d37",
+  "symbols": {
+    "600000": {
+      "daily_count": 20,
+      "minute_count": 240,
+      "finance_fields": 37,
+      "xdxr_count": 88,
+      "transaction_count": 20
+    },
+    "000001": {
+      "daily_count": 20,
+      "minute_count": 240,
+      "finance_fields": 37,
+      "xdxr_count": 81,
+      "transaction_count": 20
+    },
+    "300750": {
+      "daily_count": 20,
+      "minute_count": 240,
+      "finance_fields": 37,
+      "xdxr_count": 80,
+      "transaction_count": 20
+    }
+  },
+  "differences": [],
+  "session": "20261014",
+  "calendar": {
+    "2026-10-01": false,
+    "2026-10-08": true,
+    "2026-10-09": true,
+    "2026-10-10": false
+  },
+  "reference_files": {
+    "block.dat": {
+      "bytes": 281686,
+      "equal": true
+    },
+    "block_gn.dat": {
+      "bytes": 757083,
+      "equal": true
+    },
+    "block_fg.dat": {
+      "bytes": 453279,
+      "equal": true
+    },
+    "block_zs.dat": {
+      "bytes": 329507,
+      "equal": true
+    },
+    "tdxhy.cfg": {
+      "bytes": 150600,
+      "equal": true
+    }
+  }
+}

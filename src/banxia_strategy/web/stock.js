@@ -255,7 +255,7 @@ async function selectCompanySection(section) {
   if (!section || section === activeSection) return;
   activeSection = section;
   byId("company-section-title").textContent = section;
-  byId("company-section-meta").textContent = "正在读取 mootdx F10…";
+  byId("company-section-meta").textContent = "正在读取 rustdx F10…";
   byId("company-content").textContent = "正在读取公司资料…";
   document.querySelectorAll("#company-sections button").forEach((button) => {
     button.setAttribute("aria-current", String(button.dataset.section === section));
@@ -316,7 +316,7 @@ function render(payload) {
   byId("quote-sell-volume").textContent = compact(quote.s_vol);
   byId("finance-date").textContent = finance.updated_date
     ? `财务更新 ${finance.updated_date}`
-    : "mootdx 财务快照";
+    : `${payload.profile_source || "rustdx"} 财务快照`;
   renderOrderBook(quote);
   renderFinancialMetrics(finance, quote);
   renderFinanceFields(finance);
