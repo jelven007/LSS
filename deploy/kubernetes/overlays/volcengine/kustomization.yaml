@@ -30,6 +30,7 @@ images:
   - name: banxia-strategy
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
     newTag: rustdx-20261015-r1
+    digest: sha256:9c167efeadef501f69ec6d520042de6a6972ebb8f460e818517a8dddde67da4b
   - name: banxia-flink
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-flink
     newTag: 59f59a6

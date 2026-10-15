@@ -15,7 +15,9 @@ rustdx native -> SQLite WAL -> Kafka -> Flink / 策略状态机
        -> /api/v1 -> Web 看板
 ```
 
-本地代码已迁移至 rustdx，迁移尚未发布到线上。生产环境部署在火山引擎 VKE，通过 <https://shanao.asia> 提供服务；本地 Compose
+2026-10-15 已将 rustdx 原生桥接发布到生产，镜像版本为 `rustdx-20261015-r1`，
+验收见 [生产发布记录](docs/releases/2026-10-15-rustdx-r1.md)。
+生产环境部署在火山引擎 VKE，通过 <https://shanao.asia> 提供服务；本地 Compose
 保留为开发和集成验证环境。当前生产采用应用多副本、数据服务单副本 StatefulSet 的
 成本优先拓扑，仍需继续完成托管高可用迁移和备份恢复演练。当前行为以本 README 的运行
 说明为准，完整文档以 [docs/README.md](docs/README.md) 为统一入口：

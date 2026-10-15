@@ -8,7 +8,9 @@ StatefulSet 运行，并使用独立 EBS 云盘持久化。
 截至 `2026-10-01`，该 overlay 已部署到集群 `cdaus2p98m08ce3b12nn0`，生产入口为
 <https://shanao.asia>。架构和数据链路说明见
 [当前生产技术方案](../../docs/13-current-production-solution.md)，最新数据源实现见
-[rustdx 数据源迁移](../../docs/30-rustdx-migration.md)。仓库已切换至原生桥接，线上镜像尚需发布。
+[rustdx 数据源迁移](../../docs/30-rustdx-migration.md)。2026-10-15 已将原生桥接镜像
+`rustdx-20261015-r1` 发布到生产，应用镜像按摘要固定；
+更新范围和验收见 [生产发布记录](../../docs/releases/2026-10-15-rustdx-r1.md)。
 
 VKE overlay 包含：
 

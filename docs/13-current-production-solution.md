@@ -1,7 +1,9 @@
 # 当前生产技术方案
 
-2026-10-15 更新：本地行情客户端已迁移至 rustdx 原生桥接，线上镜像尚未发布。
-下文保留原生产验收快照；最新代码和接口映射见 [rustdx 数据源迁移](30-rustdx-migration.md)。
+2026-10-15 更新：本地与线上行情客户端均已迁移至 rustdx 原生桥接，生产镜像为
+`rustdx-20261015-r1`。下文保留原生产验收快照；本次更新范围与验收见
+[生产发布记录](releases/2026-10-15-rustdx-r1.md)，代码和接口映射见
+[rustdx 数据源迁移](30-rustdx-migration.md)。
 
 ## 1. 文档范围
 
@@ -11,7 +13,8 @@
   `cdaus2p98m08ce3b12nn0` 的只读验收快照。
 - 部署定义：当前 `deploy/kubernetes/overlays/volcengine/` 渲染后的 Kubernetes 清单。
 - `src/banxia_strategy/` 中的生产服务实现和事件契约。
-- 当前 overlay 的应用镜像标签为 `f65154b`，Flink 镜像标签为 `59f59a6`。
+- 当前 overlay 的应用镜像标签为 `rustdx-20261015-r1`，按摘要固定；
+  Flink 镜像标签为 `59f59a6`。
 
 生产入口为 <https://shanao.asia>。系统只提供行情研究、策略筛选、盘中监控和报告，
 不连接券商、不读取交易账户、不自动下单。
