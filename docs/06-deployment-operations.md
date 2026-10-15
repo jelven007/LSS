@@ -178,12 +178,15 @@ colima stop --profile banxia
 
 ### 7.1 行情采集
 
-- `market_collect_duration_seconds`
-- `market_collect_success_total`
-- `market_collect_failure_total`
-- `market_quote_age_seconds`
-- `market_source_switch_total`
-- `market_wal_pending_events`
+- `banxia_collector_running`、`banxia_collector_leader`
+- `banxia_collector_heartbeat_timestamp_seconds`
+- `banxia_collector_last_success_timestamp_seconds`
+- `banxia_collector_candidate_count`、`banxia_collector_market_open`
+- `banxia_collector_quote_age_p95_seconds`、`banxia_collector_quote_coverage_ratio`
+- `banxia_collector_errors_total`、`banxia_collector_publish_failures_total`
+- `banxia_collector_wal_pending`
+
+实际部署方式、11 条规则及故障处置见 [盘中连续采集监控](31-intraday-monitoring.md)。
 
 ### 7.2 Kafka
 
@@ -220,7 +223,7 @@ colima stop --profile banxia
 
 | 级别 | 条件示例 |
 | --- | --- |
-| P0 | 交易时段所有 mootdx 节点不可用超过 30 秒 |
+| P0 | 连续交易时段有候选的主节点超过 30 秒未成功发布有效 rustdx 行情，持续 1 分钟 |
 | P0 | PostgreSQL 不可写或策略状态无法提交 |
 | P0 | 交易时段行情 P95 延迟超过 10 秒持续 2 分钟 |
 | P1 | Kafka Consumer Lag 超过 30 秒 |
@@ -231,6 +234,9 @@ colima stop --profile banxia
 | P2 | 单实例 CPU 或内存持续超过 80% |
 
 所有告警必须包含环境、服务、分片、开始时间、最近错误和 Runbook 链接。
+盘中采集规则已提供环境、服务及分片/实例标签；开始时间由评估器记录，
+错误文本查采集器日志，Runbook 见上面的监控文档。
+通知联系人和接收渠道需单独配置；本地规则评估成功不等于已完成消息投递。
 
 ## 9. 备份
 

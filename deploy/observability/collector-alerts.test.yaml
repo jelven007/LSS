@@ -1,0 +1,153 @@
+rule_files: [collector-alerts.yaml]
+evaluation_interval: 15s
+tests:
+  - name: all targets disappeared
+    interval: 15s
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: BanxiaCollectorUnavailable
+        exp_alerts:
+          - exp_labels: {environment: production, severity: critical, service: market-collector}
+            exp_annotations:
+              summary: 盘中采集器全部不可用
+              runbook: &collector_runbook https://github.com/jelven007/test/blob/main/docs/31-intraday-monitoring.md
+  - name: empty plan is informational and does not imply a stalled collector
+    interval: 15s
+    input_series:
+      - series: 'banxia_collector_candidate_count{environment="production",shard="0"}'
+        values: 0+0x40
+      - series: 'banxia_collector_leader{environment="production",shard="0"}'
+        values: 0+0x40
+      - series: 'banxia_collector_market_open{environment="production",shard="0"}'
+        values: 1+0x40
+      - series: 'banxia_collector_last_success_timestamp_seconds{environment="production",shard="0"}'
+        values: 0+0x40
+    alert_rule_test:
+      - {eval_time: 6m, alertname: BanxiaCollectorNoLeader, exp_alerts: []}
+      - {eval_time: 6m, alertname: BanxiaCollectorStalled, exp_alerts: []}
+      - eval_time: 6m
+        alertname: BanxiaCollectorNoCandidates
+        exp_alerts:
+          - exp_labels: {environment: production, shard: "0", severity: info, service: market-collector}
+            exp_annotations: {runbook: *collector_runbook, summary: 连续交易期间监控候选名单为空}
+  - name: lunch holiday and closed market suppress trading alarms
+    interval: 15s
+    input_series:
+      - series: 'banxia_collector_candidate_count{environment="production",shard="0"}'
+        values: 2+0x40
+      - series: 'banxia_collector_leader{environment="production",shard="0"}'
+        values: 1+0x40
+      - series: 'banxia_collector_market_open{environment="production",shard="0"}'
+        values: 0+0x40
+      - series: 'banxia_collector_last_success_timestamp_seconds{environment="production",shard="0"}'
+        values: 0+0x40
+      - series: 'banxia_collector_quote_age_p95_seconds{environment="production",shard="0"}'
+        values: 600+0x40
+      - series: 'banxia_collector_quote_coverage_ratio{environment="production",shard="0"}'
+        values: 0+0x40
+      - series: 'banxia_collector_publish_failures_total{environment="production",shard="0"}'
+        values: 0+1x40
+      - series: 'banxia_collector_clock_open{environment="production",shard="0"}'
+        values: 0+0x40
+      - series: 'banxia_collector_calendar_available{environment="production",shard="0"}'
+        values: 0+0x40
+    alert_rule_test:
+      - {eval_time: 6m, alertname: BanxiaCollectorNoLeader, exp_alerts: []}
+      - {eval_time: 6m, alertname: BanxiaCollectorStalled, exp_alerts: []}
+      - {eval_time: 6m, alertname: BanxiaCollectorQuoteStale, exp_alerts: []}
+      - {eval_time: 6m, alertname: BanxiaCollectorQuoteCoverageLow, exp_alerts: []}
+      - {eval_time: 6m, alertname: BanxiaCollectorPublishFailures, exp_alerts: []}
+      - {eval_time: 6m, alertname: BanxiaCollectorCalendarUnavailable, exp_alerts: []}
+  - name: failed collection fires and closing market resolves
+    interval: 15s
+    input_series:
+      - series: 'banxia_collector_candidate_count{environment="production",shard="0"}'
+        values: 2+0x40
+      - series: 'banxia_collector_leader{environment="production",shard="0"}'
+        values: 1+0x40
+      - series: 'banxia_collector_market_open{environment="production",shard="0"}'
+        values: 1+0x24 0+0x16
+      - series: 'banxia_collector_last_success_timestamp_seconds{environment="production",shard="0"}'
+        values: 0+0x40
+      - series: 'banxia_collector_quote_age_p95_seconds{environment="production",shard="0"}'
+        values: 20+0x40
+      - series: 'banxia_collector_quote_coverage_ratio{environment="production",shard="0"}'
+        values: 0.5+0x40
+      - series: 'banxia_collector_publish_failures_total{environment="production",shard="0"}'
+        values: 0+1x40
+      - series: 'banxia_collector_wal_pending{environment="production",shard="0"}'
+        values: 2+0x24 0+0x16
+      - series: 'banxia_collector_heartbeat_timestamp_seconds{environment="production",shard="0"}'
+        values: 0+0x24 375+15x16
+      - series: 'banxia_collector_heartbeat_timeout_seconds{environment="production",shard="0"}'
+        values: 90+0x40
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: BanxiaCollectorStalled
+        exp_alerts:
+          - exp_labels: {environment: production, shard: "0", severity: critical, service: market-collector}
+            exp_annotations: {runbook: *collector_runbook, summary: 连续交易期间有效行情采集停滞}
+      - eval_time: 4m
+        alertname: BanxiaCollectorQuoteStale
+        exp_alerts:
+          - exp_labels: {environment: production, shard: "0", severity: warning, service: market-collector}
+            exp_annotations: {runbook: *collector_runbook, summary: 行情源时间P95延迟超过10秒}
+      - eval_time: 4m
+        alertname: BanxiaCollectorQuoteCoverageLow
+        exp_alerts:
+          - exp_labels: {environment: production, shard: "0", severity: warning, service: market-collector}
+            exp_annotations: {runbook: *collector_runbook, summary: 部分候选行情缺失或源时间无效}
+      - eval_time: 4m
+        alertname: BanxiaCollectorPublishFailures
+        exp_alerts:
+          - exp_labels: {environment: production, shard: "0", severity: critical, service: market-collector}
+            exp_annotations: {runbook: *collector_runbook, summary: Kafka行情发布持续失败}
+      - eval_time: 4m
+        alertname: BanxiaCollectorWalPending
+        exp_alerts:
+          - exp_labels: {environment: production, shard: "0", severity: warning, service: market-collector}
+            exp_annotations: {runbook: *collector_runbook, summary: 行情WAL持续积压}
+      - eval_time: 4m
+        alertname: BanxiaCollectorHeartbeatStale
+        exp_alerts:
+          - exp_labels: {environment: production, shard: "0", severity: critical, service: market-collector}
+            exp_annotations: {runbook: *collector_runbook, summary: 采集循环心跳超时}
+      - {eval_time: 7m, alertname: BanxiaCollectorStalled, exp_alerts: []}
+      - {eval_time: 7m, alertname: BanxiaCollectorQuoteStale, exp_alerts: []}
+      - {eval_time: 7m, alertname: BanxiaCollectorQuoteCoverageLow, exp_alerts: []}
+      - {eval_time: 7m, alertname: BanxiaCollectorPublishFailures, exp_alerts: []}
+      - {eval_time: 7m, alertname: BanxiaCollectorWalPending, exp_alerts: []}
+      - {eval_time: 7m, alertname: BanxiaCollectorHeartbeatStale, exp_alerts: []}
+  - name: missing leader calendar and split brain are detected
+    interval: 15s
+    input_series:
+      - series: 'banxia_collector_candidate_count{environment="production",shard="0"}'
+        values: 2+0x20
+      - series: 'banxia_collector_leader{environment="production",shard="0"}'
+        values: 0+0x20
+      - series: 'banxia_collector_market_open{environment="production",shard="0"}'
+        values: 1+0x20
+      - series: 'banxia_collector_calendar_available{environment="production",shard="1"}'
+        values: 0+0x20
+      - series: 'banxia_collector_clock_open{environment="production",shard="1"}'
+        values: 1+0x20
+      - series: 'banxia_collector_leader{environment="production",shard="2",pod="a"}'
+        values: 1+0x20
+      - series: 'banxia_collector_leader{environment="production",shard="2",pod="b"}'
+        values: 1+0x20
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: BanxiaCollectorNoLeader
+        exp_alerts:
+          - exp_labels: {environment: production, shard: "0", severity: critical, service: market-collector}
+            exp_annotations: {runbook: *collector_runbook, summary: 有监控候选但采集主节点缺失}
+      - eval_time: 2m
+        alertname: BanxiaCollectorCalendarUnavailable
+        exp_alerts:
+          - exp_labels: {environment: production, shard: "1", severity: critical, service: market-collector}
+            exp_annotations: {runbook: *collector_runbook, summary: 连续交易时段无法验证交易日历}
+      - eval_time: 2m
+        alertname: BanxiaCollectorMultipleLeaders
+        exp_alerts:
+          - exp_labels: {environment: production, shard: "2", severity: critical, service: market-collector}
+            exp_annotations: {runbook: *collector_runbook, summary: 同一采集分片出现多个主节点}

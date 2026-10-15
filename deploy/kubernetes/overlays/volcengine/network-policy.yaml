@@ -26,9 +26,30 @@ spec:
         - namespaceSelector:
             matchLabels:
               banxia.io/metrics-access: "true"
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
       ports:
         - {protocol: TCP, port: 9100}
         - {protocol: TCP, port: 9249}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-metrics
+  namespace: banxia
+spec:
+  podSelector:
+    matchLabels:
+      app: banxia-api
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - {protocol: TCP, port: 8765}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

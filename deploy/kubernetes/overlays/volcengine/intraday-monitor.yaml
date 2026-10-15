@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: intraday-monitor
+  namespace: banxia
+  labels: {app: banxia-intraday-monitor}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {app: banxia-intraday-monitor}
+  template:
+    metadata:
+      labels: {app: banxia-intraday-monitor}
+    spec:
+      serviceAccountName: banxia-workload
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: prometheus
+          image: xm1001-cn-shanghai.cr.volces.com/banxia/prometheus:v2.55.1@sha256:b1935d181b6dd8e9c827705e89438815337e1b10ae35605126f05f44e5c6940f
+          args:
+            - --config.file=/etc/banxia-monitor/collector-prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time=6h
+            - --storage.tsdb.retention.size=100MB
+            - --web.listen-address=:9090
+          ports: [{name: metrics, containerPort: 9090}]
+          readinessProbe:
+            httpGet: {path: /-/ready, port: metrics}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /-/healthy, port: metrics}
+            periodSeconds: 15
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          volumeMounts:
+            - {name: config, mountPath: /etc/banxia-monitor, readOnly: true}
+            - {name: rules, mountPath: /etc/banxia-rules, readOnly: true}
+            - {name: data, mountPath: /prometheus}
+      volumes:
+        - name: config
+          configMap: {name: banxia-intraday-prometheus}
+        - name: rules
+          configMap: {name: banxia-intraday-alerts}
+        - name: data
+          emptyDir: {sizeLimit: 200Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: intraday-monitor
+  namespace: banxia
+  labels: {app: banxia-intraday-monitor}
+spec:
+  selector: {app: banxia-intraday-monitor}
+  ports: [{name: metrics, port: 9090, targetPort: metrics}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intraday-monitor
+  namespace: banxia
+spec:
+  podSelector:
+    matchLabels: {app: banxia-intraday-monitor}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: banxia}
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+      ports: [{protocol: TCP, port: 9090}]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: banxia-intraday-monitor
+  namespace: banxia
+  labels:
+    app.kubernetes.io/name: banxia-strategy
+spec:
+  namespaceSelector:
+    matchNames: [banxia]
+  selector:
+    matchLabels: {app: banxia-intraday-monitor}
+  endpoints:
+    - port: metrics
+      interval: 30s
+      scrapeTimeout: 10s
+    - port: metrics
+      path: /federate
+      honorLabels: true
+      params:
+        match[]:
+          - '{__name__=~"ALERTS|ALERTS_FOR_STATE"}'
+      interval: 15s
+      scrapeTimeout: 10s

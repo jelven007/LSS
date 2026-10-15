@@ -1,0 +1,109 @@
+groups:
+  - name: banxia-intraday-collector
+    interval: 15s
+    rules:
+      - alert: BanxiaCollectorUnavailable
+        expr: |
+          (sum(banxia_collector_running{environment="production"}) < 1)
+          or absent(banxia_collector_running{environment="production"})
+        for: 1m
+        labels: {severity: critical, service: market-collector, environment: production}
+        annotations:
+          summary: 盘中采集器全部不可用
+          runbook: &collector_runbook https://github.com/jelven007/test/blob/main/docs/31-intraday-monitoring.md
+      - alert: BanxiaCollectorHeartbeatStale
+        expr: |
+          time() - banxia_collector_heartbeat_timestamp_seconds{environment="production"}
+          > banxia_collector_heartbeat_timeout_seconds{environment="production"}
+        for: 1m
+        labels: {severity: critical, service: market-collector}
+        annotations:
+          runbook: *collector_runbook
+          summary: 采集循环心跳超时
+      - alert: BanxiaCollectorNoLeader
+        expr: |
+          (sum by (environment, shard) (banxia_collector_leader{environment="production"}) == 0)
+          and on (environment, shard)
+          (max by (environment, shard) (banxia_collector_candidate_count) > 0)
+          and on (environment, shard)
+          (max by (environment, shard) (banxia_collector_market_open) == 1)
+        for: 1m
+        labels: {severity: critical, service: market-collector}
+        annotations:
+          runbook: *collector_runbook
+          summary: 有监控候选但采集主节点缺失
+      - alert: BanxiaCollectorMultipleLeaders
+        expr: sum by (environment, shard) (banxia_collector_leader{environment="production"}) > 1
+        for: 1m
+        labels: {severity: critical, service: market-collector}
+        annotations:
+          runbook: *collector_runbook
+          summary: 同一采集分片出现多个主节点
+      - alert: BanxiaCollectorStalled
+        expr: |
+          (time() - banxia_collector_last_success_timestamp_seconds{environment="production"} > 30)
+          and (banxia_collector_leader == 1)
+          and (banxia_collector_candidate_count > 0)
+          and (banxia_collector_market_open == 1)
+        for: 1m
+        labels: {severity: critical, service: market-collector}
+        annotations:
+          runbook: *collector_runbook
+          summary: 连续交易期间有效行情采集停滞
+      - alert: BanxiaCollectorQuoteStale
+        expr: |
+          (banxia_collector_quote_age_p95_seconds{environment="production"} > 10)
+          and (banxia_collector_leader == 1)
+          and (banxia_collector_candidate_count > 0)
+          and (banxia_collector_market_open == 1)
+        for: 2m
+        labels: {severity: warning, service: market-collector}
+        annotations:
+          runbook: *collector_runbook
+          summary: 行情源时间P95延迟超过10秒
+      - alert: BanxiaCollectorQuoteCoverageLow
+        expr: |
+          (banxia_collector_quote_coverage_ratio{environment="production"} < 1)
+          and (banxia_collector_leader == 1)
+          and (banxia_collector_candidate_count > 0)
+          and (banxia_collector_market_open == 1)
+        for: 2m
+        labels: {severity: warning, service: market-collector}
+        annotations:
+          runbook: *collector_runbook
+          summary: 部分候选行情缺失或源时间无效
+      - alert: BanxiaCollectorPublishFailures
+        expr: |
+          (increase(banxia_collector_publish_failures_total{environment="production"}[2m]) > 0)
+          and (banxia_collector_market_open == 1)
+        for: 1m
+        labels: {severity: critical, service: market-collector}
+        annotations:
+          runbook: *collector_runbook
+          summary: Kafka行情发布持续失败
+      - alert: BanxiaCollectorWalPending
+        expr: banxia_collector_wal_pending{environment="production"} > 0
+        for: 2m
+        labels: {severity: warning, service: market-collector}
+        annotations:
+          runbook: *collector_runbook
+          summary: 行情WAL持续积压
+      - alert: BanxiaCollectorCalendarUnavailable
+        expr: |
+          (banxia_collector_calendar_available{environment="production"} == 0)
+          and (banxia_collector_clock_open == 1)
+        for: 1m
+        labels: {severity: critical, service: market-collector}
+        annotations:
+          runbook: *collector_runbook
+          summary: 连续交易时段无法验证交易日历
+      - alert: BanxiaCollectorNoCandidates
+        expr: |
+          (max by (environment, shard) (banxia_collector_candidate_count{environment="production"}) == 0)
+          and on (environment, shard)
+          (max by (environment, shard) (banxia_collector_market_open) == 1)
+        for: 5m
+        labels: {severity: info, service: market-collector}
+        annotations:
+          runbook: *collector_runbook
+          summary: 连续交易期间监控候选名单为空

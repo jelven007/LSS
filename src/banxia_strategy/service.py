@@ -45,7 +45,7 @@ from .contracts.topics import (
     STRATEGY_PLAN_CREATED,
 )
 from .data_provider import make_provider
-from .observability import configure_logging, start_metrics_server
+from .observability import configure_logging, register_collector_metrics, start_metrics_server
 from .web_server import ReportStore
 from .ports.storage import ReportIdentity
 from .strategy_config import StrategyConfig, StrategyConfigStore, revision_for, version_for
@@ -217,6 +217,7 @@ def run_collector(settings: RuntimeSettings, logger: Any) -> None:
         candidate_loader=candidates,
         session_checker=repository.is_trading_session,
     )
+    register_collector_metrics(collector, environment=settings.environment)
 
     def request_stop(_signum, _frame):
         collector.stop()

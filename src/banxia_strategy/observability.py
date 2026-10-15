@@ -48,3 +48,62 @@ def start_metrics_server(port: int) -> None:
             "metrics require `pip install -e '.[production]'`"
         ) from exc
     start_http_server(port)
+
+
+class CollectorMetrics:
+    """Expose a collector's cached snapshot with bounded environment/shard labels."""
+
+    def __init__(self, collector: Any, *, environment: str, shard: str = "0"):
+        self.collector = collector
+        self.label_values = (environment, shard)
+
+    def collect(self):
+        from prometheus_client.core import CounterMetricFamily, GaugeMetricFamily
+
+        state = self.collector.telemetry()
+        gauges = {
+            "running": ("Collector polling loop is running.", state["running"]),
+            "leader": ("Collector currently owns the shard lease.", state["leader"]),
+            "heartbeat_timestamp_seconds": ("Last polling loop heartbeat.", state["heartbeat_timestamp"]),
+            "heartbeat_timeout_seconds": ("Allowed heartbeat gap for the current polling interval.", state["heartbeat_timeout_seconds"]),
+            "last_success_timestamp_seconds": ("Last valid quote batch published successfully.", state["last_success_timestamp"]),
+            "candidate_count": ("Unique symbols in the current monitor plans.", state["candidate_count"]),
+            "clock_open": ("Shanghai weekday continuous trading clock window.", state["clock_open"]),
+            "calendar_available": ("Trading calendar verified for the current Shanghai date.", state["calendar_available"]),
+            "market_open": ("Verified trading day in a continuous trading window.", state["market_open"]),
+            "quote_coverage_ratio": ("Fraction of candidates with a valid price and source time.", state["quote_coverage_ratio"]),
+            "quote_age_p95_seconds": ("P95 age of the last valid quote batch, increasing between fetches.", state["quote_age_p95_seconds"]),
+            "wal_pending": ("Cached number of events awaiting Kafka acknowledgement.", state["messaging"].get("wal_pending", 0)),
+        }
+        for suffix, (help_text, value) in gauges.items():
+            metric = GaugeMetricFamily(
+                f"banxia_collector_{suffix}", help_text, labels=["environment", "shard"]
+            )
+            metric.add_metric(self.label_values, float(value))
+            yield metric
+        for suffix, value in (
+            ("collections", state["collections"]),
+            ("published_events", state["messaging"].get("published", state["published"])),
+            ("publish_failures", state["messaging"].get("failed", 0)),
+        ):
+            metric = CounterMetricFamily(
+                f"banxia_collector_{suffix}", f"Collector {suffix}.",
+                labels=["environment", "shard"],
+            )
+            metric.add_metric(self.label_values, float(value))
+            yield metric
+        errors = CounterMetricFamily(
+            "banxia_collector_errors", "Collector failures by operation.",
+            labels=["environment", "shard", "stage"],
+        )
+        for stage in ("calendar", "candidates", "lease", "source", "normalize", "publish", "status", "config"):
+            errors.add_metric((*self.label_values, stage), state["errors"].get(stage, 0))
+        yield errors
+
+
+def register_collector_metrics(collector: Any, *, environment: str) -> CollectorMetrics:
+    from prometheus_client import REGISTRY
+
+    metrics = CollectorMetrics(collector, environment=environment)
+    REGISTRY.register(metrics)
+    return metrics

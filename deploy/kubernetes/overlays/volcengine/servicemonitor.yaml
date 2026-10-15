@@ -1,7 +1,7 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: banxia-services
+  name: banxia-api
   namespace: banxia
   labels:
     app.kubernetes.io/name: banxia-strategy
@@ -9,16 +9,49 @@ spec:
   namespaceSelector:
     matchNames: [banxia]
   selector:
-    matchExpressions:
-      - key: app
-        operator: In
-        values:
-          - banxia-api
-          - banxia-flink
+    matchLabels:
+      app: banxia-api
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: banxia-flink
+  namespace: banxia
+  labels:
+    app.kubernetes.io/name: banxia-strategy
+spec:
+  namespaceSelector:
+    matchNames: [banxia]
+  selector:
+    matchLabels:
+      app: banxia-flink
   endpoints:
     - port: metrics
       interval: 30s
       scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: banxia-market-collector
+  namespace: banxia
+  labels:
+    app.kubernetes.io/name: banxia-strategy
+spec:
+  namespaceSelector:
+    matchNames: [banxia]
+  selector:
+    matchLabels:
+      app: banxia-market-collector
+  podMetricsEndpoints:
+    - port: metrics
+      interval: 10s
+      scrapeTimeout: 5s
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
@@ -33,6 +66,10 @@ spec:
   selector:
     matchLabels:
       component: worker
+    matchExpressions:
+      - key: app
+        operator: NotIn
+        values: [banxia-market-collector]
   podMetricsEndpoints:
     - port: metrics
       interval: 30s

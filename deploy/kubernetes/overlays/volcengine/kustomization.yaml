@@ -9,6 +9,8 @@ resources:
   - bootstrap-job.yaml
   - collector-statefulset.yaml
   - network-policy.yaml
+  - servicemonitor.yaml
+  - intraday-monitor.yaml
 patches:
   - path: runtime-config.yaml
   - path: reports-pvc-patch.yaml
@@ -53,6 +55,14 @@ images:
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/minio-mc
     newTag: RELEASE.2024-09-16T17-43-14Z
 configMapGenerator:
+  - name: banxia-intraday-prometheus
+    namespace: banxia
+    files:
+      - ../../../observability/collector-prometheus.yml
+  - name: banxia-intraday-alerts
+    namespace: banxia
+    files:
+      - ../../../observability/collector-alerts.yaml
   - name: banxia-postgres-migrations
     namespace: banxia
     files:
