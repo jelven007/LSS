@@ -91,6 +91,7 @@ metadata:
   namespace: banxia
   labels:
     app.kubernetes.io/name: banxia-strategy
+    volcengine.vmp: "true"
 spec:
   namespaceSelector:
     matchNames: [banxia]

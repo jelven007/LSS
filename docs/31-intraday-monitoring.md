@@ -6,6 +6,7 @@
 `intraday-monitor` 使用 Prometheus 每 10 秒采集、每 15 秒评估规则。
 VKE 的 O11y Agent 通过 PodMonitor 采集业务指标，并通过 ServiceMonitor 的
 `/federate` 接口采集 `ALERTS`、`ALERTS_FOR_STATE`，送入已有 VMP 工作区。
+这些 Monitor 必须带 `volcengine.vmp: "true"`，才能被当前 allocator 选中。
 PrometheusRule CRD 不是这个部署的前提。
 
 规则由 `deploy/observability/collector-alerts.yaml` 统一维护，通过 ConfigMap
@@ -15,6 +16,8 @@ PrometheusRule CRD 不是这个部署的前提。
 **规则评估与通知投递是两个独立状态。** 评估器可直接查询 pending/firing 状态。
 接收联系人、飞书 webhook、邮件或其他通知策略需要配置后才会向外投递。
 初次部署没有预设收件人，不以 Git 邮箱推断通知接收人。
+首次验收已确认集群内规则运行和 VMP 抓取任务发现；云端指标回查及通知转发
+尚未验收，详见 [发布记录](releases/2026-10-15-intraday-monitoring-r2.md)。
 
 ## 告警规则
 
