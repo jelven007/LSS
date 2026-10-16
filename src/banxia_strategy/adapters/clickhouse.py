@@ -329,6 +329,38 @@ class ClickHouseMarketHistoryStore:
             for row in getattr(result, "result_rows", ())
         }
 
+    def latest_history_dates(self, period: str) -> dict[str, date]:
+        result = self.client.query(
+            """
+            SELECT symbol, max(trade_date)
+            FROM banxia.market_history_bar
+            WHERE period = {period:String}
+            GROUP BY symbol
+            """,
+            parameters={"period": period},
+        )
+        return {
+            str(symbol): (
+                latest
+                if isinstance(latest, date)
+                else date.fromisoformat(str(latest))
+            )
+            for symbol, latest in getattr(result, "result_rows", ())
+        }
+
+    def latest_board_capital_date(self) -> Optional[date]:
+        result = self.client.query(
+            """
+            SELECT max(trade_date)
+            FROM banxia.market_board_capital_history
+            """
+        )
+        rows = getattr(result, "result_rows", ())
+        if not rows or rows[0][0] is None:
+            return None
+        value = rows[0][0]
+        return value if isinstance(value, date) else date.fromisoformat(str(value))
+
     def get_history_dates(
         self,
         *,
@@ -363,6 +395,7 @@ class ClickHouseMarketHistoryStore:
         start_date: date,
         end_date: date,
         period: str = "day",
+        include_previous: bool = False,
     ) -> dict[str, list[dict[str, Any]]]:
         requested = tuple(dict.fromkeys(str(symbol) for symbol in symbols))
         if not requested:
@@ -400,6 +433,41 @@ class ClickHouseMarketHistoryStore:
                     "close": float(close),
                 }
             )
+        if include_previous:
+            previous = self.client.query(
+                """
+                SELECT
+                    symbol,
+                    argMax(trade_date, trade_date) AS trade_date,
+                    argMax(close, tuple(trade_date, revision)) AS close
+                FROM banxia.market_history_bar
+                WHERE period = {period:String}
+                  AND symbol IN {symbols:Array(String)}
+                  AND trade_date < {start_date:Date}
+                GROUP BY symbol
+                """,
+                parameters={
+                    "period": period,
+                    "symbols": list(requested),
+                    "start_date": start_date,
+                },
+            )
+            for symbol, trade_date, close in getattr(
+                previous,
+                "result_rows",
+                (),
+            ):
+                rows.setdefault(str(symbol), []).insert(
+                    0,
+                    {
+                        "trade_date": (
+                            trade_date
+                            if isinstance(trade_date, date)
+                            else date.fromisoformat(str(trade_date))
+                        ),
+                        "close": float(close),
+                    },
+                )
         return rows
 
     def upsert_board_capital_history(

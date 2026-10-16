@@ -58,6 +58,7 @@ class FakeClickHouseClient:
             column_names=[],
             result_rows=[],
         )
+        self.query_results = []
         self.closed = False
 
     def insert(self, table, rows, column_names):
@@ -65,6 +66,8 @@ class FakeClickHouseClient:
 
     def query(self, sql, parameters=None):
         self.queries.append((" ".join(sql.split()), parameters))
+        if self.query_results:
+            return self.query_results.pop(0)
         return self.query_result
 
     def close(self):
@@ -170,6 +173,49 @@ class ClickHouseAdapterTest(unittest.TestCase):
         statement, parameters = client.queries[-1]
         self.assertIn("argMax(completed, revision) = 1", statement)
         self.assertEqual(parameters, {"period": "day"})
+
+    def test_incremental_history_queries_latest_dates_and_previous_close(self):
+        client = FakeClickHouseClient()
+        store = ClickHouseMarketHistoryStore(client=client)
+        client.query_result = SimpleNamespace(
+            result_rows=[
+                ("600001", date(2026, 9, 30)),
+                ("000001", date(2026, 9, 29)),
+            ],
+        )
+
+        self.assertEqual(
+            store.latest_history_dates("day"),
+            {
+                "600001": date(2026, 9, 30),
+                "000001": date(2026, 9, 29),
+            },
+        )
+
+        client.query_results = [
+            SimpleNamespace(
+                result_rows=[
+                    ("600001", date(2026, 9, 29), 10.0),
+                ],
+            ),
+            SimpleNamespace(
+                result_rows=[
+                    ("600001", date(2026, 9, 26), 9.8),
+                ],
+            ),
+        ]
+        bars = store.get_history_bars_for_symbols(
+            ["600001"],
+            start_date=date(2026, 9, 28),
+            end_date=date(2026, 9, 30),
+            include_previous=True,
+        )
+
+        self.assertEqual(
+            [item["trade_date"] for item in bars["600001"]],
+            [date(2026, 9, 26), date(2026, 9, 29)],
+        )
+        self.assertIn("trade_date <", client.queries[-1][0])
 
     def test_board_capital_history_is_written_and_grouped(self):
         client = FakeClickHouseClient()

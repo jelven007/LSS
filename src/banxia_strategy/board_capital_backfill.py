@@ -6,7 +6,7 @@ import logging
 from bisect import bisect_right
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Callable, Mapping, Optional, Sequence
 from zoneinfo import ZoneInfo
 
@@ -100,6 +100,8 @@ class BoardCapitalBackfill:
         end_date: Optional[date] = None,
         batch_size: int = 30,
         workers: Optional[int] = None,
+        incremental: bool = False,
+        lookback_days: int = 14,
         progress: Optional[Callable[[Mapping[str, Any]], None]] = None,
     ) -> None:
         self.provider = provider
@@ -111,6 +113,8 @@ class BoardCapitalBackfill:
             1,
             min(workers or provider.workers, len(provider.servers)),
         )
+        self.incremental = incremental
+        self.lookback_days = max(0, lookback_days)
         self.progress = progress or (lambda _value: None)
         if self.start_date > self.end_date:
             raise ValueError("start_date cannot be later than end_date")
@@ -231,12 +235,20 @@ class BoardCapitalBackfill:
         return True
 
     def run(self) -> CapitalBackfillResult:
+        if self.incremental:
+            latest = self.store.latest_board_capital_date()
+            if latest is not None:
+                self.start_date = max(
+                    DEFAULT_START_DATE,
+                    latest - timedelta(days=self.lookback_days),
+                )
         sessions = self.store.get_history_dates(
             start_date=self.start_date,
             end_date=self.end_date,
         )
         if not sessions:
             raise RuntimeError("stored daily history is empty")
+        self.end_date = sessions[-1]
         securities = [
             security
             for security in self.provider.securities()
@@ -277,6 +289,7 @@ class BoardCapitalBackfill:
                         symbols,
                         start_date=self.start_date,
                         end_date=self.end_date,
+                        include_previous=self.incremental,
                     )
                     for security in batch:
                         symbol = str(security["symbol"])
@@ -346,6 +359,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--end-date", type=date.fromisoformat)
     parser.add_argument("--batch-size", type=int, default=30)
     parser.add_argument("--workers", type=int, default=7)
+    parser.add_argument("--incremental", action="store_true")
+    parser.add_argument("--lookback-days", type=int, default=14)
     return parser
 
 
@@ -383,6 +398,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             end_date=args.end_date,
             batch_size=args.batch_size,
             workers=args.workers,
+            incremental=args.incremental,
+            lookback_days=args.lookback_days,
             progress=report,
         ).run()
         logger.info("completed result=%s", result)

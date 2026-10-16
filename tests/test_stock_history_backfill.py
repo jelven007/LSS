@@ -80,6 +80,13 @@ class Store:
         assert period == "day"
         return {"000002"}
 
+    def latest_history_dates(self, period):
+        assert period == "day"
+        return {
+            "600001": date(2026, 9, 1),
+            "000002": date(2026, 9, 2),
+        }
+
     def upsert_history_bars_batch(self, bars, period):
         self.batches.append((bars, period))
 
@@ -139,6 +146,29 @@ class StockHistoryBackfillTest(unittest.TestCase):
         self.assertEqual(result.failed_symbols, ())
         self.assertEqual(store.batches, [])
         self.assertEqual(store.sync, [])
+
+    def test_incremental_run_reloads_overlap_and_skips_current_symbols(self):
+        store = Store()
+        worker = StockHistoryBackfill(
+            provider=Provider(),
+            store=store,
+            start_date=date(2016, 1, 1),
+            end_date=date(2026, 9, 2),
+            batch_size=1,
+            incremental=True,
+            lookback_days=1,
+        )
+        worker._latest_complete_session = lambda: date(2026, 9, 2)
+
+        result = worker.run()
+
+        self.assertEqual(result.skipped_count, 1)
+        self.assertEqual(result.completed_count, 1)
+        self.assertEqual(set(store.batches[0][0]), {"600001"})
+        self.assertEqual(
+            [item["date"] for item in store.batches[0][0]["600001"]],
+            ["2026-09-01", "2026-09-02"],
+        )
 
 
 if __name__ == "__main__":

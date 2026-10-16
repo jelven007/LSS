@@ -5,7 +5,7 @@ import argparse
 import logging
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
 from zoneinfo import ZoneInfo
 
@@ -26,6 +26,7 @@ class BackfillResult:
     universe_count: int
     skipped_count: int
     completed_count: int
+    unchanged_symbols: tuple[str, ...]
     excluded_symbols: tuple[str, ...]
     failed_symbols: tuple[str, ...]
     row_count: int
@@ -81,6 +82,8 @@ class StockHistoryBackfill:
         batch_size: int = 20,
         workers: Optional[int] = None,
         resume: bool = True,
+        incremental: bool = False,
+        lookback_days: int = 14,
         progress: Optional[Callable[[Mapping[str, Any]], None]] = None,
     ) -> None:
         self.provider = provider
@@ -96,6 +99,8 @@ class StockHistoryBackfill:
             ),
         )
         self.resume = resume
+        self.incremental = incremental
+        self.lookback_days = max(0, lookback_days)
         self.progress = progress or (lambda _value: None)
         if self.start_date > self.end_date:
             raise ValueError("start_date cannot be later than end_date")
@@ -104,15 +109,25 @@ class StockHistoryBackfill:
         self,
         batch_number: int,
         securities: Sequence[Mapping[str, Any]],
-    ) -> tuple[dict[str, list[dict[str, Any]]], list[str], list[str]]:
+    ) -> tuple[
+        dict[str, list[dict[str, Any]]],
+        list[str],
+        list[str],
+        list[str],
+    ]:
         result: dict[str, list[dict[str, Any]]] = {}
         failures: list[str] = []
         excluded: list[str] = []
+        unchanged: list[str] = []
         client = None
         active_server = None
         try:
             for security in securities:
                 symbol = str(security["symbol"])
+                symbol_start = security.get(
+                    "_history_start_date",
+                    self.start_date,
+                )
                 for attempt in range(3):
                     server = self.provider.servers[
                         (batch_number + attempt) % len(self.provider.servers)
@@ -123,13 +138,16 @@ class StockHistoryBackfill:
                                 self.provider._close(client)
                             client = self.provider._client(server)
                             active_server = server
-                        raw = daily_bars(client, symbol, self.start_date)
+                        raw = daily_bars(client, symbol, symbol_start)
                         bars = normalize_daily_bars(
                             raw,
-                            self.start_date,
+                            symbol_start,
                             self.end_date,
                         )
                         if not bars:
+                            if security.get("_latest_history_date") is not None:
+                                unchanged.append(symbol)
+                                break
                             finance_frame = client.finance(symbol=symbol)
                             if finance_frame is None or finance_frame.empty:
                                 raise RuntimeError("finance response unavailable")
@@ -155,20 +173,70 @@ class StockHistoryBackfill:
         finally:
             if client is not None:
                 self.provider._close(client)
-        return result, failures, excluded
+        return result, failures, excluded, unchanged
+
+    def _latest_complete_session(self) -> date:
+        cutoff = self.end_date
+        now = datetime.now(SHANGHAI)
+        if cutoff >= now.date() and now.hour < 15:
+            cutoff = now.date() - timedelta(days=1)
+        bars = self.provider._first_result(
+            lambda client: daily_bars(
+                client,
+                "000001",
+                cutoff - timedelta(days=45),
+                index=True,
+            )
+        )
+        sessions = [
+            _bar_date(dict(bar))
+            for bar in bars
+            if _bar_date(dict(bar)) <= cutoff
+        ]
+        if not sessions:
+            raise RuntimeError("rustdx returned no completed trading session")
+        return max(sessions)
 
     def run(self) -> BackfillResult:
+        if self.incremental:
+            self.end_date = self._latest_complete_session()
         securities = self.provider.securities()
-        completed = (
-            self.store.completed_history_symbols("day")
-            if self.resume
-            else set()
-        )
-        pending = [
-            security
-            for security in securities
-            if security["symbol"] not in completed
-        ]
+        completed: set[str] = set()
+        if self.incremental:
+            latest_dates = self.store.latest_history_dates("day")
+            pending = []
+            for security in securities:
+                symbol = str(security["symbol"])
+                latest = latest_dates.get(symbol)
+                if latest is not None and latest >= self.end_date:
+                    completed.add(symbol)
+                    continue
+                symbol_start = (
+                    max(
+                        self.start_date,
+                        latest - timedelta(days=self.lookback_days),
+                    )
+                    if latest is not None
+                    else self.start_date
+                )
+                pending.append(
+                    {
+                        **security,
+                        "_history_start_date": symbol_start,
+                        "_latest_history_date": latest,
+                    }
+                )
+        else:
+            completed = (
+                self.store.completed_history_symbols("day")
+                if self.resume
+                else set()
+            )
+            pending = [
+                security
+                for security in securities
+                if security["symbol"] not in completed
+            ]
         batches = [
             pending[index:index + self.batch_size]
             for index in range(0, len(pending), self.batch_size)
@@ -177,6 +245,7 @@ class StockHistoryBackfill:
         row_count = 0
         failures: list[str] = []
         excluded: list[str] = []
+        unchanged: list[str] = []
         with ThreadPoolExecutor(max_workers=self.workers) as executor:
             pending_batches = iter(enumerate(batches))
             futures = {
@@ -193,7 +262,12 @@ class StockHistoryBackfill:
                     return_when=FIRST_COMPLETED,
                 )
                 for future in done:
-                    bars_by_symbol, failed, skipped_unlisted = future.result()
+                    (
+                        bars_by_symbol,
+                        failed,
+                        skipped_unlisted,
+                        unchanged_symbols,
+                    ) = future.result()
                     if bars_by_symbol:
                         self.store.upsert_history_bars_batch(
                             bars_by_symbol,
@@ -210,6 +284,7 @@ class StockHistoryBackfill:
                             row_count += len(bars)
                     failures.extend(failed)
                     excluded.extend(skipped_unlisted)
+                    unchanged.extend(unchanged_symbols)
                     self.progress(
                         {
                             "universe_count": len(securities),
@@ -217,6 +292,7 @@ class StockHistoryBackfill:
                             "completed_count": completed_count,
                             "failed_count": len(failures),
                             "excluded_count": len(excluded),
+                            "unchanged_count": len(unchanged),
                             "row_count": row_count,
                         }
                     )
@@ -233,6 +309,7 @@ class StockHistoryBackfill:
             universe_count=len(securities),
             skipped_count=len(completed),
             completed_count=completed_count,
+            unchanged_symbols=tuple(sorted(unchanged)),
             excluded_symbols=tuple(sorted(excluded)),
             failed_symbols=tuple(sorted(failures)),
             row_count=row_count,
@@ -250,6 +327,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-size", type=int, default=20)
     parser.add_argument("--workers", type=int, default=7)
     parser.add_argument("--no-resume", action="store_true")
+    parser.add_argument("--incremental", action="store_true")
+    parser.add_argument("--lookback-days", type=int, default=14)
     return parser
 
 
@@ -273,9 +352,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     def report(value: Mapping[str, Any]) -> None:
         logger.info(
-            "progress completed=%s skipped=%s excluded=%s failed=%s rows=%s universe=%s",
+            "progress completed=%s skipped=%s unchanged=%s excluded=%s failed=%s rows=%s universe=%s",
             value["completed_count"],
             value["skipped_count"],
+            value["unchanged_count"],
             value["excluded_count"],
             value["failed_count"],
             value["row_count"],
@@ -291,6 +371,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             batch_size=args.batch_size,
             workers=args.workers,
             resume=not args.no_resume,
+            incremental=args.incremental,
+            lookback_days=args.lookback_days,
             progress=report,
         ).run()
         logger.info("completed result=%s", result)

@@ -338,6 +338,84 @@ spec:
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  name: stock-history-sync
+  namespace: banxia
+spec:
+  schedule: "5 17 * * 1-5"
+  timeZone: Asia/Shanghai
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 7200
+      template:
+        metadata:
+          labels: {app: banxia-stock-history-sync, component: job}
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: stock-history-sync
+              image: banxia-strategy:REPLACE_WITH_GIT_COMMIT
+              command: [python, -m, banxia_strategy.stock_history_backfill]
+              args:
+                - --incremental
+                - --lookback-days
+                - "14"
+                - --batch-size
+                - "10"
+                - --workers
+                - "7"
+              envFrom:
+                - configMapRef: {name: banxia-runtime}
+                - secretRef: {name: banxia-secrets}
+              resources:
+                requests: {cpu: "1", memory: 768Mi}
+                limits: {cpu: "4", memory: 2Gi}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: board-capital-sync
+  namespace: banxia
+spec:
+  schedule: "0 18 * * 1-5"
+  timeZone: Asia/Shanghai
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 7200
+      template:
+        metadata:
+          labels: {app: banxia-board-capital-sync, component: job}
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: board-capital-sync
+              image: banxia-strategy:REPLACE_WITH_GIT_COMMIT
+              command: [python, -m, banxia_strategy.board_capital_backfill]
+              args:
+                - --incremental
+                - --lookback-days
+                - "14"
+                - --batch-size
+                - "30"
+                - --workers
+                - "7"
+              envFrom:
+                - configMapRef: {name: banxia-runtime}
+                - secretRef: {name: banxia-secrets}
+              resources:
+                requests: {cpu: "1", memory: 768Mi}
+                limits: {cpu: "4", memory: 2Gi}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
   name: report-worker-1630
   namespace: banxia
 spec:

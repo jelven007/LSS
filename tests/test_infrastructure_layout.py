@@ -310,6 +310,17 @@ class ComposeLayoutTest(unittest.TestCase):
         self.assertEqual(cron_jobs["report-worker-1630"], "30 16 * * 1-5")
         self.assertEqual(cron_jobs["report-worker-2330"], "30 23 * * 1-5")
         self.assertEqual(cron_jobs["paper-trading-1650"], "50 16 * * 1-5")
+        self.assertEqual(cron_jobs["stock-history-sync"], "5 17 * * 1-5")
+        self.assertEqual(cron_jobs["board-capital-sync"], "0 18 * * 1-5")
+        self.assertIn(
+            "banxia_strategy.stock_history_backfill",
+            text,
+        )
+        self.assertIn(
+            "banxia_strategy.board_capital_backfill",
+            text,
+        )
+        self.assertGreaterEqual(text.count("--incremental"), 2)
         self.assertIn("readinessProbe", text)
         self.assertIn("resources:", text)
 

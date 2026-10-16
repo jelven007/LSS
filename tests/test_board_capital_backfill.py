@@ -96,7 +96,11 @@ class Store:
     def get_history_dates(self, **_kwargs):
         return self.sessions
 
-    def get_history_bars_for_symbols(self, symbols, **_kwargs):
+    def latest_board_capital_date(self):
+        return date(2026, 9, 29)
+
+    def get_history_bars_for_symbols(self, symbols, **kwargs):
+        self.history_query = kwargs
         values = {
             "600001": [
                 {"trade_date": self.sessions[0], "close": 10},
@@ -162,6 +166,22 @@ class BoardCapitalBackfillTest(unittest.TestCase):
         september_30 = indexed[(date(2026, 9, 30), "sz_gem")]
         self.assertEqual(september_30["total_market_cap_cny"], 2000)
         self.assertEqual(september_30["float_market_cap_cny"], 1600)
+
+    def test_incremental_run_uses_overlap_and_previous_close(self):
+        store = Store()
+        result = BoardCapitalBackfill(
+            provider=Provider(),
+            store=store,
+            start_date=date(2016, 1, 1),
+            end_date=date(2026, 9, 30),
+            batch_size=2,
+            incremental=True,
+            lookback_days=1,
+        ).run()
+
+        self.assertEqual(result.start_date, date(2026, 9, 28))
+        self.assertEqual(result.end_date, date(2026, 9, 30))
+        self.assertTrue(store.history_query["include_previous"])
 
 
 if __name__ == "__main__":
