@@ -35,6 +35,14 @@ docker run --rm --network none --entrypoint python tsp:candidate \
   /app/build_manifest.py verify --root /app --manifest /app/build-manifest.json
 ```
 
+当前单仓库构建需在仓库根目录指定 `-f product/Dockerfile`。
+Dockerfile 的 `runtime-deps` 阶段只安装冻结依赖，`runtime` 再安装两套 native wheel、
+Policy、产品后端和前端静态产物；前端 pnpm 下载使用缓存并限制并发。
+网络异常时，可独立构建 `frontend-builder`、`codex-builder`、
+`rustdx-builder` 和 `runtime-deps`，再用 Buildx 命名构建上下文引用已验证的阶段镜像。
+前端必须由当前提交及 `pnpm-lock.yaml` 对应依赖生成；Codex 必须核对固定版本。
+缓存不免除最终 Manifest 核验、镜像 digest 固定和源码提交身份记录。
+
 `create` 不覆盖已有输出。源码配置只索引构建输入；额外部署文件可通过显式
 `--include <相对路径>` 创建清单。桌面外置运行清单的根是包含 `TSP/` 或 `TSP.app/`
 的目录；在该目录核验，不能以 `.app` 内部子目录为根。

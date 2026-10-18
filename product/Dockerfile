@@ -23,7 +23,9 @@ RUN if [ "$USE_CN_MIRROR" = "1" ]; then npm config set registry "$NPM_REGISTRY";
 # 让 pnpm 走镜像源安装依赖
 RUN if [ "$USE_CN_MIRROR" = "1" ]; then pnpm config set registry "$NPM_REGISTRY"; fi
 COPY product/frontend/package.json product/frontend/pnpm-lock.yaml* ./
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,target=/pnpm/store \
+    pnpm install --frozen-lockfile --store-dir /pnpm/store \
+      --network-concurrency 4 --fetch-timeout 120000
 COPY product/frontend/ ./
 RUN pnpm build
 
@@ -81,7 +83,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
       --interpreter python3 --out /wheels
 
 # === Stage 2: Python 运行时 ===
-FROM ${BASE_IMAGE_REGISTRY}/library/python:3.11-slim-bookworm AS runtime
+FROM ${BASE_IMAGE_REGISTRY}/library/python:3.11-slim-bookworm AS runtime-deps
 ARG USE_CN_MIRROR=1
 ARG PYPI_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple
 ARG PYPI_FALLBACK=https://mirrors.aliyun.com/pypi/simple
@@ -141,6 +143,9 @@ RUN if [ "$USE_CN_MIRROR" = "1" ]; then \
       set -- "$@" --extra "$extra"; \
     done; \
     uv sync --frozen "$@"
+
+# Keep locked dependency installation independently buildable and cacheable.
+FROM runtime-deps AS runtime
 
 # Install both products' rustdx bridges built for this target architecture.
 COPY --from=rustdx-builder /wheels /app/native-wheels

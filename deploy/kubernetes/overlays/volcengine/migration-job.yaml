@@ -27,6 +27,16 @@ spec:
           command: [sh, -ec]
           args:
             - |
+              for attempt in $(seq 1 120); do
+                if psql "$BANXIA_POSTGRES_DSN" -Atqc "SELECT 1" >/dev/null 2>&1; then
+                  break
+                fi
+                if [ "$attempt" = "120" ]; then
+                  echo "PostgreSQL did not become ready" >&2
+                  exit 1
+                fi
+                sleep 5
+              done
               psql "$BANXIA_POSTGRES_DSN" -v ON_ERROR_STOP=1 <<'SQL'
               CREATE SCHEMA IF NOT EXISTS banxia;
               CREATE TABLE IF NOT EXISTS banxia.schema_migration (
@@ -66,6 +76,20 @@ spec:
           command: [sh, -ec]
           args:
             - |
+              for attempt in $(seq 1 120); do
+                if clickhouse-client --host "$BANXIA_CLICKHOUSE_HOST" \
+                  --port "${BANXIA_CLICKHOUSE_NATIVE_PORT:-9000}" \
+                  --user "$BANXIA_CLICKHOUSE_USER" \
+                  --password "$BANXIA_CLICKHOUSE_PASSWORD" \
+                  --query "SELECT 1" >/dev/null 2>&1; then
+                  break
+                fi
+                if [ "$attempt" = "120" ]; then
+                  echo "ClickHouse did not become ready" >&2
+                  exit 1
+                fi
+                sleep 5
+              done
               for file in /migrations/*.sql; do
                 echo "Applying ClickHouse migration: $(basename "$file")"
                 clickhouse-client \

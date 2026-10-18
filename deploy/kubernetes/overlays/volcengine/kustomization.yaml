@@ -29,6 +29,7 @@ images:
   - name: banxia-strategy
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
     newTag: v0.5.1
+    digest: sha256:3f569013ce24412457b1d9c118921cd0b45157b09984b3e39775681d7e0bc789
   - name: tsp-product-runtime
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
     newTag: web-v0.5.1
