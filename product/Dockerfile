@@ -71,10 +71,21 @@ RUN if [ "$USE_CN_MIRROR" = "1" ]; then \
        fi
 WORKDIR /build
 COPY backend/native/rustdx_native ./
-RUN --mount=type=cache,target=/usr/local/cargo/git \
+RUN --mount=type=secret,id=github_token \
+    --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/usr/local/cargo/registry \
-    CARGO_NET_GIT_FETCH_WITH_CLI=true \
-    /maturin/bin/maturin build --locked --release --interpreter python3 --out /wheels
+    TOKEN="$(cat /run/secrets/github_token 2>/dev/null || true)" \
+    && if [ -n "$TOKEN" ]; then \
+         git config --global \
+           url."https://x-access-token:${TOKEN}@github.com/".insteadOf \
+           "https://github.com/"; \
+       fi \
+    && CARGO_NET_GIT_FETCH_WITH_CLI=true \
+       /maturin/bin/maturin build --locked --release --interpreter python3 --out /wheels \
+    && if [ -n "$TOKEN" ]; then \
+         git config --global --remove-section \
+           url."https://x-access-token:${TOKEN}@github.com/"; \
+       fi
 
 # === Stage 2: Python 运行时 ===
 FROM ${BASE_IMAGE_REGISTRY}/library/python:3.11-slim-bookworm AS runtime

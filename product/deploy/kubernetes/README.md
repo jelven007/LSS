@@ -44,6 +44,14 @@ banxia-strategy:compute-v0.5.0
 docker:27-dind
 ```
 
+`rustdx` 源依赖需要 GitHub 读取权限。构建时通过 BuildKit Secret 传入，禁止使用
+`ARG`、`ENV` 或复制凭据文件：
+
+```bash
+GITHUB_TOKEN="$(security find-internet-password -w -s github.com)" \
+docker buildx build --secret id=github_token,env=GITHUB_TOKEN ...
+```
+
 推送后必须在 VKE overlay 中写入 Registry 返回的 digest，再渲染和执行服务端 dry-run：
 
 ```bash
