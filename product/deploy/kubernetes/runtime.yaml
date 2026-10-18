@@ -12,7 +12,7 @@ data:
   TSP_CELL_MARKET_URL: http://tsp-platform:3018
   TSP_CELL_WEBHOOK_ORIGINS: '["https://shanao.asia"]'
   TSP_COMPUTE_SOCKET: /run/tsp/compute.sock
-  TSP_COMPUTE_IMAGE: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy:compute-v0.5.0
+  TSP_COMPUTE_IMAGE: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy@sha256:21d149be6b92a8077ae5729e0eba9b78d57d71c99c6eb291dea26abdb8c41620
   DATA_DIR: /state/public/current
   PLATFORM_CONFIG_DIR: /state/platform-config
   TENANT_ARTIFACTS_DIR: /state/tenant-artifacts

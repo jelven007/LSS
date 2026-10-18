@@ -34,18 +34,23 @@ images:
   - name: banxia-strategy
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
     newTag: v0.5.0
+    digest: sha256:2747fca3bdfb39fe8fdf2717bc907c69692567d81e0fd01b01df9f20c636a517
   - name: tsp-product-runtime
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
     newTag: web-v0.5.0
+    digest: sha256:4100e144e5bf000193930d26a40c15438301ce73d961e6696467276d620e05d2
   - name: tsp-product-broker
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
     newTag: broker-v0.5.0
+    digest: sha256:5e57b84b728621f1238e043369411211078db18c391a435d9b9f77e18ece57f4
   - name: tsp-product-compute
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
     newTag: compute-v0.5.0
+    digest: sha256:21d149be6b92a8077ae5729e0eba9b78d57d71c99c6eb291dea26abdb8c41620
   - name: docker
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/docker
     newTag: 27-dind
+    digest: sha256:f649ef046008ca7f926a2571c32b0ac22e5c59eb61b959617f9acc2a4c638cf5
   - name: banxia-flink
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-flink
     newTag: 59f59a6
