@@ -16,7 +16,7 @@ class WalCapacityError(RuntimeError):
 
 
 class SQLiteEventWAL:
-    """Durable local outbox used before Kafka acknowledgement.
+    """Durable local outbox used before downstream acknowledgement.
 
     SQLite is the portable local implementation. The EventWAL port allows a
     RocksDB implementation to replace it in production without changing the

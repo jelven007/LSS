@@ -1,55 +1,45 @@
 # TSP Web 产品 VKE 部署
 
-本目录定义 `v0.5.0` 整合产品在火山引擎 VKE 的生产资源，并由根目录
+本目录定义 `v0.5.1` 精简产品在火山引擎 VKE 的生产资源，并由根目录
 `deploy/kubernetes/overlays/volcengine/` 统一渲染。公网入口继续使用
-`https://shanao.asia`，Policy API 保留为集群内服务，通过服务端桥接提供次日计划和
-当日实盘。
+`https://shanao.asia`。Policy 作为内嵌 ASGI 模块提供次日计划和当日实盘，不再部署
+独立 API 或网络 Bridge。
 
 ## 拓扑
 
-- `tsp-postgres`：独立控制库和业务库，EBS `Retain` 持久化。
+- `postgres`：Policy、TSP 控制库和 TSP 业务库共享的 PostgreSQL 集群。
 - `tsp-platform`：行情平台与公共只读版本发布，使用独立 NAS RWX 状态卷。
-- `tsp-product`：API、事件 Gateway、研究、实时、通知、定时 Worker 和 Compute
-  Broker 的单 Pod 生产单元。
-- `dind`：Pod 内隔离 Docker daemon，只运行固定 digest 的 Compute 镜像；不挂载节点
-  Docker socket，也不向计算容器注入 Kubernetes Token 或业务密钥。
-
-DinD 容器需要 `privileged`，这是当前 Compute Broker 尚未实现 Kubernetes 原生 Runner
-前的受控例外。它只能访问 Pod 内临时 Docker 数据目录和只读公共行情卷。升级为原生
-Runner 后应删除此例外。
+- `tsp-product`：统一 Web/API 与 `task-worker`，两个副本滚动发布。
+- `tsp-compute`：独立计算服务，无业务 Secret、禁止出网、只读公共行情。
 
 ## Secret
 
 真实密钥不得提交仓库。以 [`secrets.example.yaml`](secrets.example.yaml) 为字段契约，
 在集群中创建：
 
-- `tsp-product-admin`：仅 PostgreSQL 和初始化 Job 使用的 owner 密码、管理员 DSN。
-- `tsp-product-secrets`：运行时双库 DSN、平台 Token、流票据密钥、SMTP 和 Policy
-  服务端 Token。
-- `banxia-registry`：已有火山引擎 CR 拉取凭据，同时只读挂入 Broker 用于拉取固定
-  Compute 镜像。
+- `tsp-product-admin`：TSP 数据库运行密码、新旧数据库管理员 DSN。
+- `tsp-product-secrets`：运行时双库 DSN、平台 Token、流票据密钥和 SMTP。
+- `banxia-registry`：火山引擎 CR 拉取凭据。
 
 SMTP 从原 `banxia-secrets` 映射，端口 `465` 使用 `ssl`，端口 `587` 使用
-`starttls`。Policy Token 使用原 `BANXIA_API_TOKEN`，浏览器不可见。
+`starttls`。Policy 内嵌运行时复用 `banxia-runtime` 和 `banxia-secrets`，浏览器不可见
+数据库或对象存储凭据。
 
 ## 发布
 
 镜像标签：
 
 ```text
-banxia-strategy:v0.5.0
-banxia-strategy:web-v0.5.0
-banxia-strategy:broker-v0.5.0
-banxia-strategy:compute-v0.5.0
-docker:27-dind
+banxia-strategy:v0.5.1
+banxia-strategy:web-v0.5.1
+banxia-strategy:compute-v0.5.1
 ```
 
-`rustdx` 源依赖需要 GitHub 读取权限。构建时通过 BuildKit Secret 传入，禁止使用
-`ARG`、`ENV` 或复制凭据文件：
+`rustdx` 使用 crates.io 固定版本，不需要 GitHub 凭据。构建上下文必须是仓库根目录：
 
 ```bash
-GITHUB_TOKEN="$(security find-internet-password -w -s github.com)" \
-docker buildx build --secret id=github_token,env=GITHUB_TOKEN ...
+docker buildx build -f product/Dockerfile \
+  --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" .
 ```
 
 推送后必须在 VKE overlay 中写入 Registry 返回的 digest，再渲染和执行服务端 dry-run：
@@ -61,20 +51,30 @@ kubectl kustomize --load-restrictor LoadRestrictionsNone \
 kubectl apply --server-side --force-conflicts --dry-run=server -f /tmp/banxia-vke.yaml
 ```
 
-部署前保留 `banxia-secrets`、`banxia-registry` 和所有 PVC，仅删除业务
-Deployment/StatefulSet/Job/CronJob/Service；系统命名空间、IngressClass、ALBInstance、
-PV 和 StorageClass 不在清理范围。数据服务重建并就绪后，依次等待 Policy 迁移、
-TSP 初始化、平台和产品 Pod。
+升级已有集群时，先从完整渲染结果中只应用数据库 Bootstrap：
+
+```bash
+kubectl apply -f /tmp/banxia-vke.yaml -l app=tsp-database-bootstrap
+kubectl -n banxia wait \
+  --for=condition=complete job/tsp-database-bootstrap --timeout=15m
+```
+
+再按 [`migrate-legacy-postgres.yaml`](migrate-legacy-postgres.yaml) 迁移旧 TSP 双库，
+完成数据核对后才能整包应用新清单。验证账户、租户和业务表后才能删除旧
+`tsp-postgres` StatefulSet；旧 PVC 必须继续保留。
 
 ## 验收
 
 ```bash
 kubectl -n banxia wait --for=condition=complete \
-  job/banxia-schema-migration job/tsp-product-initialize --timeout=20m
+  job/banxia-schema-migration job/tsp-database-bootstrap \
+  job/tsp-product-initialize --timeout=20m
 kubectl -n banxia rollout status deployment/tsp-platform --timeout=20m
+kubectl -n banxia rollout status deployment/tsp-compute --timeout=20m
 kubectl -n banxia rollout status deployment/tsp-product --timeout=30m
+kubectl -n banxia rollout status statefulset/market-collector --timeout=20m
 curl -fsS https://shanao.asia/health/ready
 ```
 
-`/health/ready` 必须同时通过双库、公共行情版本、平台连接、指标缓存、Compute Broker 和
-四类 Worker。随后验证管理员登录、九项菜单、SMTP、Policy 桥接和 SSE。
+`/health/ready` 必须同时通过双库、公共行情版本、平台连接、指标缓存、Compute 和
+四类任务心跳。随后验证管理员登录、九项菜单、SMTP、内嵌 Policy 页面和 SSE。

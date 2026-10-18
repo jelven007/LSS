@@ -1,5 +1,10 @@
 # 火山引擎生产资源清单
 
+> `v0.5.1` 已调整待发布资源：Kafka、Flink、MinIO、独立 Policy API 和独立 TSP
+> PostgreSQL 退出目标清单，Policy 报告迁移至 TOS。本文其余资源数量是 `v0.5.0`
+> 历史盘点，最终删除前仍用于迁移核对。最新拓扑见
+> [v0.5.1 精简生产架构](36-lean-architecture-v0.5.1.md)。
+
 ## 1. 盘点范围
 
 本文记录 `2026-10-02` 当前生产系统在火山引擎上直接使用或由 VKE 自动创建的资源。
@@ -55,7 +60,7 @@
 | `tsp-platform` Deployment | 1 副本 | TSP 行情平台 |
 | `tsp-product` Deployment | 1 Pod / 8 容器 | API、Gateway、Worker、Broker、DinD |
 | `tsp-product-admin` Secret | 1 | 数据库 owner 凭据 |
-| `tsp-product-secrets` Secret | 1 | 运行时、SMTP、Policy Bridge 凭据 |
+| `tsp-product-secrets` Secret | 1 | 运行时、SMTP、历史 Policy Bridge 凭据 |
 
 新增资源继续位于 `banxia` 命名空间。TSP PostgreSQL 使用
 `banxia-ebs-retain`；TSP 状态卷使用独立 `tsp-nas-rwx` StorageClass 和

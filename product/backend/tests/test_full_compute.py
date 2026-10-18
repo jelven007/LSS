@@ -1,6 +1,8 @@
 """Transport and execution boundary checks for full-product private strategies."""
 import json
+import signal
 import socket
+import subprocess
 import tempfile
 import threading
 from pathlib import Path
@@ -13,7 +15,7 @@ if not hasattr(socket, "AF_UNIX"):
     pytest.skip("Unix domain sockets are unavailable on this platform", allow_module_level=True)
 
 from app.cell.context import AccessError
-from app.multitenancy.compute_broker import ComputeBroker
+from app.multitenancy.compute_broker import ComputeBroker, ProcessComputeBroker
 from app.multitenancy.executor import ComputeExecutor
 from app.multitenancy.strategies import definition_payload, metadata_definition
 from app.strategy.engine import StrategyEngine
@@ -61,6 +63,50 @@ def test_broker_owns_image_entrypoint_and_only_mounts_public_market(socket_dir):
     assert not any(part.startswith("HOME=/root") for part in command)
 
 
+def test_process_broker_is_container_native_and_has_no_docker_dependency(socket_dir):
+    public = socket_dir / "public"
+    public.mkdir()
+    with ProcessComputeBroker(("127.0.0.1", 0), public, 2) as broker:
+        command = broker.command("ignored")
+    assert command[0:2] == ["/usr/bin/env", "-i"]
+    assert f"DATA_DIR={public}" in command
+    assert "TICKFLOW_ENV_FILE=/dev/null" in command
+    assert "app.multitenancy.compute_worker" in command
+    assert not any("docker" in part or "DSN" in part for part in command)
+
+
+def test_process_broker_cleanup_terminates_the_complete_process_group(monkeypatch):
+    signals = []
+
+    class Process:
+        pid = 321
+        calls = 0
+
+        @staticmethod
+        def poll():
+            return None
+
+        def communicate(self, timeout):
+            self.calls += 1
+            if self.calls == 1:
+                raise subprocess.TimeoutExpired("compute", timeout)
+            return b"", b""
+
+    monkeypatch.setattr(
+        "app.multitenancy.compute_broker.os.killpg",
+        lambda pid, signum: signals.append((pid, signum)),
+    )
+    process = Process()
+
+    ProcessComputeBroker.cleanup("ignored", process)
+
+    assert signals == [
+        (321, signal.SIGTERM),
+        (321, signal.SIGKILL),
+    ]
+    assert process.calls == 2
+
+
 def test_executor_streams_progress_result_and_rejects_unknown_operations(socket_dir):
     tmp_path = socket_dir
     path = tmp_path / "compute.sock"
@@ -81,11 +127,40 @@ def test_executor_streams_progress_result_and_rejects_unknown_operations(socket_
         thread = threading.Thread(target=respond)
         thread.start()
         executor = ComputeExecutor(str(path))
-        assert executor.execute({"kind": "strategy", "tenant_id": "tenant-a"}, events.append) == {"total": 1}
+        assert executor.execute(
+            {"kind": "strategy", "tenant_id": "tenant-a"},
+            events.append,
+        ) == {"total": 1}
         thread.join(timeout=2)
     assert events == [{"step": 1}]
     with pytest.raises(ValueError, match="unsupported compute"):
         executor.execute({"kind": "shell", "command": "anything"})
+
+
+def test_executor_supports_the_network_isolated_compute_service():
+    events = []
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+        server.bind(("127.0.0.1", 0))
+        server.listen()
+        host, port = server.getsockname()
+
+        def respond():
+            connection, _ = server.accept()
+            with connection, connection.makefile("rb") as request:
+                payload = json.loads(request.readline())
+                assert payload["tenant_id"] == "tenant-a"
+                connection.sendall(b'{"type":"progress","payload":{"step":1}}\n')
+                connection.sendall(b'{"type":"result","payload":{"total":1}}\n')
+
+        thread = threading.Thread(target=respond)
+        thread.start()
+        executor = ComputeExecutor(address=f"{host}:{port}")
+        assert executor.execute(
+            {"kind": "strategy", "tenant_id": "tenant-a"},
+            events.append,
+        ) == {"total": 1}
+        thread.join(timeout=2)
+    assert events == [{"step": 1}]
 
 
 def test_executor_cancellation_closes_transport_and_service_unavailability_is_503(socket_dir):
@@ -108,7 +183,10 @@ def test_executor_cancellation_closes_transport_and_service_unavailability_is_50
         thread = threading.Thread(target=respond)
         thread.start()
         with pytest.raises(AccessError, match="已取消"):
-            ComputeExecutor(str(path)).execute({"kind": "strategy", "tenant_id": "tenant-a"}, cancel=cancel)
+            ComputeExecutor(str(path)).execute(
+                {"kind": "strategy", "tenant_id": "tenant-a"},
+                cancel=cancel,
+            )
         thread.join(timeout=3)
     assert disconnected.is_set()
     with pytest.raises(AccessError) as unavailable:

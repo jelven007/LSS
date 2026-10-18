@@ -27,6 +27,7 @@ class MinioObjectAssetStore:
         *,
         bucket: str = "strategy-reports",
         secure: bool = False,
+        region: Optional[str] = None,
         ensure_bucket: bool = False,
         client: Any = None,
     ):
@@ -42,6 +43,7 @@ class MinioObjectAssetStore:
                 access_key=access_key,
                 secret_key=secret_key,
                 secure=secure,
+                region=region,
             )
         self.client = client
         self.bucket = bucket

@@ -1,401 +1,212 @@
 # 当前生产技术方案
 
-2026-10-15 更新：本地与线上行情客户端均已迁移至 rustdx 原生桥接，生产镜像为
-`rustdx-20261015-r1`。下文保留原生产验收快照；本次更新范围与验收见
-[生产发布记录](releases/2026-10-15-rustdx-r1.md)，代码和接口映射见
-[rustdx 数据源迁移](30-rustdx-migration.md)。
+## 1. 状态与口径
 
-2026-10-18 `v0.5.0` 更新：公网入口切换为整合后的 TSP Web。下文 Policy 数据链路和
-服务职责继续有效，但 Policy `api` 仅作为集群内桥接后端。新增 TSP PostgreSQL、
-平台、Web/API、Gateway、四类 Worker 和 Compute Broker，详见
-[TSP 产品整合](35-tsp-product-integration.md) 与
-[v0.5.0 发布记录](releases/2026-10-18-web-v0.5.0.md)。
+- 仓库当前版本：`v0.5.1`。
+- 架构状态：代码与 VKE Kustomize 清单已完成，等待镜像构建、数据迁移和生产验收。
+- 生产入口：<https://shanao.asia>。
+- 行情来源：`rustdx native`。
+- 服务范围：行情研究、策略筛选、盘中监控、回测与报告；不连接券商账户，不自动下单。
 
-## 1. 文档范围
+本文描述仓库中下一次生产发布的唯一目标拓扑。线上实际状态在发布门禁完成前仍以最近一次
+验收记录为准，不得因源码已合并而宣称生产已生效。`v0.5.0` 的 Kafka、Flink、MinIO、
+独立 Policy API 和 DinD 拓扑仅保留在发布记录、资源盘点和 Git 历史中。
 
-本文描述截至 `2026-10-04` 的生产技术方案。事实口径分为两层：
+详细设计见 [v0.5.1 精简生产架构](36-lean-architecture-v0.5.1.md)，发布步骤见
+[部署与运维](06-deployment-operations.md)。
 
-- 运行状态：`2026-10-01` 对火山引擎 VKE 集群
-  `cdaus2p98m08ce3b12nn0` 的只读验收快照。
-- 部署定义：当前 `deploy/kubernetes/overlays/volcengine/` 渲染后的 Kubernetes 清单。
-- `src/banxia_strategy/` 中的生产服务实现和事件契约。
-- 当前 overlay 的应用镜像标签为 `rustdx-20261015-r1`，按摘要固定；
-  Flink 镜像标签为 `59f59a6`。
-
-生产入口为 <https://shanao.asia>。系统只提供行情研究、策略筛选、盘中监控和报告，
-不连接券商、不读取交易账户、不自动下单。
-
-仓库 `HEAD` 中存在 Fusion L7 模拟盘代码和 PostgreSQL 迁移 `021`、`022`，但当前生产
-Kustomize migration ConfigMap 尚未纳入这两个脚本，应用镜像也未指向该提交。因此本文不把
-Fusion L7 写成当前生产能力。
-
-## 2. 方案概览
-
-当前采用火山引擎 VKE 托管 Kubernetes 集群。应用服务以 Deployment 或 StatefulSet
-运行，数据服务以单副本 StatefulSet 运行在同一集群，使用 EBS 云盘持久化；报告目录使用
-NAS RWX 卷。公网流量由 ALB 终止 HTTPS 后转发到 FastAPI。
-
-`v0.5.0` 新增以下生产工作负载：
-
-| 名称 | 类型 | 责任 |
-| --- | --- | --- |
-| `tsp-postgres` | StatefulSet | TSP 控制库与租户业务库 |
-| `tsp-product-initialize` | Job | 双库迁移、管理员与 Cell 初始化 |
-| `tsp-platform` | Deployment | 行情平台与公共不可变版本发布 |
-| `tsp-product` | Deployment | Web/API、Gateway、四类 Worker、Broker 与 DinD |
-
-Ingress 的 `/api/events*` 指向 `tsp-product:81`，其余路径指向
-`tsp-product:80`。Policy `api:80` 不再直接挂载公网 Ingress。
+## 2. 总体架构
 
 ```mermaid
 flowchart LR
-    U[浏览器] -->|HTTPS| ALB[火山 ALB]
-    ALB --> API[FastAPI x2]
+    U[浏览器] -->|HTTPS| ALB[火山引擎 ALB]
+    ALB --> APP[统一 React + FastAPI]
 
-    subgraph VKE[VKE / banxia namespace]
-        MC[mootdx 采集器 x2]
-        WAL[(每实例 SQLite WAL)]
-        K[(Kafka)]
-        FL[Flink 1 JM + 2 TM]
-        MS[market-sink x2]
-        SE[strategy-engine x2]
-        OB[outbox-relay x2]
-        PR[projection-worker x2]
-        RS[参考数据同步 x1]
-        CR[报告 CronJob]
-        LH[涨停历史 CronJob]
-        PT[模拟盘 CronJob]
-        PG[(PostgreSQL)]
-        CH[(ClickHouse)]
-        RD[(Redis)]
-        MI[(MinIO)]
-        NAS[(NAS 报告卷)]
+    APP --> PG[(PostgreSQL)]
+    APP --> CH[(ClickHouse)]
+    APP --> RD[(Redis)]
+    APP --> TOS[(TOS)]
+    APP --> COMP[tsp-compute]
 
-        MC --> WAL
-        MC --> K
-        K --> FL
-        K --> MS
-        K --> SE
-        FL --> K
-        MS --> CH
-        SE --> PG
-        PG --> OB
-        OB --> K
-        K --> PR
-        PR --> RD
-        RS --> PG
-        RS --> MI
-        CR --> PG
-        CR --> MI
-        CR --> NAS
-        LH --> PG
-        PT --> PG
-        API --> PG
-        API --> CH
-        API --> RD
-        API --> MI
-    end
+    RDX[rustdx native] --> MW[market-worker]
+    MW --> WAL[(SQLite WAL)]
+    MW --> CH
+    MW --> PG
+    MW --> RD
 
-    TDX[mootdx 节点池] -->|经 VPC NAT 出网| MC
-    TDX -->|参考数据| RS
-    TDX -->|报告/历史研究| CR
-    TDX -->|涨停历史| LH
-    TDX -->|模拟成交代理| PT
-    TDX -->|公司资料直读| API
+    TASK[task-worker] --> PG
+    TASK --> COMP
+    PLATFORM[tsp-platform] --> STATE[(公共行情版本)]
+    APP --> PLATFORM
+    COMP --> STATE
 ```
 
-当前方案的核心取舍是：应用层保留多副本、消息解耦和持久 WAL，数据层先采用单副本
-StatefulSet 控制成本。EBS `Retain` 可以避免 Pod 或 StatefulSet 删除时自动删除数据卷，
-但不能替代数据库级复制和经过验证的备份。
+核心原则：
 
-### 2.1 数据源边界
+1. 浏览器只访问统一产品域名和统一 FastAPI。
+2. Policy 作为同进程领域模块运行，`/api/policy/*` 外部契约保持不变。
+3. 当前不超过 200 只动态监控股票的实时链路由单一 Market Worker 完成。
+4. WAL、PostgreSQL Inbox/Outbox 和稳定事件 ID 保留可靠投递与幂等语义。
+5. PostgreSQL、ClickHouse 和 TOS 是权威存储，Redis 仅保存可重建投影。
+6. 私有计算在无凭据、禁止出网、只读根文件系统的独立 Pod 中执行。
 
-沪深行情、证券目录、板块、公司资料和历史研究数据只使用 `mootdx 0.11.x`。系统没有混用
-AkShare、聚宽、Tushare 或券商行情作为生产事实来源。mootdx 原生接口与项目使用状态见
-[mootdx 能力与项目使用矩阵](26-mootdx-capability-matrix.md)。
+## 3. 生产工作负载
 
-当前已持久化的 mootdx 数据包括：
+### 3.1 常驻服务
 
-- 候选股票实时盘口和一分钟 K 线。
-- 沪深 A 股证券目录、四类板块文件、行业文件和全市场每日快照。
-- 股票日/周/月/年历史和按交易日获取的历史分时。
-- 基于上述数据计算的涨停历史、策略计划、研究结果和模拟盘记录。
-
-当前仍同步直读 mootdx 的数据包括当前财务摘要、除权除息、F10 目录与正文。历史分笔、
-统一股票/指数 K 线模型和 `Affair` 历史财务包尚未进入生产持久化。
-
-## 3. 生产组件
-
-### 3.1 对外入口
-
-| 组件 | 当前配置 | 职责 |
-| --- | --- | --- |
-| DNS | `shanao.asia` | 指向 ALB 公网地址 |
-| ALB | HTTP 80、HTTPS 443 | 证书中心证书、HTTP 跳转 HTTPS、TLS 终止 |
-| Ingress | `banxia-alb` | 将 `/` 转发到 `api:80` |
-| API Service | `80 -> 8765` | 集群内负载均衡 |
-| API Deployment | 2 副本，HPA 2~6 | Web 页面、`/api/v1`、SSE、健康检查和指标 |
-
-外部只暴露 ALB。PostgreSQL、Kafka、ClickHouse、Redis、MinIO 和 Flink 控制面均使用
-集群内 Service，不直接提供公网入口。
-
-### 3.2 应用和计算服务
-
-| 工作负载 | 副本 | 主要职责 |
+| 工作负载 | 副本 | 职责 |
 | --- | ---: | --- |
-| `market-collector` | 2 | 复用 mootdx 连接；通过 PostgreSQL advisory lease 选主；采集并可靠发布行情 |
-| `market-reference-sync` | 1 | 16:20 同步证券目录、板块和每日参考快照，原始数据归档后事务发布 |
-| `market-sink` | 2 | 消费行情和特征事件，写入 ClickHouse 后提交 Kafka offset |
-| `strategy-engine` | 2 | 消费计划、行情和特征，执行多策略状态机并事务写 PostgreSQL |
-| `outbox-relay` | 2 | 领取 PostgreSQL Outbox，发布策略决策和报告事件 |
-| `projection-worker` | 2 | 将 Kafka 行情、特征和决策构建为 Redis 查询投影 |
-| `flink-jobmanager` | 1 | Flink 作业控制面 |
-| `flink-taskmanager` | 2 | 执行 1 秒板块窗口和分钟量比计算 |
-| `report-worker-1630` | CronJob | 工作日 16:30 生成初版报告 |
-| `report-worker-2330` | CronJob | 工作日 23:30 基于完整日线覆盖更新 |
-| `limit-up-history-sync` | CronJob | 工作日 16:35 增量同步涨停历史及辅助指标 |
-| `paper-trading-1650` | CronJob | 工作日 16:50 执行冻结规则的模拟成交和样本结算 |
-
-采集器运行两个副本，但只有取得 advisory lease 的副本请求 mootdx。两个副本各自拥有独立
-10Gi EBS WAL 卷；主实例故障后，备用实例接管采集，新主使用自己的 WAL，不共享旧主未确认
-事件，因此旧主卷必须保留用于恢复和审计。
-
-### 3.3 数据服务
-
-| 服务 | 版本 | 副本 | EBS | 数据职责 |
-| --- | --- | ---: | ---: | --- |
-| PostgreSQL | 16.4 | 1 | 20Gi | 策略、计划、状态机、Inbox/Outbox、任务、用户和主数据 |
-| Kafka | 3.9.0 KRaft | 1 | 20Gi | 实时事件总线和短期重放 |
-| ClickHouse | 24.8 | 1 | 40Gi | 高频行情、分钟线、实时特征和历史 K 线 |
-| Redis | 7.4.1 AOF | 1 | 10Gi | 最新行情、特征、决策和 SSE 短期投影 |
-| MinIO | 2024-09-22 | 1 | 30Gi | 原始参考数据、报告、审计和 Flink 状态对象 |
-
-另有：
-
-- `banxia-reports`：10Gi NAS RWX，供 API、策略引擎和报告任务共享文件结果。
-- `wal-market-collector-{0,1}`：每个 10Gi EBS RWO。
-- 所有 EBS/NAS StorageClass 均使用 `Retain` 回收策略。
-
-## 4. 实时行情与决策链路
-
-### 4.1 采集和可靠发布
-
-1. `market-collector` 从 PostgreSQL 读取所有有效监控计划及候选股票。
-2. 两个采集 Pod 使用固定 lease key 竞争 Leader；Standby 不访问 mootdx。
-3. Leader 通过 mootdx 连接批量请求候选股票。交易时段目标周期为 1 秒，其他时段为
-   60 秒；交易日历不可用时停止采集。
-4. 采集器规范化盘口字段，生成稳定 `event_id`，并产生：
-   `market.quote.snapshot.v1` 和去重后的 `market.bar.1m.v1`。
-5. 每条事件先写本实例 SQLite WAL，再发送 Kafka；收到 Broker 确认后才从 WAL 删除。
-6. Kafka 不可用时事件留在 WAL，下一轮先重放。WAL 达到容量上限时拒绝新事件，不覆盖旧数据。
-
-事件同时保存 `source_time`、`collected_at` 和 `published_at`，用于识别行情源时间、采集延迟
-和消息发布延迟。策略不能用服务接收时间冒充盘口时间。
-
-mootdx 原始盘口包含五档买卖盘，当前事件契约和策略状态机只保留并使用买一、卖一及其委托量；
-完整五档能力不等同 Level-2 逐笔委托。
-
-### 4.2 分流和实时计算
-
-Kafka 以股票代码作为行情类 Topic 的消息 Key，单只股票在同一分区内保持顺序。原始事件分为
-三条消费路径：
-
-1. `market-sink` 写入 ClickHouse，成功后同步提交 Kafka offset。
-2. Flink 对盘口做 1 秒滚动窗口，计算题材样本数和上涨家数比例；对一分钟线计算最近 5 根
-   基线的分钟量比，结果发布为 `market.feature.realtime.v1`。
-3. `strategy-engine` 消费盘口、实时特征和策略计划，驱动每个 `plan_id + symbol`
-   独立状态机。
-
-Flink Topic Sink 使用 exactly-once 事务和 10 秒 Checkpoint；系统整体仍定义为
-“至少一次投递 + 幂等写入”，因为 mootdx、Kafka 消费、PostgreSQL 和 ClickHouse 之间不存在
-单一分布式事务。
-
-### 4.3 策略状态事务
-
-策略引擎先缓存同股票最新特征，再用盘口执行：
-
-- 开盘和竞价区间校验。
-- 跌破昨收、开盘过高和超过 10:00 等不可逆放弃规则。
-- 行情时效校验。
-- 板块样本量和上涨比例确认。
-- 同一行情同时驱动多份有效策略计划。
-
-一次状态变化在同一个 PostgreSQL 事务内完成：
-
-1. 以源 `event_id` 登记 `inbox_event`。
-2. 锁定并更新 `decision_state`。
-3. 追加 `decision_event`。
-4. 写入 `outbox_event`。
-5. 事务提交后，策略引擎才提交 Kafka offset。
-
-重复事件命中 Inbox 唯一键后幂等结束。`outbox-relay` 独立发布
-`strategy.decision.v1`，Kafka 确认后再标记 Outbox 已发布，避免数据库已提交但事件丢失。
-
-### 4.4 查询投影
-
-`projection-worker` 消费以下事件并写 Redis：
-
-- 最新盘口：TTL 2 天。
-- 一分钟线和实时特征：TTL 2 天。
-- 最新策略决策：TTL 7 天。
-- 监控事件流：TTL 2 天。
-
-API 查询最新状态时优先使用 Redis，历史行情读 ClickHouse，策略和审计读 PostgreSQL，
-报告资产读 MinIO 或 NAS。Redis 不是事实来源；丢失后可由 Kafka、PostgreSQL 和 ClickHouse
-重建。
-
-## 5. 日终与参考数据链路
-
-### 5.1 16:20 参考数据同步
-
-`market-reference-sync` 每个工作日 16:20 执行：
-
-1. 从 mootdx 获取证券目录、当日收盘快照、四类板块文件和行业配置。
-2. 规范化数据并计算 SHA-256。
-3. 先将原始文件写入 MinIO `market-raw`。
-4. 校验记录数、字段和完整性。
-5. 在 PostgreSQL 事务中发布证券、板块成员和每日快照的新版本。
-6. 更新 `source_sync_state` 的已发布快照指针。
-
-任一步失败都不切换当前快照，API 继续读取上一次完整发布的数据，并暴露过期状态。
-
-### 5.2 16:30 与 23:30 策略报告
-
-报告 CronJob 的流程为：
-
-1. Worker 使用 mootdx 交易日历确认当天是否交易日。
-2. 开始执行时读取当前激活策略，不在排队时冻结旧配置。
-3. 获取涨停池、炸板池、板块关系和历史行情。
-4. 按一进二规则执行静态准入、评分、题材确认、行业限额和组合约束。
-5. 将策略版本、运行、候选、次日计划和逐日投影事务写入 PostgreSQL。
-6. 将 Markdown、JSON、CSV 上传 MinIO，并同步写 NAS 报告目录。
-7. PostgreSQL Outbox 产生 `strategy.plan.created.v1` 和
-   `report.generated.v1`，通知策略引擎刷新计划。
-
-16:30 是初版，23:30 使用更完整的收盘数据覆盖更新。唯一键
-`(trade_date, strategy_version_id)`、任务状态和内容哈希共同保证重试幂等。
-
-### 5.3 16:35 涨停历史同步
-
-`limit-up-history-sync` 使用 mootdx 日线重建涨停事实，并按需补充历史分时、当前财务摘要、
-除权除息和板块分类。结果写入 PostgreSQL 的涨停历史表，供涨停档案页面和策略研究查询。
-
-该链路是派生数据，不是 mootdx 原生“涨停池”接口。当前分类可能使用最新 F10 信息解释历史
-样本，接口会通过 `classification_basis` 暴露这一限制；尚不能视为完整时点一致分类。
-
-### 5.4 16:50 模拟盘链路
-
-`paper-trading-1650` 每个工作日执行：
-
-1. 读取 PostgreSQL 中状态为 `running` 的模拟盘活动及冻结配置。
-2. 使用 mootdx 交易日历、日线和 240 点历史分时评估计划与成交代理。
-3. 写入开仓、拒绝、行情缺失、平仓等状态及逐笔证据。
-4. 刷新样本数、胜率和收益指标；达到目标样本数后停止新增仓位。
-
-模拟盘只生成研究记录，不连接券商，也不会触发真实委托。当前生产镜像支持
-`first-board-positive-v1`；Fusion L7 仍属于仓库待发布能力。
-
-## 6. Kafka 事件和保留
-
-| Topic | 分区 | 保留 | 生产者 | 主要消费者 |
-| --- | ---: | ---: | --- | --- |
-| `market.quote.snapshot.v1` | 12 | 7 天 | 采集器 | Flink、行情 Sink、策略引擎、Redis 投影 |
-| `market.bar.1m.v1` | 12 | 14 天 | 采集器 | Flink、行情 Sink、Redis 投影 |
-| `market.feature.realtime.v1` | 12 | 7 天 | Flink | 行情 Sink、策略引擎、Redis 投影 |
-| `strategy.plan.created.v1` | 3 | 30 天 | PostgreSQL Outbox | 策略引擎 |
-| `strategy.decision.v1` | 12 | 30 天 | Outbox Relay | Redis 投影和审计链路 |
-| `strategy.audit.v1` | 12 | 90 天 | Outbox Relay | 审计归档 |
-| `report.generated.v1` | 3 | 30 天 | Outbox Relay | 报告通知和索引 |
-
-每个业务 Topic 都创建对应 `.dlq`，保留 90 天。当前 Kafka 为单 Broker，所以复制因子为 1。
-Topic 保留用于短期重放，不是长期备份。
-
-## 7. 数据归属和一致性
-
-| 数据 | 权威存储 | 加速或副本 | 一致性方式 |
-| --- | --- | --- | --- |
-| 原始盘口、分钟线、实时特征 | ClickHouse | Kafka、Redis | 稳定事件 ID、ReplacingMergeTree |
-| 策略定义、版本、计划和候选 | PostgreSQL | MinIO 报告 | 事务、唯一键、不可变参数 |
-| 当前策略状态和决策历史 | PostgreSQL | Kafka、Redis | Inbox/Outbox、乐观锁 |
-| 证券目录、板块和每日快照 | PostgreSQL | MinIO 原始对象 | 先对象归档、后事务发布 |
-| 最新监控查询 | Redis 投影 | PostgreSQL、ClickHouse | TTL、可重建 |
-| 报告和研究文件 | MinIO | NAS、PostgreSQL 元数据 | 内容哈希 |
-| Flink Checkpoint/Savepoint | MinIO `flink-state` | 无 | Flink Checkpoint |
-| 采集待发布事件 | 每 Pod SQLite WAL | Kafka | 先 WAL、后 Broker ACK |
-
-系统按“至少一次 + 幂等”设计。ClickHouse 的 `ReplacingMergeTree` 去重为最终收敛语义，
-查询最新值使用 `argMax` 等方式，不在高频请求中依赖 `FINAL`。
-
-公司财务摘要、F10、历史分笔、统一 `market_kline_v2` 和历史财务报表的目标归属已经完成
-设计，但对应表尚未全部部署。当前物理表和目标模型的边界见
-[mootdx 非实时数据持久化设计](11-mootdx-persistence.md)。
-
-## 8. 部署、迁移和发布
-
-生产清单使用 Kustomize：
-
-- `deploy/kubernetes/base/`：云厂商无关的应用基线。
-- `deploy/kubernetes/overlays/volcengine/`：VKE、EBS、NAS、ALB 和集群内数据服务。
-
-首次部署顺序：
-
-1. 创建 Namespace、Secret、StorageClass 和数据 StatefulSet。
-2. 恢复 PostgreSQL、Redis、Kafka、ClickHouse 和 MinIO 生产数据。
-3. 运行 PostgreSQL/ClickHouse Migration Job。
-4. 运行 Kafka Topic、MinIO Bucket 和策略目录 Bootstrap Job。
-5. 启动 Flink 并提交实时特征作业。
-6. 启动采集、消费者、API 和报告 CronJob。
-7. 验证工作负载、数据数量、Flink 作业、HTTPS 和页面。
-8. DNS 切换到 ALB。
-
-应用镜像必须使用 Git Commit 标签，禁止 `latest`。当前 overlay 的应用镜像为
-`f65154b`、Flink 镜像为 `59f59a6`。PostgreSQL migration ConfigMap 当前包含 `001` 至
-`020`；新增迁移必须先加入 Kustomize、重建镜像并完成生产验证，不能仅凭源码已合并认定上线。
-
-## 9. 网络、安全和隔离
-
-- VKE Worker 通过 NAT 出网访问 mootdx，行情节点不需要访问集群。
-- ALB 是唯一公网入口，并在 443 终止 TLS。
-- Namespace 默认拒绝入站，仅放行 API、数据服务、Flink 控制面和指标端口。
-- 数据库、Redis、对象存储和镜像凭证来自 Kubernetes Secret，不进入 ConfigMap 或 Git。
-- Pod 禁止提权并移除 Linux capabilities；应用 ServiceAccount 不自动挂载 Token。
-- API Liveness 只判断进程存活，Readiness 检查处理请求所需依赖。
-
-## 10. 可观测性和运行状态
-
-应用 Worker 暴露 `9100` 指标，Flink 暴露 `9249`。仓库提供可选
-ServiceMonitor/PodMonitor，需集群安装 Prometheus Operator 后单独应用。
-
-`2026-10-01` 上线核对结果：
-
-- 21 个常驻工作负载 Pod 全部 Ready，重启次数为 0。
-- Schema、Kafka、MinIO、策略目录和 Flink 提交 Job 全部完成。
-- PostgreSQL、Redis、Kafka、ClickHouse、MinIO 数据迁移完成。
-- Flink 作业 `banxia-realtime-features-v1` 为 `RUNNING`，24/24 个任务处于运行状态。
-- 生产入口 <https://shanao.asia> 可用。
-
-上述是最后一次完整集群验收快照，不是对 `2026-10-04` 每个 Pod 状态的实时声明。
-
-## 11. 当前风险与演进方向
-
-当前成本优先方案存在明确单点：
-
-- PostgreSQL、Kafka、ClickHouse、Redis、MinIO 和 Flink JobManager 均为单副本。
-- EBS `Retain` 只能保护卷不被级联删除，不能防止可用区、卷损坏或数据库逻辑损坏。
-- Kafka 复制因子为 1，Broker 故障期间实时链路停止。
-- MinIO 单实例不是高可用对象存储。
-- Flink Checkpoint 与业务对象位于同一个单实例 MinIO。
-- 股票详情的财务、除权除息和 F10 仍同步依赖 mootdx，节点不可用时相关详情会返回 `503`。
-- 历史分时当前写入兼容 K 线表，尚未与原生分钟 OHLC 明确分模。
-- 历史分类存在使用最新 F10 解释历史样本的时点偏差。
-
-后续生产增强按优先级推进：
-
-1. 建立并自动验证 PostgreSQL、ClickHouse、MinIO/EBS 备份恢复。
-2. 将 PostgreSQL、Redis、Kafka 和对象存储迁移到火山引擎托管高可用服务。
-3. 为 ClickHouse 配置副本和 Keeper，或迁移到 ByteHouse。
-4. 为 Flink 配置高可用 JobManager，并将 Checkpoint 迁移到 TOS。
-5. 完整接入 Prometheus 告警、日志和追踪。
-6. 完成节点驱逐、可用区故障、Kafka 重放和 Redis 全量重建演练。
-
-上述增强不改变数据契约和应用服务边界，主要替换数据服务端点与存储实现。
+| `tsp-product` | HPA 2～4 | React、统一 API、账户、多租户、SSE、内嵌 Policy、Task Worker |
+| `tsp-platform` | 1 | 公共行情版本、平台配置和只读行情接口 |
+| `tsp-compute` | 1 | 隔离执行回测、优化、挖掘等计算任务 |
+| `market-collector` | 2，租约单活 | 容器内运行 `market-worker`，负责采集、特征、决策与投影 |
+| `market-reference-sync` | 1 | 证券目录、板块和每日参考数据同步 |
+| `intraday-monitor` | 1 | 采集指标、规则计算和告警暴露 |
+
+`tsp-product` 每个 Pod 包含 API 与一个 `task-worker`。后者监督研究、实时规则、通知和
+定时任务四类子进程；子进程异常退出会使容器失败，由 Kubernetes 整体重建。
+
+### 3.2 定时任务
+
+| 工作负载 | 职责 |
+| --- | --- |
+| `report-worker-1630` | 生成收盘后初版报告 |
+| `report-worker-2330` | 使用完整日线覆盖更新 |
+| `limit-up-history-sync` | 增量同步涨停历史 |
+| `paper-trading-1650` | 结算冻结规则的模拟样本 |
+| `stock-history-sync` | 增量补齐历史行情 |
+| `board-capital-sync` | 更新板块资金数据 |
+
+### 3.3 发布与初始化任务
+
+| Job | 职责 |
+| --- | --- |
+| `banxia-schema-migration` | 应用 Policy PostgreSQL 与 ClickHouse 迁移 |
+| `banxia-catalog-bootstrap` | 初始化策略目录 |
+| `tsp-database-bootstrap` | 在共享 PostgreSQL 创建 TSP 双库和最小权限角色 |
+| `tsp-product-initialize` | 应用 TSP 双库迁移、初始化身份并注册生产 Cell |
+
+旧 TSP PostgreSQL 数据迁移使用
+`product/deploy/kubernetes/migrate-legacy-postgres.yaml` 手工执行。该文件不会被
+Kustomize 自动应用，避免未完成备份和核对时误迁移生产数据。
+
+## 4. 数据与存储
+
+| 数据域 | 生产落点 | 恢复边界 |
+| --- | --- | --- |
+| Policy 策略、计划、状态、任务、审计 | PostgreSQL `banxia` | 数据库备份与 WAL 归档 |
+| TSP 身份、租户和路由 | PostgreSQL `tsp_control` | 独立角色与数据库级恢复 |
+| TSP 租户业务数据 | PostgreSQL `tsp_data_production` | RLS、独立角色与数据库级恢复 |
+| 盘口、分钟线、特征、历史行情 | ClickHouse | 幂等事件 ID、分区备份 |
+| 最新行情、决策和 SSE 投影 | Redis | 从 PostgreSQL 和 ClickHouse 重建 |
+| 原始文件、报告和研究资产 | 火山引擎 TOS | Bucket 版本控制、生命周期和哈希校验 |
+| 未完成持久化的实时事件 | Market Worker 独立 SQLite WAL | EBS `Retain`，重启后重放 |
+| TSP 公共行情版本和租户产物 | NAS RWX | 发布标记、目录备份和只读挂载 |
+
+Policy、TSP 控制库和 TSP 业务库共享同一个 PostgreSQL 集群，但不共享数据库和运行角色。
+`tsp_control_runtime`、`tsp_data_runtime` 均禁止 `SUPERUSER`、`BYPASSRLS`、
+`CREATEDB`、`CREATEROLE` 和角色继承。
+
+生产对象存储使用 TOS 上海地域 S3 兼容内网端点。代码保留
+`BANXIA_MINIO_*` 兼容读取，仅用于旧环境迁移；生产 Secret 使用 `BANXIA_OBJECT_*`。
+
+## 5. 实时行情与决策
+
+单条行情事件按以下顺序处理：
+
+1. `market-worker` 获得 PostgreSQL advisory lease 后从 rustdx 批量采集候选股票。
+2. 规范化事件先写入本 Pod 的 SQLite WAL。
+3. 原始盘口或分钟线幂等写入 ClickHouse，并更新 Redis 行情投影。
+4. 进程内确定性计算实时特征，写入 ClickHouse 和 Redis。
+5. 每个有效计划独立执行策略状态机。
+6. PostgreSQL 在同一事务中写 Inbox、决策状态、审计事件和 Outbox。
+7. Market Worker 内的 Outbox Relay 将决策更新到 Redis。
+8. 权威存储成功后确认 WAL；Redis 决策投影失败由 Outbox 保留并重试。
+
+重复事件由 `plan_id + source_event_id` 作用域去重。不可逆放弃状态写入 PostgreSQL，
+服务重启和 WAL 重放不会使状态回退。
+
+Kafka、Flink、`market-sink`、独立 `strategy-engine`、独立 `outbox-relay` 和
+`projection-worker` 不进入 `v0.5.1` 生产清单。本地 Compose 暂时保留旧链路，仅用于
+历史回归和紧急回滚验证。
+
+## 6. Web、API 与计算
+
+### 6.1 统一入口
+
+ALB 只将 `/` 转发到 `tsp-product:80`。独立 SSE Gateway 和独立 Policy Service 均已
+移除。API 负责：
+
+- 账户、租户、权限和九项主导航业务。
+- `/api/events` 与 `/api/events/ticket` SSE 契约。
+- `/api/policy/*` 同源门面。
+- React 静态资源与前端路由。
+
+Policy 门面通过 `httpx.ASGITransport` 调用同进程 Policy FastAPI，不经过集群网络，
+不需要服务间 Token。内嵌 Policy 的 PostgreSQL、ClickHouse、Redis 和 TOS 客户端由
+扩展生命周期统一关闭。
+
+### 6.2 Compute 隔离
+
+API 通过 `tsp-compute:7000` 的 JSON 行协议发送受限任务。Compute Pod：
+
+- 不注入数据库、SMTP、TOS 或平台管理 Secret。
+- NetworkPolicy 默认拒绝全部出站，只允许 `tsp-product` 入站。
+- 只读挂载公共行情版本，根文件系统只读，临时文件写入受限 `emptyDir`。
+- 使用非 root 用户、删除全部 Linux capabilities，并限制 CPU、内存和并发。
+- 请求不能覆盖入口程序、环境变量、数据目录或资源限制。
+
+该边界用于隔离业务凭据和网络访问，不等同于面向不可信任代码的强多租户沙箱。若未来开放
+任意用户代码，需要升级为每任务 Pod、gVisor/Kata 或独立计算账户。
+
+## 7. 网络与安全
+
+- 公网仅暴露 ALB，数据库、缓存、计算和平台 Service 均为集群内地址。
+- Namespace 默认拒绝入站，再按组件标签放行。
+- `tsp-compute` 明确拒绝全部出站。
+- 应用 Pod 不挂载宿主机 Docker Socket，不包含特权容器。
+- Secret 不进入镜像、ConfigMap、日志或浏览器。
+- 生产镜像必须使用版本 Tag，并在发布前固定 Registry Digest。
+- PostgreSQL、ClickHouse、Redis、TOS 和 SMTP 凭据必须分别轮换。
+
+## 8. 可观测性
+
+当前监控重点：
+
+- Market Worker 是否持有租约、最后成功采集时间、行情覆盖率和 WAL 最老事件年龄。
+- PostgreSQL、ClickHouse、Redis 和 TOS 健康状态。
+- Outbox 未发布数量与最老记录年龄。
+- API P95/P99、错误率、SSE 连接数和登录失败率。
+- Task Worker 子进程存活、任务队列年龄和失败次数。
+- Compute 并发、429、任务时长、超时和异常退出。
+
+Kafka Lag 和 Flink Checkpoint 指标只属于旧链路，不得作为 `v0.5.1` 生产就绪条件。
+
+## 9. 发布门禁
+
+以下条件全部满足后才能切换生产：
+
+1. Policy、TSP 后端、前端、版本契约和 Kustomize 渲染测试通过。
+2. 三个生产镜像构建成功、完成漏洞扫描并固定 Digest。
+3. PostgreSQL、ClickHouse、旧 MinIO/NAS 完成备份。
+4. 旧 TSP PostgreSQL 双库迁移后完成表数、行数、登录和关键业务抽样核对。
+5. MinIO 到 TOS 完成对象数、总大小和 SHA-256 核对。
+6. 生产 Secret 不含示例值，数据库运行角色通过权限审计。
+7. 服务端 dry-run 无待删除的数据卷、Secret、ALB 或 StorageClass。
+8. 发布后完成健康、登录、九项菜单、Policy、SSE、SMTP、行情、报告和 Compute 验收。
+9. 验收后删除旧工作负载和 Service，但保留旧 PVC/Bucket 至少五个交易日。
+10. 观察期与恢复核对完成后，才允许审批回收旧存储。
+
+## 10. 回滚
+
+回滚必须以数据一致性为前提：
+
+1. 保留 `v0.5.0` 镜像 Digest、旧 TSP PostgreSQL PVC、旧 MinIO 卷和迁移前备份。
+2. 停止新版本写入，记录切换时间并备份切换后的增量数据。
+3. 核对共享 PostgreSQL、TOS 和旧存储间的增量差异。
+4. 恢复旧工作负载前确认同一数据域只有一个写入者。
+5. 若恢复 Kafka/Flink 链路，先停止 Market Worker并核对 WAL 与 Outbox。
+6. 回滚后重新执行登录、行情、计划、实盘、报告和任务队列验收。
+
+不得通过删除共享 PostgreSQL、ClickHouse、NAS、PVC、PV、Secret、ALB 或 StorageClass
+实现应用回滚。

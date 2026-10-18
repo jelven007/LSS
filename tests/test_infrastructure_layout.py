@@ -341,6 +341,53 @@ class ComposeLayoutTest(unittest.TestCase):
         self.assertIn('"${topic}.dlq"', script)
 
 
+class LeanProductionLayoutTest(unittest.TestCase):
+    def test_vke_overlay_uses_the_lean_runtime(self):
+        base = (
+            ROOT / "deploy/kubernetes/base/kustomization.yaml"
+        ).read_text(encoding="utf-8")
+        overlay = (
+            ROOT / "deploy/kubernetes/overlays/volcengine/kustomization.yaml"
+        ).read_text(encoding="utf-8")
+        runtime = (
+            ROOT / "product/deploy/kubernetes/runtime.yaml"
+        ).read_text(encoding="utf-8")
+        product = (
+            ROOT / "product/deploy/kubernetes/kustomization.yaml"
+        ).read_text(encoding="utf-8")
+        collector = (
+            ROOT
+            / "deploy/kubernetes/overlays/volcengine/collector-statefulset.yaml"
+        ).read_text(encoding="utf-8")
+        product_dockerfile = (ROOT / "product/Dockerfile").read_text(
+            encoding="utf-8",
+        )
+
+        self.assertNotIn("- flink.yaml", base)
+        for resource in (
+            "delete-kafka-statefulset.yaml",
+            "delete-minio-statefulset.yaml",
+            "delete-market-sink.yaml",
+            "delete-strategy-engine.yaml",
+            "delete-outbox-relay.yaml",
+            "delete-projection-worker.yaml",
+            "delete-policy-api-deployment.yaml",
+        ):
+            self.assertIn(resource, overlay)
+        self.assertIn("POLICY_SERVICE_URL: embedded://policy", runtime)
+        self.assertIn("TSP_COMPUTE_ADDRESS: tsp-compute:7000", runtime)
+        self.assertIn("name: task-worker", runtime)
+        self.assertNotIn("name: dind", runtime)
+        self.assertNotIn("name: gateway", runtime)
+        self.assertNotIn("privileged: true", runtime)
+        self.assertIn("- database-init.yaml", product)
+        self.assertIn("- compute.yaml", product)
+        self.assertNotIn("- postgres.yaml", product)
+        self.assertIn("args: [market-worker]", collector)
+        self.assertIn("COPY native/rustdx_native ./", product_dockerfile)
+        self.assertNotIn("github_token", product_dockerfile)
+
+
 class WebAssetTest(unittest.TestCase):
     def test_all_pages_use_shared_ui_standards(self):
         web = ROOT / "src/banxia_strategy/web"

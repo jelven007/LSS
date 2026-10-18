@@ -1,16 +1,30 @@
-# TSP v0.5.0 当前架构
+# TSP v0.5.1 当前架构
 
-本文档描述 `0.5.0` 已实现的系统结构和运行约束，不是未来架构提案。专项模块的目标
+`0.5.1` 生产模式已收敛为统一 API、统一任务 Worker 和独立 Compute：
+
+- Policy 以内嵌 ASGI 模块运行，不再经过集群 HTTP Bridge。
+- SSE Gateway 并入统一 API。
+- research、realtime、notifications、scheduled 由 `task-worker` 统一监督。
+- Compute 使用无密钥、禁止出网的独立 Pod，不再使用特权 DinD。
+- TSP 与 Policy 共用 PostgreSQL 集群，控制库和业务库仍保持角色隔离。
+
+完整拓扑见
+[`v0.5.1 精简生产架构`](../../docs/36-lean-architecture-v0.5.1.md)。
+
+以下内容从“v0.5.0 历史结构”起描述旧结构和独立运行约束。专项模块的目标
 设计见各自方案；开发规则见[贡献与复审指南](../CONTRIBUTING.md)。本文以 `main`
 源码为准，生产是否已部署这些能力以[版本基线](./version-baseline.md)为准。
 
-## 1. 架构摘要
+## 1. v0.5.1 架构摘要
 
 TSP 保留模块化单体的完整业务引擎，提供 VKE 多租户、完整单机多租户与独立运行三种模式。
 
-生产 VKE 拓扑由 `deploy/kubernetes/` 定义：独立 PostgreSQL 和 NAS 状态卷，
-`tsp-platform` 负责行情写入，`tsp-product` 同 Pod 运行 API、Gateway、四类 Worker、
-Compute Broker 与受控 DinD。Policy 次日计划和当日实盘通过集群内 Service Bridge 接入。
+生产 VKE 拓扑由 `deploy/kubernetes/` 定义：TSP 与 Policy 共享 PostgreSQL 集群并保持
+三库与运行角色隔离，`tsp-platform` 负责公共行情版本，`tsp-product` 运行统一 API 和
+`task-worker`，`tsp-compute` 作为无密钥、禁止出网的独立计算 Pod。Policy 次日计划和
+当日实盘通过同进程 ASGI 调用接入。
+
+## 2. v0.5.0 历史结构与独立运行
 
 `main` 源码候选的完整单机多租户拓扑使用 `deploy/full/compose.yml`，启用
 `MULTITENANCY_ENABLED=true`。保留完整前端与业务引擎，API 默认四进程；
@@ -45,9 +59,9 @@ Compute Broker 与受控 DinD。Policy 次日计划和当日实盘通过集群�
  Provider 能力路由与外部数据源 / AI / 通知
 ```
 
-## 2. 系统边界
+### 2.1 系统边界
 
-### 2.1 系统内部
+#### 2.1.1 系统内部
 
 - 数据源能力检测、标准化、同步和完整性检查。
 - 指标与 enriched 数据构建。
@@ -55,7 +69,7 @@ Compute Broker 与受控 DinD。Policy 次日计划和当日实盘通过集群�
 - 本地配置、用户数据、任务记录和认证状态。
 - Web UI、开放 API、SSE 和 MCP 适配。
 
-### 2.2 外部依赖
+#### 2.1.2 外部依赖
 
 - TickFlow、rustdx、fuyao 或自定义 Provider。
 - 用户配置的 AI 兼容接口。

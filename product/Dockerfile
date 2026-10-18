@@ -22,9 +22,9 @@ RUN if [ "$USE_CN_MIRROR" = "1" ]; then npm config set registry "$NPM_REGISTRY";
     npm install -g pnpm@9
 # 让 pnpm 走镜像源安装依赖
 RUN if [ "$USE_CN_MIRROR" = "1" ]; then pnpm config set registry "$NPM_REGISTRY"; fi
-COPY frontend/package.json frontend/pnpm-lock.yaml* ./
+COPY product/frontend/package.json product/frontend/pnpm-lock.yaml* ./
 RUN pnpm install --frozen-lockfile
-COPY frontend/ ./
+COPY product/frontend/ ./
 RUN pnpm build
 
 # === Stage 1b: Codex CLI ===
@@ -52,7 +52,7 @@ RUN if [ "$USE_CN_MIRROR" = "1" ]; then \
         sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources; \
     fi \
     && apt-get update \
-    && apt-get install -y --no-install-recommends git python3-dev python3-venv \
+    && apt-get install -y --no-install-recommends python3-dev python3-venv \
     && rm -rf /var/lib/apt/lists/* \
     && python3 -m venv /maturin \
     && if [ "$USE_CN_MIRROR" = "1" ]; then \
@@ -69,23 +69,16 @@ RUN if [ "$USE_CN_MIRROR" = "1" ]; then \
            'registry = "sparse+https://rsproxy.cn/index/"' \
            > "$CARGO_HOME/config.toml"; \
        fi
-WORKDIR /build
-COPY backend/native/rustdx_native ./
-RUN --mount=type=secret,id=github_token \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/usr/local/cargo/registry \
-    TOKEN="$(cat /run/secrets/github_token 2>/dev/null || true)" \
-    && if [ -n "$TOKEN" ]; then \
-         git config --global \
-           url."https://x-access-token:${TOKEN}@github.com/".insteadOf \
-           "https://github.com/"; \
-       fi \
-    && CARGO_NET_GIT_FETCH_WITH_CLI=true \
-       /maturin/bin/maturin build --locked --release --interpreter python3 --out /wheels \
-    && if [ -n "$TOKEN" ]; then \
-         git config --global --remove-section \
-           url."https://x-access-token:${TOKEN}@github.com/"; \
-       fi
+WORKDIR /build/tsp-rustdx-native
+COPY product/backend/native/rustdx_native ./
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    /maturin/bin/maturin build --locked --release \
+      --interpreter python3 --out /wheels
+WORKDIR /build/banxia-rustdx-native
+COPY native/rustdx_native ./
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    /maturin/bin/maturin build --locked --release \
+      --interpreter python3 --out /wheels
 
 # === Stage 2: Python 运行时 ===
 FROM ${BASE_IMAGE_REGISTRY}/library/python:3.11-slim-bookworm AS runtime
@@ -119,12 +112,12 @@ RUN if [ "$USE_CN_MIRROR" = "1" ]; then \
     fi
 
 # Backend deps
-COPY README.md /README.md
-COPY backend/pyproject.toml backend/uv.lock* ./
+COPY product/README.md /README.md
+COPY product/backend/pyproject.toml product/backend/uv.lock* ./
 # uv.lock contains the default local rustdx path source. Keep the source path
 # present during frozen resolution even though the runtime wheel is installed
 # separately below.
-COPY backend/native ./native
+COPY product/backend/native ./native
 # Frozen sync follows the artifact URLs in uv.lock, even with an index override.
 # Preinstall the same hash-pinned closure through a mirror, then let frozen sync
 # verify the environment and install the local project without changing the lock.
@@ -149,17 +142,26 @@ RUN if [ "$USE_CN_MIRROR" = "1" ]; then \
     done; \
     uv sync --frozen "$@"
 
-# Install the default rustdx route's wheel built for this target architecture.
+# Install both products' rustdx bridges built for this target architecture.
 COPY --from=rustdx-builder /wheels /app/native-wheels
 RUN uv pip install --python /app/.venv/bin/python /app/native-wheels/*.whl
+
+# Install the Policy domain in the same runtime without duplicating its native
+# dependency. Production dependencies are already locked by this image.
+COPY pyproject.toml README.md /app/policy-src/
+COPY src /app/policy-src/src
+RUN uv pip install --python /app/.venv/bin/python --no-deps /app/policy-src
 
 # Backend code
 # 注意:Docker 里 WORKDIR=/app, 而 config.py 的 _PROJECT_ROOT 是按开发布局
 # (<root>/backend/app/) 推导的, 容器内会错算到 /。这里用环境变量显式指定
 # 三个关键路径, 确保 static / tiers / data 都指向容器内正确位置。
-COPY backend/app ./app
+COPY product/backend/app ./app
 RUN .venv/bin/python -m app.plugins.rustdx.client
-COPY tiers.yaml /app/tiers.yaml
+COPY product/tiers.yaml /app/tiers.yaml
+COPY config /app/config
+RUN mkdir -p /app/data/wal /app/reports \
+    && chown -R 10001:10001 /app/data /app/reports
 ENV STATIC_DIR=/app/static \
     TIERS_YAML=/app/tiers.yaml \
     DATA_DIR=/app/data \
@@ -175,12 +177,13 @@ RUN codex --version
 # Hash project runtime files and the exact native wheel; dependency closure remains
 # governed by uv.lock. An omitted commit is explicitly unknown for local builds.
 ARG SOURCE_COMMIT=
-COPY VERSION /app/VERSION
-COPY scripts/build_manifest.py /app/build_manifest.py
+COPY product/VERSION /app/VERSION
+COPY product/scripts/build_manifest.py /app/build_manifest.py
 RUN python /app/build_manifest.py create --root /app \
     --include app --include static --include tiers.yaml --include VERSION \
     --include pyproject.toml --include uv.lock --include native-wheels \
-    --include build_manifest.py --version-file /app/VERSION \
+    --include policy-src --include config --include build_manifest.py \
+    --version-file /app/VERSION \
     --commit "$SOURCE_COMMIT" --output /app/build-manifest.json \
     && python /app/build_manifest.py verify --root /app --manifest /app/build-manifest.json
 

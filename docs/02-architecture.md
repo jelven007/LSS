@@ -1,7 +1,21 @@
 # 系统架构设计
 
-2026-10-15：仓库行情接入已由 mootdx 迁移至 rustdx native，沿用下文的数据流和存储分工。
-原架构图中的 mootdx 为迁移前名称；实现与安装见 [rustdx 数据源迁移](30-rustdx-migration.md)。
+## v0.5.1 CURRENT
+
+当前生产候选架构以
+[v0.5.1 精简生产架构](36-lean-architecture-v0.5.1.md) 为唯一权威说明：
+
+- React 与 FastAPI 构成统一 Web/API，Policy 以内嵌 ASGI 模块运行。
+- `market-worker` 在一个进程中完成 rustdx 采集、特征、策略状态和实时投影。
+- SQLite WAL、PostgreSQL Inbox/Outbox 和稳定事件 ID 保留可靠性与幂等语义。
+- VKE 不再部署 Kafka、Flink、独立 Policy API、独立 TSP PostgreSQL或MinIO。
+- TSP 后台任务收敛为 `task-worker`，计算运行在无密钥、禁止出网的独立 Compute Pod。
+- PostgreSQL、ClickHouse、Redis 和 TOS 分别承担业务事实、行情历史、实时投影和对象归档。
+
+下文记录 `v0.5.0` 及更早的流式架构，仅用于迁移、回滚和设计追溯，不再代表当前生产
+Kustomize 拓扑。旧图中的 mootdx 已由 rustdx native 替代。
+
+## v0.5.0 LEGACY
 
 ## 1. 架构原则
 
@@ -13,9 +27,9 @@
 6. 数据异常时优先停止判断，不使用旧行情继续生成入场确认。
 7. 系统不包含自动下单、券商账户和持仓资金操作。
 
-## 2. CURRENT 架构
+## 2. v0.5.0 生产快照
 
-当前版本已经部署到火山引擎 VKE，生产入口为 <https://shanao.asia>。应用服务多副本运行，
+该版本曾部署到火山引擎 VKE，生产入口为 <https://shanao.asia>。应用服务多副本运行，
 PostgreSQL、Kafka、ClickHouse、Redis 和 MinIO 以单副本 StatefulSet 运行。完整物理拓扑、
 容量、上线状态和三条数据链路见
 [当前生产技术方案](13-current-production-solution.md)。
@@ -46,7 +60,7 @@ flowchart LR
     ALB --> WEB[Web 看板]
 ```
 
-已实现能力：
+该历史版本已实现能力：
 
 - mootdx 长连接、批量盘口、1 秒交易时段轮询、60 秒分钟线和节点切换。
 - SQLite 持久 WAL、Kafka Topic/DLQ、ClickHouse Sink、Flink 特征和 Redis 投影。
@@ -57,9 +71,9 @@ flowchart LR
 - FastAPI `/api/v1`、SSE、Prometheus 和策略管理/次日计划/当日实盘/回测优化页面。
 - VKE、EBS/NAS、ALB HTTPS、Kustomize 发布、Migration/Bootstrap Job 和 NetworkPolicy。
 
-## 15. v0.5.0 整合 Web 架构
+## 15. v0.5.0 整合 Web 架构快照
 
-`v0.5.0` 将公网产品入口从 Policy API 页面切换为 TSP Web，Policy 保留为策略与实盘
+`v0.5.0` 曾将公网产品入口从 Policy API 页面切换为 TSP Web，Policy 保留为策略与实盘
 权威服务。两者位于同一 `banxia` 命名空间，但数据库和写入责任保持隔离。
 
 ```mermaid
@@ -113,7 +127,7 @@ Policy 上游 `401/403` 映射为 `502`，不会被前端误判为 TSP 登录失
 - 删除业务工作负载不等于删除数据；PVC、PV、Secret、ALB 和 StorageClass 必须显式保留。
 - 生产镜像按 `v0.5.0` Tag 发布，并在 Kustomize 中固定 Registry Digest。
 
-当前限制：
+该历史版本的限制：
 
 - PostgreSQL、Kafka、ClickHouse、Redis、MinIO 和 Flink JobManager 当前均为单副本，
   存在数据服务单点；EBS `Retain` 不等于数据库高可用或备份。
@@ -122,7 +136,7 @@ Policy 上游 `401/403` 映射为 `502`，不会被前端误判为 TSP 登录失
 - 历史分钟线无法证明真实委托队列成交，严格可买只是保守代理。
 - 09:45 盈利优化候选样本仅 9 笔且留出集 1 笔，保持未激活。
 
-## 3. TARGET 高可用架构
+## 3. v0.5.0 当时的高可用目标
 
 目标架构保持现有事件契约和服务边界，将单副本数据服务替换为托管或多副本高可用能力：
 

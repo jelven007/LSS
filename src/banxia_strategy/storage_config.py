@@ -44,6 +44,7 @@ class StorageSettings:
     minio_access_key: str = "banxia"
     minio_secret_key: str = "banxia-local-secret"
     minio_secure: bool = False
+    minio_region: Optional[str] = None
     minio_report_bucket: str = "strategy-reports"
     minio_market_bucket: str = "market-raw"
     strategy_version: str = "v2"
@@ -103,25 +104,41 @@ class StorageSettings:
             ),
             redis_url=environ.get("BANXIA_REDIS_URL", cls.redis_url),
             minio_endpoint=environ.get(
-                "BANXIA_MINIO_ENDPOINT",
-                cls.minio_endpoint,
+                "BANXIA_OBJECT_ENDPOINT",
+                environ.get("BANXIA_MINIO_ENDPOINT", cls.minio_endpoint),
             ),
             minio_access_key=environ.get(
-                "BANXIA_MINIO_ACCESS_KEY",
-                cls.minio_access_key,
+                "BANXIA_OBJECT_ACCESS_KEY",
+                environ.get("BANXIA_MINIO_ACCESS_KEY", cls.minio_access_key),
             ),
             minio_secret_key=environ.get(
-                "BANXIA_MINIO_SECRET_KEY",
-                cls.minio_secret_key,
+                "BANXIA_OBJECT_SECRET_KEY",
+                environ.get("BANXIA_MINIO_SECRET_KEY", cls.minio_secret_key),
             ),
-            minio_secure=_boolean(environ.get("BANXIA_MINIO_SECURE")),
+            minio_secure=_boolean(
+                environ.get(
+                    "BANXIA_OBJECT_SECURE",
+                    environ.get("BANXIA_MINIO_SECURE"),
+                )
+            ),
+            minio_region=(
+                environ.get("BANXIA_OBJECT_REGION")
+                or environ.get("BANXIA_MINIO_REGION")
+                or None
+            ),
             minio_report_bucket=environ.get(
-                "BANXIA_MINIO_REPORT_BUCKET",
-                cls.minio_report_bucket,
+                "BANXIA_OBJECT_REPORT_BUCKET",
+                environ.get(
+                    "BANXIA_MINIO_REPORT_BUCKET",
+                    cls.minio_report_bucket,
+                ),
             ),
             minio_market_bucket=environ.get(
-                "BANXIA_MINIO_MARKET_BUCKET",
-                cls.minio_market_bucket,
+                "BANXIA_OBJECT_MARKET_BUCKET",
+                environ.get(
+                    "BANXIA_MINIO_MARKET_BUCKET",
+                    cls.minio_market_bucket,
+                ),
             ),
             strategy_version=environ.get(
                 "BANXIA_STRATEGY_VERSION",

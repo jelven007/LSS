@@ -49,13 +49,10 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: market-collector
-          image: banxia-strategy:v0.5.0
+        - name: market-worker
+          image: banxia-strategy:v0.5.1
           imagePullPolicy: IfNotPresent
-          args: [market-collector]
-          env:
-            - name: BANXIA_CODE_COMMIT
-              value: a8828099e83c93ce31b92d22db3c76f095cc4a13
+          args: [market-worker]
           envFrom:
             - configMapRef:
                 name: banxia-runtime
@@ -93,8 +90,7 @@ spec:
               mountPath: /app/reports
       volumes:
         - name: reports
-          persistentVolumeClaim:
-            claimName: banxia-reports
+          emptyDir: {}
   volumeClaimTemplates:
     - metadata:
         name: wal

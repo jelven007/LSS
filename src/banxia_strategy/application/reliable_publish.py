@@ -9,7 +9,7 @@ from ..ports.storage import EventPublisher
 
 
 class ReliableEventPublisher:
-    """Persist first, publish second, delete only after broker acknowledgement."""
+    """Persist first, publish second, delete only after downstream acceptance."""
 
     def __init__(
         self,

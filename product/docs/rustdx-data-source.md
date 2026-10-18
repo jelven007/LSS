@@ -70,9 +70,8 @@ uv run --frozen --no-sync pytest tests/test_rustdx_provider.py tests/test_rustdx
 ```
 
 未安装 Rust 时，先按 [Rust 官方安装说明](https://www.rust-lang.org/tools/install)
-安装工具链。固定 Git 源需要授权时，使用已有 Git 凭据并设置
-`CARGO_NET_GIT_FETCH_WITH_CLI=true`，让 Cargo 通过 Git CLI 获取源码。
-不要将凭据写入 Cargo 依赖 URL，也不要切换旧提交绕过版本校验。
+安装工具链。构建必须使用 `Cargo.lock` 和固定 crates.io 版本，不得改用未锁定的 Git
+分支或临时提交绕过版本校验。
 
 Docker 镜像和桌面安装包会在构建阶段编译并包含原生扩展，运行目标机器不需要安装
 Rust。开发启动脚本每次同步后端依赖；脚本启动、Docker 构建、CI 和桌面打包均

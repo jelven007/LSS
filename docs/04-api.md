@@ -4,8 +4,8 @@
 
 当前 FastAPI 服务以 `/api/v1/*` 为正式接口。运行时完整契约由
 `/api/openapi.json` 生成；仓库 [OpenAPI](openapi.yaml) 当前覆盖核心接口，市场、自选股、
-认证和部分运维接口仍需同步补齐。Kafka 事件契约见 [AsyncAPI](asyncapi.yaml)。旧 `/api/*`
-只保留只读兼容代理。
+认证和部分运维接口仍需同步补齐。[AsyncAPI](asyncapi.yaml) 保留为 Kafka 兼容回归契约，
+不属于 `v0.5.1` VKE 主链路。旧 `/api/*` 只保留只读兼容代理。
 
 ## 2. 通用约定
 
@@ -105,7 +105,7 @@ X-Request-ID: 5b60f996-3be1-4d53-9988-7a9825d187af
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/v1/health/live` | 进程是否存活，不检查外部依赖 |
-| GET | `/api/v1/health/ready` | Kafka、PostgreSQL 等关键依赖是否就绪 |
+| GET | `/api/v1/health/ready` | PostgreSQL、ClickHouse、Redis、TOS 等关键依赖是否就绪 |
 | GET | `/api/v1/system/status` | 采集延迟、策略计划和依赖摘要 |
 
 `ready` 仅在服务能够正确处理请求时返回 200。不能因为进程存活就忽略数据库不可用。
@@ -372,12 +372,12 @@ SSE 不是权威存储。客户端重连时先调用普通查询，再使用 `La
 - 研究资产下载只允许数据库索引中的文件名，拒绝路径穿越。
 - 无任何自动下单接口。
 
-## 9. TSP 同源 Policy Bridge
+## 9. 统一 Policy Facade
 
-公网 Web 不直接暴露 Policy `/api/v1`。以下同源接口由 TSP 会话认证和权限层保护，再由
-服务端转发到集群内 Policy Service。
+公网 Web 不直接暴露 Policy `/api/v1`。以下同源接口由统一 TSP 会话和权限层保护，
+再通过 ASGI Transport 调用同进程 Policy 模块。
 
-| 方法 | TSP 路径 | Policy 上游 | 权限 |
+| 方法 | 统一路径 | 内嵌 Policy 路径 | 权限 |
 | --- | --- | --- | --- |
 | `GET` | `/api/policy/reports?limit=N` | `/api/v1/reports` | 已登录 |
 | `GET` | `/api/policy/reports/{trade_date}` | `/api/v1/reports/{trade_date}` | 已登录 |
@@ -385,19 +385,18 @@ SSE 不是权威存储。客户端重连时先调用普通查询，再使用 `La
 | `GET` | `/api/policy/report-jobs/{job_id}` | `/api/v1/report-jobs/{job_id}` | 已登录 |
 | `GET` | `/api/policy/monitor` | `/api/v1/monitor` | 已登录 |
 
-桥接只允许固定白名单。日期必须为 `YYYY-MM-DD`，任务 ID、股票代码和查询参数在转发前
-校验；请求超时由 `POLICY_SERVICE_TIMEOUT_SECONDS` 控制。
+Facade 只允许固定白名单。日期必须为 `YYYY-MM-DD`，任务 ID、股票代码和查询参数在调用前
+校验；执行超时由 `POLICY_SERVICE_TIMEOUT_SECONDS` 控制。
 
 ### 9.1 错误语义
 
 - TSP 会话无效：返回 `401/403`，由统一账户流程处理。
-- Policy Token 无效或上游拒绝：返回 `502`，不得触发 TSP 退出登录。
-- Policy 未配置或不可达：返回 `503/502`，次日计划和当日实盘保留默认界面。
+- 内嵌 Policy 初始化失败：返回 `503`，不得触发 TSP 退出登录。
+- Policy 数据依赖不可达：返回对应 `5xx`，次日计划和当日实盘保留默认界面。
 - 只读请求使用静默错误模式，不弹全局依赖 Toast；页面内提供同步状态与重试。
 
 ### 9.2 安全约束
 
-- `POLICY_SERVICE_TOKEN` 只存在于 `tsp-product-secrets`。
-- 浏览器请求、HTML、JavaScript、日志和错误正文不得包含 Token。
-- Policy Service 不再通过公网 Ingress 暴露。
-- 报告刷新必须同时满足 TSP 权限与 Policy 服务端认证。
+- 浏览器请求、HTML、JavaScript、日志和错误正文不得包含数据服务凭据。
+- Policy 不创建独立 Service 或公网 Ingress。
+- 报告刷新必须通过 TSP `data:manage` 权限校验。

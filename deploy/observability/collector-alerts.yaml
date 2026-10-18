@@ -80,7 +80,7 @@ groups:
         labels: {severity: critical, service: market-collector}
         annotations:
           runbook: *collector_runbook
-          summary: Kafka行情发布持续失败
+            summary: 行情持久化链路持续失败
       - alert: BanxiaCollectorWalPending
         expr: banxia_collector_wal_pending{environment="production"} > 0
         for: 2m

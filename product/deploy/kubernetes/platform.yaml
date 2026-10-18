@@ -60,7 +60,7 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: prepare-state
-          image: tsp-product-runtime:v0.5.0
+          image: tsp-product-runtime:v0.5.1
           command: [/bin/sh, -ec]
           args:
             - |
@@ -85,7 +85,7 @@ spec:
               memory: 128Mi
       containers:
         - name: platform
-          image: tsp-product-runtime:v0.5.0
+          image: tsp-product-runtime:v0.5.1
           command:
             - /app/.venv/bin/python
             - -m

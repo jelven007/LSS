@@ -1,0 +1,68 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tsp-legacy-postgres-migration
+  namespace: banxia
+  labels:
+    app: tsp-legacy-postgres-migration
+    component: migration
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 604800
+  template:
+    metadata:
+      labels:
+        app: tsp-legacy-postgres-migration
+        component: migration
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: banxia-registry
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: xm1001-cn-shanghai.cr.volces.com/banxia/postgres:16.4-alpine
+          command: [/bin/sh, -ec]
+          args:
+            - |
+              umask 077
+              pg_dump --dbname="$TSP_LEGACY_CONTROL_ADMIN_DSN" \
+                --format=custom --no-owner --no-privileges \
+                --file=/tmp/control.dump
+              pg_restore --dbname="$TSP_CONTROL_ADMIN_DSN" \
+                --clean --if-exists --no-owner --no-privileges \
+                /tmp/control.dump
+              pg_dump --dbname="$TSP_LEGACY_DATA_ADMIN_DSN" \
+                --format=custom --no-owner --no-privileges \
+                --file=/tmp/data.dump
+              pg_restore --dbname="$TSP_DATA_ADMIN_DSN" \
+                --clean --if-exists --no-owner --no-privileges \
+                /tmp/data.dump
+          envFrom:
+            - secretRef:
+                name: tsp-product-admin
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 10Gi

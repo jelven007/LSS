@@ -11,15 +11,14 @@ from .adapters.clickhouse import ClickHouseMarketHistoryStore
 from .adapters.kafka import KafkaEventConsumer, KafkaEventPublisher
 from .adapters.lease import PostgresAdvisoryLease
 from .adapters.minio import MinioObjectAssetStore
-from .adapters.postgres import PostgresStorage, STRATEGY_CODE, _uuid
-from .adapters.strategy_catalog import CatalogConfigStore, SharedCollectionConfig
+from .adapters.postgres import STRATEGY_CODE, PostgresStorage, _uuid
 from .adapters.redis import RedisSnapshotCache
+from .adapters.strategy_catalog import CatalogConfigStore, SharedCollectionConfig
 from .adapters.wal import SQLiteEventWAL
 from .api import ApiServices, create_api_app
-from .auth import AuthenticationManager, SmtpSettings, SmtpVerificationMailer
-from .catalog_bootstrap import ensure_initial_catalog
 from .application.collector import MarketCollector
 from .application.features import FeatureWorker
+from .application.lean_market import LeanMarketPipeline
 from .application.limit_up_history_sync import LimitUpHistorySync
 from .application.market_sink import MarketSinkWorker
 from .application.outbox import OutboxRelay
@@ -36,6 +35,8 @@ from .application.report_scheduler import (
 )
 from .application.report_worker import NonTradingDayError, ReportWorker
 from .application.strategy_engine import StrategyEventProcessor, StrategyWorker
+from .auth import AuthenticationManager, SmtpSettings, SmtpVerificationMailer
+from .catalog_bootstrap import ensure_initial_catalog
 from .config import RuntimeSettings
 from .contracts.topics import (
     MARKET_BAR_1M,
@@ -45,12 +46,20 @@ from .contracts.topics import (
     STRATEGY_PLAN_CREATED,
 )
 from .data_provider import make_provider
-from .observability import configure_logging, register_collector_metrics, start_metrics_server
-from .web_server import ReportStore
+from .observability import (
+    configure_logging,
+    register_collector_metrics,
+    start_metrics_server,
+)
 from .ports.storage import ReportIdentity
-from .strategy_config import StrategyConfig, StrategyConfigStore, revision_for, version_for
+from .strategy_config import (
+    StrategyConfig,
+    StrategyConfigStore,
+    revision_for,
+    version_for,
+)
 from .strategy_history import materialize_strategy_history
-
+from .web_server import ReportStore
 
 ReportRunResult = Union[Dict[str, Any], Literal[False]]
 
@@ -82,6 +91,7 @@ def _minio(settings: RuntimeSettings) -> MinioObjectAssetStore:
         storage.minio_secret_key,
         bucket=storage.minio_report_bucket,
         secure=storage.minio_secure,
+        region=storage.minio_region,
     )
 
 
@@ -93,6 +103,7 @@ def _market_minio(settings: RuntimeSettings) -> MinioObjectAssetStore:
         storage.minio_secret_key,
         bucket=storage.minio_market_bucket,
         secure=storage.minio_secure,
+        region=storage.minio_region,
         ensure_bucket=True,
     )
 
@@ -231,6 +242,91 @@ def run_collector(settings: RuntimeSettings, logger: Any) -> None:
         collector.close()
         repository.close()
         logger.info("collector stopped")
+
+
+def run_market_worker(settings: RuntimeSettings, logger: Any) -> None:
+    """Run collection, feature calculation, persistence and decisions together."""
+    plan = _load_plan(settings)
+    repository = _postgres(settings)
+
+    def candidates():
+        return [
+            {
+                **item,
+                "code": item["symbol"],
+                "plan_date": current["trade_date"],
+            }
+            for current in repository.list_monitor_plans()
+            for item in current["candidates"]
+        ]
+
+    pipeline = LeanMarketPipeline(
+        repository=repository,
+        market_store=_clickhouse(settings),
+        cache=_redis(settings),
+        quote_ttl_seconds=settings.storage.monitor_snapshot_ttl_seconds,
+        stream_ttl_seconds=settings.storage.monitor_snapshot_ttl_seconds,
+    )
+    reliable = ReliableEventPublisher(
+        wal=SQLiteEventWAL(
+            settings.wal_path,
+            max_bytes=settings.wal_max_bytes,
+        ),
+        publisher=pipeline,
+    )
+    collector = MarketCollector(
+        candidates=plan.candidates,
+        publisher=reliable,
+        lease=PostgresAdvisoryLease(
+            settings.storage.postgres_dsn,
+            lease_key=f"{settings.environment}:market-worker:shard-0",
+        ),
+        quote_interval_seconds=settings.quote_interval_seconds,
+        idle_interval_seconds=settings.idle_interval_seconds,
+        config_store=SharedCollectionConfig(repository, _config_store(settings)),
+        candidate_loader=candidates,
+        session_checker=repository.is_trading_session,
+    )
+    outbox_repository = _postgres(settings)
+
+    class BorrowedPublisher:
+        def publish(self, topic, key, event):
+            pipeline.publish(topic, key, event)
+
+    relay = OutboxRelay(
+        repository=outbox_repository,
+        publisher=BorrowedPublisher(),
+    )
+
+    def run_relay() -> None:
+        try:
+            relay.run_forever()
+        except Exception:
+            logger.exception("market worker outbox relay failed")
+            collector.stop()
+
+    relay_thread = threading.Thread(
+        target=run_relay,
+        name="market-worker-outbox",
+    )
+    register_collector_metrics(collector, environment=settings.environment)
+
+    def request_stop(_signum, _frame):
+        collector.stop()
+        relay.stop()
+
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
+    logger.info("lean market worker started")
+    relay_thread.start()
+    try:
+        collector.run_forever()
+    finally:
+        relay.stop()
+        relay_thread.join(timeout=10)
+        outbox_repository.close()
+        collector.close()
+        logger.info("lean market worker stopped")
 
 
 def run_market_sink(settings: RuntimeSettings, logger: Any) -> None:
@@ -897,6 +993,66 @@ def run_limit_up_history_sync(
         repository.close()
 
 
+def build_api_services(
+    settings: RuntimeSettings,
+    logger: Any = None,
+    *,
+    embedded: bool = False,
+) -> tuple[ApiServices, tuple[Any, ...]]:
+    repository = _postgres(settings)
+    initial, history_job = ensure_initial_catalog(
+        repository,
+        settings.strategy_config_path,
+    )
+    if logger is not None:
+        logger.info(
+            "initial strategy ready",
+            extra={
+                "strategy_id": initial["strategy_id"],
+                "history_job_id": history_job["job_id"],
+                "history_job_status": history_job["status"],
+            },
+        )
+    cache = _redis(settings)
+    object_store = _minio(settings)
+    clickhouse = _clickhouse(settings)
+    auth_enabled = settings.auth_enabled and not embedded
+    auth_manager = (
+        AuthenticationManager(
+            repository,
+            SmtpVerificationMailer(
+                SmtpSettings(
+                    host=settings.smtp_host,
+                    port=settings.smtp_port,
+                    username=settings.smtp_username,
+                    password=settings.smtp_password,
+                    sender=settings.smtp_sender,
+                    timeout_seconds=settings.smtp_timeout_seconds,
+                )
+            ),
+            secret=settings.auth_secret,
+            session_hours=settings.auth_session_hours,
+        )
+        if auth_enabled
+        else None
+    )
+    services = ApiServices(
+        reports=ReportStore(settings.report_dirs),
+        repository=repository,
+        cache=cache,
+        object_store=object_store,
+        api_token=None if embedded else settings.api_token,
+        clickhouse_ready=clickhouse.ready,
+        market_history=clickhouse,
+        strategy_version=settings.storage.strategy_version,
+        config_store=_config_store(settings),
+        auth_enabled=auth_enabled,
+        auth_manager=auth_manager,
+        auth_cookie_secure=settings.auth_cookie_secure,
+    )
+    return services, (clickhouse, object_store, cache, repository)
+
+
 def run_api(settings: RuntimeSettings, logger: Any) -> None:
     try:
         import uvicorn
@@ -904,53 +1060,7 @@ def run_api(settings: RuntimeSettings, logger: Any) -> None:
         raise RuntimeError(
             "API service requires `pip install -e '.[production]'`"
         ) from exc
-    repository = _postgres(settings)
-    initial, history_job = ensure_initial_catalog(
-        repository,
-        settings.strategy_config_path,
-    )
-    logger.info(
-        "initial strategy ready",
-        extra={
-            "strategy_id": initial["strategy_id"],
-            "history_job_id": history_job["job_id"],
-            "history_job_status": history_job["status"],
-        },
-    )
-    cache = _redis(settings)
-    object_store = _minio(settings)
-    kafka = _publisher(settings, "api-readiness")
-    clickhouse = _clickhouse(settings)
-    auth_manager = AuthenticationManager(
-        repository,
-        SmtpVerificationMailer(
-            SmtpSettings(
-                host=settings.smtp_host,
-                port=settings.smtp_port,
-                username=settings.smtp_username,
-                password=settings.smtp_password,
-                sender=settings.smtp_sender,
-                timeout_seconds=settings.smtp_timeout_seconds,
-            )
-        ),
-        secret=settings.auth_secret,
-        session_hours=settings.auth_session_hours,
-    )
-    services = ApiServices(
-        reports=ReportStore(settings.report_dirs),
-        repository=repository,
-        cache=cache,
-        object_store=object_store,
-        api_token=settings.api_token,
-        kafka_ready=kafka.ready,
-        clickhouse_ready=clickhouse.ready,
-        market_history=clickhouse,
-        strategy_version=settings.storage.strategy_version,
-        config_store=_config_store(settings),
-        auth_enabled=settings.auth_enabled,
-        auth_manager=auth_manager,
-        auth_cookie_secure=settings.auth_cookie_secure,
-    )
+    services, resources = build_api_services(settings, logger)
     app = create_api_app(services)
     logger.info("api starting")
     try:
@@ -961,12 +1071,13 @@ def run_api(settings: RuntimeSettings, logger: Any) -> None:
             log_config=None,
         )
     finally:
-        for target in (kafka, clickhouse, object_store, cache, repository):
+        for target in resources:
             target.close()
 
 
 RUNNERS = {
     "market-collector": run_collector,
+    "market-worker": run_market_worker,
     "market-sink": run_market_sink,
     "feature-worker": run_feature_worker,
     "strategy-engine": run_strategy_engine,

@@ -11,21 +11,20 @@
 
 | 方式 | 适用场景 | 认证模式 |
 | --- | --- | --- |
-| 火山引擎 VKE | `v0.5.0` 生产 | 管理员/租户 RBAC、持久会话 |
+| 火山引擎 VKE | `v0.5.1` 精简生产架构 | 管理员/租户 RBAC、持久会话 |
 | 完整单机多租户 | 一期服务器、100 用户混合负载 | 管理员/租户 RBAC、持久会话 |
 | 根目录 Docker Compose | 独立运行、NAS | 保留邮箱账户认证 |
 | Dev 模式 | 二次开发和本地调试 | 保留邮箱账户认证 |
 | 桌面安装包 | 单机直接使用 | 本地免登录 |
 
 生产 VKE 拓扑使用 `deploy/kubernetes/`，并由 Policy 根仓库 Kustomize overlay 统一
-渲染。完整单机多租户回滚拓扑使用 `deploy/full/compose.yml`，两者均启用
-`MULTITENANCY_ENABLED=true`。保留完整前端与业务引擎，API 默认四进程；
-独立实时网关负责 SSE，平台负责唯一行情写入，四类 Worker 分别负责研究、
-实时监控/模拟盘、通知和调度。
+渲染。生产使用统一 API、统一任务 Worker、独立 Compute 和内嵌 Policy；完整单机多租户
+回滚拓扑继续使用 `deploy/full/compose.yml`。两者均启用
+`MULTITENANCY_ENABLED=true`。
 身份与租户业务持久化到 PostgreSQL v6，公共行情按不可变版本只读共享。
 VKE 部署步骤见[VKE 部署](../deploy/kubernetes/README.md)，独立主机步骤见
-[完整单机多租户部署](../deploy/full/README.md)。当前生产为 `v0.5.0`/schema v6，
-实际 commit 和镜像 digest 见[版本基线](./version-baseline.md)。
+[完整单机多租户部署](../deploy/full/README.md)。当前候选版本为 `v0.5.1`/schema v6，
+实际生产 commit 和镜像 digest 以[版本基线](./version-baseline.md)为准。
 
 下方根目录 Compose、Dev 和桌面步骤适用于独立运行模式。
 
@@ -59,7 +58,13 @@ BASE_IMAGE_REGISTRY=public.ecr.aws/docker docker compose build app
 ```
 
 也可在 `.env` 中保存 `BASE_IMAGE_REGISTRY=public.ecr.aws/docker`。
-直接构建使用 `docker build --build-arg BASE_IMAGE_REGISTRY=public.ecr.aws/docker -t tsp:local .`。
+集成镜像从仓库根目录构建：
+
+```bash
+docker build -f product/Dockerfile \
+  --build-arg BASE_IMAGE_REGISTRY=public.ecr.aws/docker \
+  -t tsp:local .
+```
 该参数只替换 Node、Python、Rust 基础镜像的仓库前缀，版本和依赖锁不变；
 使用备选仓库时应核对镜像摘要。`USE_CN_MIRROR` 仅控制构建中的 npm、PyPI、
 APT 和 Cargo 源，不控制 Docker Hub 拉取。

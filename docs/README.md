@@ -5,9 +5,9 @@
 
 ## 文档状态
 
-- 基线版本：`v0.5.0`
+- 基线版本：`v0.5.1`
 - 基线日期：`2026-10-18`
-- 当前实现：TSP React/FastAPI 多租户产品 + Policy 多服务策略系统
+- 当前实现：统一 React/FastAPI 产品 + 内嵌 Policy 领域 + 精简 Market Worker
 - 部署形态：火山引擎 VKE 统一生产部署，本地 Compose 用于开发和集成验证
 - 数据源：本地与线上均使用 `rustdx native`
 - 系统边界：研究、筛选、监控和报告，不连接券商，不自动下单
@@ -26,16 +26,18 @@
 
 | 文档 | 作用 |
 | --- | --- |
+| [v0.5.1 精简生产架构](36-lean-architecture-v0.5.1.md) | 当前统一应用、Market Worker、数据归属、计算隔离和迁移顺序 |
 | [rustdx 数据源迁移](30-rustdx-migration.md) | 当前原生桥接、安装与部署配置、历史兼容和实测验证 |
 | [rustdx 生产发布记录](releases/2026-10-15-rustdx-r1.md) | 镜像摘要、上线验收结果和回滚方式 |
 | [v0.5.0 Web 产品发布](releases/2026-10-18-web-v0.5.0.md) | 整合产品、镜像、VKE 重建和验收记录 |
-| [TSP 产品移植与 Policy 整合](35-tsp-product-integration.md) | 九项产品菜单、账户体系、Policy 服务桥接、数据归属和切流边界 |
+| [v0.5.1 精简架构发布候选](releases/2026-10-18-lean-v0.5.1.md) | 统一运行时、精简链路、迁移门禁和待回填镜像 |
+| [TSP 产品移植与 Policy 整合](35-tsp-product-integration.md) | 九项产品菜单、账户体系、内嵌 Policy、数据归属和切流边界 |
 | [需求规格](01-requirements.md) | 业务目标、功能需求、非功能需求和验收标准 |
 | [系统架构](02-architecture.md) | 当前架构、目标架构、组件边界和可靠性设计 |
 | [数据与存储](03-data-storage.md) | 数据模型、多模存储、幂等、保留和归档策略 |
 | [接口规范](04-api.md) | HTTP API、事件接口、版本和错误规范 |
 | [OpenAPI](openapi.yaml) | 目标 HTTP API 的机器可读契约 |
-| [AsyncAPI](asyncapi.yaml) | Kafka Topic 和事件消息的机器可读契约 |
+| [AsyncAPI](asyncapi.yaml) | Kafka 兼容回归链路的事件消息契约 |
 | [测试策略](05-testing.md) | 测试分层、覆盖矩阵、性能和发布门槛 |
 | [部署与运维](06-deployment-operations.md) | 环境、拓扑、监控、备份、容灾和安全 |
 | [迭代计划](07-iteration-plan.md) | 分阶段改造顺序、交付物和退出条件 |
@@ -77,20 +79,21 @@
 ## 当前实现
 
 - 生产入口为 <https://shanao.asia>，由火山引擎 ALB 终止 HTTPS 并转发到 TSP Web/API。
-- TSP 提供九项菜单、完整账户体系和多租户业务；Policy API 仅作为集群内桥接后端。
-- VKE 当前采用应用多副本、数据服务单副本 StatefulSet 的成本优先拓扑；EBS 保存数据和
-  采集 WAL，NAS 提供共享报告目录。完整现状见
-  [当前生产技术方案](13-current-production-solution.md)。
-- 行情由 `market-collector` 通过 rustdx 原生长连接采集，并经 SQLite WAL 可靠发布到 Kafka。
-- Flink 计算实时特征；`market-sink`、`strategy-engine`、`outbox-relay` 和
-  `projection-worker` 分别负责行情、状态、事件和 Redis 投影。
-- TSP FastAPI 提供同源 Web/API、SSE 和账户体系；Policy FastAPI 提供集群内
-  `/api/v1`、健康检查和 Prometheus 指标。
+- TSP 提供九项菜单、账户体系和多租户业务；Policy API 以内嵌 ASGI 模块运行，不再经过
+  集群 HTTP Bridge。
+- Policy、TSP 控制库和 TSP 业务库共享一个 PostgreSQL 集群，并使用独立数据库和
+  最小权限运行角色。
+- 行情由 `market-worker` 通过 rustdx 原生长连接采集；SQLite WAL 在 ClickHouse、
+  PostgreSQL 和 Redis 写入成功后才确认事件。
+- 实时特征与策略状态机在 Market Worker 内确定性执行，VKE 不再部署 Kafka、Flink、
+  `market-sink`、`strategy-engine` 或 `projection-worker`。
+- 研究、实时规则、通知和定时任务由一个 `task-worker` 统一监督；SSE 由统一 API 提供。
+- 计算运行在无密钥、禁止出网、只读文件系统的独立 `tsp-compute` Pod，不再使用 DinD。
 - `market-reference-sync` 每个工作日 16:20 将证券目录、四类板块文件和行业配置先归档
-  到 MinIO，再事务发布到 PostgreSQL；股票目录和板块 API 读取已发布快照。
+  到 TOS，再事务发布到 PostgreSQL；股票目录和板块 API 读取已发布快照。
 - PostgreSQL 保存证券和板块时点版本、可重命名且参数不可变的策略目录，以及策略运行、
   计划、逐日记录和研究元数据。
-- MinIO 保存原始主数据、版本化报告和研究归档，ClickHouse 保存行情与分钟线，Redis
+- TOS 保存原始主数据、版本化报告和研究归档，ClickHouse 保存行情与分钟线，Redis
   保存可重建实时投影。
 - 报告调度在 `16:30`、`23:30` 运行，重启后检查最近 7 天遗漏时点并补跑。
 - 涨停历史在工作日 `16:35` 增量同步，模拟盘在 `16:50` 按冻结规则生成前向样本。
@@ -139,14 +142,14 @@
 
 | 领域 | 已实现 | 仍需验证或完善 |
 | --- | --- | --- |
-| 行情采集 | VKE 双副本、mootdx、独立 EBS WAL、节点切换 | 采集主备和旧主 WAL 恢复演练 |
-| 数据总线 | 生产 Kafka Topic、DLQ、幂等消费 | 单 Broker 升级为托管多副本并演练积压恢复 |
-| 实时计算 | VKE Flink SQL、Checkpoint、Python 排障后备 | 高可用 JobManager、TOS Checkpoint 和长稳压测 |
-| 策略状态 | 生产 PostgreSQL Inbox/Outbox、不可逆状态 | 单实例升级为托管 Multi-AZ 并演练切换 |
+| 行情采集 | Market Worker 双副本租约单活、rustdx、独立 EBS WAL | 采集主备和旧主 WAL 恢复演练 |
+| 实时链路 | 进程内特征、ClickHouse、PostgreSQL Inbox/Outbox、Redis 投影 | 200 只候选长稳压测和 Outbox 恢复演练 |
+| 数据平台 | 共享 PostgreSQL 集群、ClickHouse、Redis、TOS | Multi-AZ、自动备份和恢复演练 |
+| 计算隔离 | 独立 Compute Pod、无 Secret、禁止出网、只读根文件系统 | 原生 amd64 重负载和异常退出长稳验证 |
 | 多策略 | 不可变配置、血缘、关联数据永久删除、唯一激活 | 大规模策略目录容量验证 |
 | 研究 | 月度回测、年度严格可买、T+1、盈利约束优化 | 新交易日样本外验证和真实成交滑点校准 |
 | Web | 九项产品菜单、账户体系、桌面侧栏和 390x844 响应式 | 目标浏览器矩阵和无障碍专项审计 |
-| 运维 | VKE、ALB HTTPS、EBS/NAS、Kustomize | 自动备份恢复、托管数据服务和告警闭环 |
+| 运维 | VKE、ALB HTTPS、EBS/NAS、TOS、Kustomize | v0.5.1 数据迁移、镜像 Digest 和生产切换 |
 
 ## 2026-10-18 变更覆盖
 
@@ -157,6 +160,17 @@
 | 桌面菜单默认展开、移动端无标题遮挡、依赖失败降级 | 需求、开发、测试 |
 | VKE 清理旧业务工作负载并统一重建 `v0.5.0` | 部署、运维、资源清单 |
 | Git Tag、镜像 Tag、Digest 和版本文件统一管理 | 测试、部署、CHANGELOG |
+
+## v0.5.1 精简架构变更
+
+| 变更 | 文档 |
+| --- | --- |
+| Policy 以内嵌 ASGI 模块进入统一 API | 精简架构、部署、测试 |
+| Kafka/Flink 流式链路收敛为带 WAL 的 Market Worker | 精简架构、部署、测试 |
+| TSP 四类 Worker 收敛为统一任务 Worker | 精简架构、部署、运维 |
+| TSP 与 Policy 共享 PostgreSQL 集群并使用独立运行角色 | 精简架构、数据、迁移 |
+| MinIO 与 Policy 报告 NAS 替换为 TOS | 精简架构、部署、运维 |
+| DinD 替换为无密钥、禁止出网的独立 Compute Pod | 精简架构、安全、测试 |
 
 ## 发布门槛
 

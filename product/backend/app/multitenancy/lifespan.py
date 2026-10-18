@@ -23,6 +23,9 @@ async def lifespan(app: FastAPI):
     db.open()
     with ExitStack() as resources:
         resources.callback(db.close)
+        from app.custom.policy_bridge import shutdown as shutdown_policy
+
+        resources.callback(shutdown_policy)
         account_identity = AccountIdentity(db)
         # Admin initialization and legacy import are offline operations. API
         # startup must never reset a password or grant itself DDL credentials.

@@ -76,5 +76,4 @@ spec:
               mountPath: /app/reports
       volumes:
         - name: reports
-          persistentVolumeClaim:
-            claimName: banxia-reports
+          emptyDir: {}

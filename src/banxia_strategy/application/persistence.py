@@ -69,6 +69,7 @@ def _create_minio(settings: StorageSettings) -> MinioObjectAssetStore:
         settings.minio_secret_key,
         bucket=settings.minio_report_bucket,
         secure=settings.minio_secure,
+        region=settings.minio_region,
     )
 
 

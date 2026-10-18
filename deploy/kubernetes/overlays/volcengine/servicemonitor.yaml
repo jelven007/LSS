@@ -1,7 +1,7 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: banxia-api
+  name: tsp-product
   namespace: banxia
   labels:
     app.kubernetes.io/name: banxia-strategy
@@ -11,29 +11,10 @@ spec:
     matchNames: [banxia]
   selector:
     matchLabels:
-      app: banxia-api
+      app: tsp-product
   endpoints:
     - port: http
       path: /metrics
-      interval: 30s
-      scrapeTimeout: 10s
----
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: banxia-flink
-  namespace: banxia
-  labels:
-    app.kubernetes.io/name: banxia-strategy
-    volcengine.vmp: "true"
-spec:
-  namespaceSelector:
-    matchNames: [banxia]
-  selector:
-    matchLabels:
-      app: banxia-flink
-  endpoints:
-    - port: metrics
       interval: 30s
       scrapeTimeout: 10s
 ---
@@ -74,26 +55,6 @@ spec:
       - key: app
         operator: NotIn
         values: [banxia-market-collector]
-  podMetricsEndpoints:
-    - port: metrics
-      interval: 30s
-      scrapeTimeout: 10s
----
-apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
-metadata:
-  name: banxia-flink-taskmanagers
-  namespace: banxia
-  labels:
-    app.kubernetes.io/name: banxia-strategy
-    volcengine.vmp: "true"
-spec:
-  namespaceSelector:
-    matchNames: [banxia]
-  selector:
-    matchLabels:
-      app: banxia-flink
-      role: taskmanager
   podMetricsEndpoints:
     - port: metrics
       interval: 30s

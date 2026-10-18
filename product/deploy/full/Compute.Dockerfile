@@ -1,5 +1,5 @@
 # The caller supplies the exact candidate runtime image, with frozen lock deps.
-ARG RUNTIME_IMAGE
+ARG RUNTIME_IMAGE=python:3.11-slim-bookworm
 FROM ${RUNTIME_IMAGE}
 WORKDIR /app
 RUN python /app/build_manifest.py verify --root /app --manifest /app/build-manifest.json
@@ -19,18 +19,23 @@ RUN uv export --quiet --frozen --no-dev --extra backtest \
 # COPY merges directories; remove the image-layer copy so deleted source modules
 # cannot survive under a new commit identity. This never touches a running volume.
 RUN rm -rf /app/app
-COPY backend/app ./app
+COPY product/backend/app ./app
 RUN .venv/bin/python -m app.plugins.rustdx.client
-COPY tiers.yaml /app/tiers.yaml
-COPY VERSION /app/VERSION
-COPY scripts/build_manifest.py /app/build_manifest.py
+COPY product/tiers.yaml /app/tiers.yaml
+COPY product/VERSION /app/VERSION
+COPY product/scripts/build_manifest.py /app/build_manifest.py
 ARG SOURCE_COMMIT=
 RUN python /app/build_manifest.py create --root /app \
     --include app --include static --include tiers.yaml --include VERSION \
     --include pyproject.toml --include uv.lock --include native-wheels \
-    --include build_manifest.py --version-file /app/VERSION \
+    --include policy-src --include config --include build_manifest.py \
+    --version-file /app/VERSION \
     --commit "$SOURCE_COMMIT" --output /app/compute-build-manifest.json \
     && mv /app/compute-build-manifest.json /app/build-manifest.json \
     && python /app/build_manifest.py verify --root /app --manifest /app/build-manifest.json
+ENV HOME=/tmp \
+    XDG_CACHE_HOME=/tmp/xdg \
+    NUMBA_CACHE_DIR=/tmp/numba \
+    PYTHONDONTWRITEBYTECODE=1
 USER 10001:10001
 ENTRYPOINT ["/app/.venv/bin/python", "-m", "app.multitenancy.compute_worker"]

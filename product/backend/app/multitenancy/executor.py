@@ -1,7 +1,8 @@
-"""Client for the local, bounded compute broker.
+"""Client for the bounded compute service.
 
-The API gets a Unix socket, never a Docker socket. The host broker controls the
-image, mounts, limits and entrypoint; the request cannot override any of them.
+Production uses a network-isolated in-cluster service; standalone deployments
+may retain the Unix socket transport. Requests cannot override process limits,
+the public market root or the compute entrypoint.
 """
 # ruff: noqa: RUF001 -- Chinese compute messages use localized punctuation.
 from __future__ import annotations
@@ -20,8 +21,33 @@ KINDS = frozenset({"describe", "plan", "strategy", "backtest", "optimize", "walk
 
 
 class ComputeExecutor:
-    def __init__(self, socket_path: str | None = None):
-        self.socket_path = socket_path or os.environ.get("TSP_COMPUTE_SOCKET", "/run/tsp/compute.sock")
+    def __init__(
+        self,
+        socket_path: str | None = None,
+        address: str | None = None,
+    ):
+        self.socket_path = socket_path or os.environ.get(
+            "TSP_COMPUTE_SOCKET",
+            "/run/tsp/compute.sock",
+        )
+        self.address = address or os.environ.get("TSP_COMPUTE_ADDRESS", "").strip()
+
+    def _connect(self) -> socket.socket:
+        if self.address:
+            host, separator, raw_port = self.address.rpartition(":")
+            if not separator or not host:
+                raise ValueError("TSP_COMPUTE_ADDRESS must use host:port")
+            try:
+                port = int(raw_port)
+            except ValueError as exc:
+                raise ValueError("TSP_COMPUTE_ADDRESS port must be an integer") from exc
+            if not 1 <= port <= 65535:
+                raise ValueError("TSP_COMPUTE_ADDRESS port is out of range")
+            return socket.create_connection((host, port), timeout=5)
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.settimeout(5)
+        client.connect(self.socket_path)
+        return client
 
     def health(self):
         return self.execute({"kind": "health"})
@@ -31,13 +57,19 @@ class ComputeExecutor:
     ) -> dict:
         if payload.get("kind") not in KINDS and payload.get("kind") != "health":
             raise ValueError("unsupported compute operation")
-        encoded = json.dumps(payload, ensure_ascii=False, allow_nan=False, default=str).encode() + b"\n"
+        encoded = (
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                allow_nan=False,
+                default=str,
+            ).encode()
+            + b"\n"
+        )
         if len(encoded) > MAX_MESSAGE_BYTES:
             raise AccessError(413, "计算任务输入过大")
         try:
-            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-                client.settimeout(5)
-                client.connect(self.socket_path)
+            with self._connect() as client:
                 client.settimeout(30)
                 client.sendall(encoded)
                 client.settimeout(1)

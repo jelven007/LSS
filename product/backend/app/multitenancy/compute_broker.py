@@ -1,4 +1,4 @@
-"""Host-only Unix-socket broker for one disposable container per compute job."""
+"""Bounded compute service for isolated container or process execution."""
 # ruff: noqa: RUF001 -- Chinese compute messages use localized punctuation.
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import selectors
 import signal
 import socketserver
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -51,6 +52,102 @@ class ComputeBroker(socketserver.ThreadingUnixStreamServer):
             "app.multitenancy.compute_worker",
         ]
 
+    def health(self) -> bool:
+        checked = subprocess.run(
+            ["docker", "image", "inspect", self.image],
+            capture_output=True,
+            timeout=3,
+            check=False,
+        )
+        return checked.returncode == 0
+
+    def start(self, name: str, market_path: Path, task) -> subprocess.Popen:
+        return subprocess.Popen(
+            self.command(name, market_path),
+            stdin=task,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+    @staticmethod
+    def cleanup(name: str, process: subprocess.Popen) -> None:
+        with suppress(subprocess.SubprocessError, OSError):
+            subprocess.run(
+                ["docker", "rm", "-f", name],
+                capture_output=True,
+                timeout=15,
+                check=False,
+            )
+        if process.poll() is None:
+            process.kill()
+        with suppress(subprocess.SubprocessError):
+            process.communicate(timeout=5)
+
+
+class ProcessComputeBroker(socketserver.ThreadingTCPServer):
+    """Run compute children in a dedicated, network-isolated Kubernetes Pod."""
+
+    allow_reuse_address = True
+    daemon_threads = False
+
+    def __init__(self, address: tuple[str, int], market_root: Path, capacity: int):
+        self.market_root = market_root
+        self.permits = threading.BoundedSemaphore(capacity)
+        self.tenant_lock = threading.Lock()
+        self.active_tenants: set[str] = set()
+        self.stopped = threading.Event()
+        super().__init__(address, Handler)
+
+    def command(self, _name: str, market_path: Path | None = None) -> list[str]:
+        return [
+            "/usr/bin/env",
+            "-i",
+            "PATH=/app/.venv/bin:/usr/local/bin:/usr/bin:/bin",
+            "PYTHONPATH=/app",
+            "PYTHONDONTWRITEBYTECODE=1",
+            "HOME=/tmp",
+            "XDG_CACHE_HOME=/tmp/xdg",
+            f"DATA_DIR={market_path or self.market_root}",
+            "TICKFLOW_ENV_FILE=/dev/null",
+            "TIERS_YAML=/app/tiers.yaml",
+            "TZ=Asia/Shanghai",
+            "POLARS_MAX_THREADS=2",
+            "NUMBA_NUM_THREADS=2",
+            "OPENBLAS_NUM_THREADS=1",
+            "OMP_NUM_THREADS=1",
+            "NUMBA_CACHE_DIR=/tmp/numba",
+            sys.executable,
+            "-m",
+            "app.multitenancy.compute_worker",
+        ]
+
+    @staticmethod
+    def health() -> bool:
+        return True
+
+    def start(self, name: str, market_path: Path, task) -> subprocess.Popen:
+        return subprocess.Popen(
+            self.command(name, market_path),
+            stdin=task,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd="/app",
+            start_new_session=True,
+        )
+
+    @staticmethod
+    def cleanup(_name: str, process: subprocess.Popen) -> None:
+        if process.poll() is None:
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGTERM)
+        try:
+            process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+            with suppress(subprocess.SubprocessError):
+                process.communicate(timeout=5)
+
 
 class Handler(socketserver.StreamRequestHandler):
     def send(self, message):
@@ -74,9 +171,7 @@ class Handler(socketserver.StreamRequestHandler):
 
             market_path = release_path(broker.market_root, payload.get("public_release_id"))
             if payload.get("kind") == "health":
-                checked = subprocess.run(["docker", "image", "inspect", broker.image],
-                                         capture_output=True, timeout=3, check=False)
-                self.send({"type": "result", "payload": {"ready": checked.returncode == 0}})
+                self.send({"type": "result", "payload": {"ready": broker.health()}})
                 return
             tenant = payload.get("tenant_id")
             if (payload.get("kind") not in KINDS or not isinstance(tenant, str)
@@ -88,20 +183,26 @@ class Handler(socketserver.StreamRequestHandler):
             acquired = True
             with broker.tenant_lock:
                 if tenant in broker.active_tenants:
-                    self.send({"type": "error", "status": 429, "message": "当前租户已有计算任务，请稍后重试"})
+                    self.send(
+                        {
+                            "type": "error",
+                            "status": 429,
+                            "message": "当前租户已有计算任务，请稍后重试",
+                        }
+                    )
                     tenant = None
                     return
                 broker.active_tenants.add(tenant)
             with tempfile.TemporaryFile() as task, selectors.DefaultSelector() as events:
                 task.write(line)
                 task.seek(0)
-                process = subprocess.Popen(
-                    broker.command(name, market_path), stdin=task, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                )
+                process = broker.start(name, market_path, task)
                 events.register(process.stdout, selectors.EVENT_READ, "stdout")
                 events.register(process.stderr, selectors.EVENT_READ, "stderr")
                 events.register(self.connection, selectors.EVENT_READ, "client")
-                deadline = time.monotonic() + (60 if payload["kind"] in {"describe", "plan"} else 7200)
+                deadline = time.monotonic() + (
+                    60 if payload["kind"] in {"describe", "plan"} else 7200
+                )
                 buffer = bytearray()
                 output_bytes = 0
                 terminal = False
@@ -145,15 +246,14 @@ class Handler(socketserver.StreamRequestHandler):
                 if not terminal:
                     raise ValueError("计算进程退出时未返回结果")
         except (ValueError, OSError, subprocess.SubprocessError) as exc:
-            terminal_message = {"type": "error", "status": 503 if broker.stopped.is_set() else 400, "message": str(exc)}
+            terminal_message = {
+                "type": "error",
+                "status": 503 if broker.stopped.is_set() else 400,
+                "message": str(exc),
+            }
         finally:
             if process is not None:
-                with suppress(subprocess.SubprocessError, OSError):
-                    subprocess.run(["docker", "rm", "-f", name], capture_output=True, timeout=15, check=False)
-                if process.poll() is None:
-                    process.kill()
-                with suppress(subprocess.SubprocessError):
-                    process.communicate(timeout=5)
+                broker.cleanup(name, process)
             if tenant is not None and acquired:
                 with broker.tenant_lock:
                     broker.active_tenants.discard(tenant)
@@ -168,8 +268,10 @@ class Handler(socketserver.StreamRequestHandler):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--socket", type=Path, required=True)
-    parser.add_argument("--image", required=True)
+    target = parser.add_mutually_exclusive_group(required=True)
+    target.add_argument("--socket", type=Path)
+    target.add_argument("--listen")
+    parser.add_argument("--image")
     parser.add_argument("--market-root", type=Path, required=True)
     parser.add_argument("--capacity", type=int, default=4)
     args = parser.parse_args()
@@ -178,11 +280,24 @@ def main():
         raise ValueError("invalid compute broker configuration")
     if (market / "user_data").exists() or (market / ".env").exists():
         raise ValueError("compute market mount must not contain private state or credentials")
-    args.socket.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
-    # A stale socket is removed by the service manager, never blindly unlink an
-    # active broker's socket at startup.
-    with ComputeBroker(args.socket, args.image, market, args.capacity) as server:
-        os.chmod(args.socket, 0o660)
+    if args.socket is not None:
+        if not args.image:
+            raise ValueError("--image is required with --socket")
+        args.socket.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
+        server = ComputeBroker(args.socket, args.image, market, args.capacity)
+    else:
+        host, separator, raw_port = args.listen.rpartition(":")
+        if not separator or not host:
+            raise ValueError("--listen must use host:port")
+        port = int(raw_port)
+        if not 1 <= port <= 65535:
+            raise ValueError("--listen port is out of range")
+        server = ProcessComputeBroker((host, port), market, args.capacity)
+    # A stale Unix socket is removed by the service manager, never blindly
+    # unlinked here while another broker may still be serving it.
+    with server:
+        if args.socket is not None:
+            os.chmod(args.socket, 0o660)
         def shutdown(*_):
             server.stopped.set()
             threading.Thread(target=server.shutdown, daemon=True).start()

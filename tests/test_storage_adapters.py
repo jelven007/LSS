@@ -1362,12 +1362,21 @@ class StorageSettingsTest(unittest.TestCase):
                 "BANXIA_WRITER_BATCH_SIZE": "8",
                 "BANXIA_MINIO_SECURE": "true",
                 "BANXIA_MINIO_MARKET_BUCKET": "reference-data",
+                "BANXIA_OBJECT_ENDPOINT": "tos-s3-cn-shanghai.ivolces.com",
+                "BANXIA_OBJECT_REGION": "cn-shanghai",
+                "BANXIA_OBJECT_REPORT_BUCKET": "reports",
             }
         )
         self.assertTrue(settings.required)
         self.assertEqual(settings.writer_batch_size, 8)
         self.assertTrue(settings.minio_secure)
         self.assertEqual(settings.minio_market_bucket, "reference-data")
+        self.assertEqual(
+            settings.minio_endpoint,
+            "tos-s3-cn-shanghai.ivolces.com",
+        )
+        self.assertEqual(settings.minio_region, "cn-shanghai")
+        self.assertEqual(settings.minio_report_bucket, "reports")
         with self.assertRaises(ValueError):
             StorageSettings.from_env({"BANXIA_STORAGE_MODE": "silent"})
 

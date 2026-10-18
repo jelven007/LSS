@@ -16,9 +16,9 @@
 连接；请求期间释放 Python GIL，原有连接复用、批量请求、节点切换和并发回填继续工作。
 协议解析发生 panic 时关闭连接并返回错误，避免继续使用损坏连接。
 
-上游锁定 `jelven-rustdx-complete 1.12.2`，Git revision：
-`904b33e514d4e368e633622c96a9e63af8a53d37`。`Cargo.lock` 固定 Rust 依赖；
-Python 桥接检查同一 revision，版本不匹配时提示重建。
+上游锁定 crates.io `jelven-rustdx-complete =1.12.2`，发布来源提交为
+`9dfc024c9662fa5091099c1f17610569ee2eca8b`。`Cargo.lock` 保存发布包校验和，镜像构建
+不依赖 GitHub 读取凭据；Python 桥接检查同一版本，版本不匹配时提示重建。
 
 | 数据 | 原生实现 | 项目使用方式 |
 | --- | --- | --- |

@@ -11,13 +11,12 @@ data:
   TSP_CELL_POOL_SIZE: "8"
   TSP_CELL_MARKET_URL: http://tsp-platform:3018
   TSP_CELL_WEBHOOK_ORIGINS: '["https://shanao.asia"]'
-  TSP_COMPUTE_SOCKET: /run/tsp/compute.sock
-  TSP_COMPUTE_IMAGE: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy@sha256:21d149be6b92a8077ae5729e0eba9b78d57d71c99c6eb291dea26abdb8c41620
+  TSP_COMPUTE_ADDRESS: tsp-compute:7000
   DATA_DIR: /state/public/current
   PLATFORM_CONFIG_DIR: /state/platform-config
   TENANT_ARTIFACTS_DIR: /state/tenant-artifacts
   TICKFLOW_ENV_FILE: /dev/null
-  POLICY_SERVICE_URL: http://api.banxia.svc.cluster.local
+  POLICY_SERVICE_URL: embedded://policy
   POLICY_SERVICE_TIMEOUT_SECONDS: "30"
   POLARS_MAX_THREADS: "2"
   NUMBA_NUM_THREADS: "2"
@@ -40,9 +39,6 @@ spec:
     - name: http
       port: 80
       targetPort: api
-    - name: events
-      port: 81
-      targetPort: gateway
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -52,9 +48,12 @@ metadata:
   labels:
     app: tsp-product
 spec:
-  replicas: 1
+  replicas: 2
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: tsp-product
@@ -76,7 +75,7 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: wait-for-platform-and-schema
-          image: tsp-product-runtime:v0.5.0
+          image: tsp-product-runtime:v0.5.1
           command: [/bin/sh, -ec]
           args:
             - |
@@ -106,7 +105,7 @@ spec:
                       raise RuntimeError("TSP platform or database schema did not become ready")
                   time.sleep(5)
               PY
-          envFrom:
+          envFrom: &runtimeEnv
             - configMapRef:
                 name: tsp-product-runtime
             - secretRef:
@@ -115,7 +114,7 @@ spec:
             - name: state
               mountPath: /state
               readOnly: true
-          securityContext:
+          securityContext: &runtimeSecurity
             runAsNonRoot: true
             runAsUser: 10001
             runAsGroup: 10001
@@ -130,103 +129,8 @@ spec:
               cpu: 250m
               memory: 256Mi
       containers:
-        - name: dind
-          image: docker:27-dind
-          args:
-            - --host=tcp://127.0.0.1:2375
-            - --host=unix:///var/run/docker.sock
-            - --storage-driver=overlay2
-            - --mtu=1450
-          env:
-            - name: DOCKER_TLS_CERTDIR
-              value: ""
-          readinessProbe:
-            exec:
-              command: [docker, info]
-            periodSeconds: 5
-            failureThreshold: 30
-          livenessProbe:
-            exec:
-              command: [docker, info]
-            periodSeconds: 20
-            failureThreshold: 6
-          resources:
-            requests:
-              cpu: 500m
-              memory: 1Gi
-            limits:
-              cpu: "2"
-              memory: 6Gi
-          securityContext:
-            privileged: true
-          volumeMounts:
-            - name: docker-graph
-              mountPath: /var/lib/docker
-            - name: state
-              mountPath: /state
-              readOnly: true
-        - name: broker
-          image: tsp-product-broker:v0.5.0
-          command: [/bin/sh, -ec]
-          args:
-            - |
-              until docker info >/dev/null 2>&1; do sleep 2; done
-              docker pull "$TSP_COMPUTE_IMAGE"
-              rm -f /run/tsp/compute.sock
-              exec /app/.venv/bin/python -m app.multitenancy.compute_broker \
-                --socket /run/tsp/compute.sock \
-                --image "$TSP_COMPUTE_IMAGE" \
-                --market-root /state/public \
-                --capacity 2
-          env:
-            - name: DOCKER_HOST
-              value: tcp://127.0.0.1:2375
-          envFrom:
-            - configMapRef:
-                name: tsp-product-runtime
-          readinessProbe:
-            exec:
-              command:
-                - /app/.venv/bin/python
-                - -c
-                - from app.multitenancy.executor import ComputeExecutor; assert ComputeExecutor('/run/tsp/compute.sock').health()['ready']
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            timeoutSeconds: 8
-            failureThreshold: 30
-          livenessProbe:
-            exec:
-              command:
-                - /app/.venv/bin/python
-                - -c
-                - from app.multitenancy.executor import ComputeExecutor; assert ComputeExecutor('/run/tsp/compute.sock').health()['ready']
-            periodSeconds: 30
-            timeoutSeconds: 8
-            failureThreshold: 6
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: 500m
-              memory: 512Mi
-          securityContext:
-            runAsUser: 0
-            runAsGroup: 10001
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: [ALL]
-          volumeMounts:
-            - name: compute-socket
-              mountPath: /run/tsp
-            - name: state
-              mountPath: /state
-              readOnly: true
-            - name: registry-auth
-              mountPath: /root/.docker
-              readOnly: true
         - name: api
-          image: tsp-product-runtime:v0.5.0
+          image: tsp-product-runtime:v0.5.1
           command:
             - /app/.venv/bin/python
             - -m
@@ -244,11 +148,43 @@ spec:
           env:
             - name: SERVICE_ROLE
               value: api
+            - name: BANXIA_POSTGRES_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: banxia-secrets
+                  key: BANXIA_POSTGRES_DSN
+            - name: BANXIA_CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: banxia-secrets
+                  key: BANXIA_CLICKHOUSE_PASSWORD
+            - name: BANXIA_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: banxia-secrets
+                  key: BANXIA_REDIS_URL
+            - name: BANXIA_OBJECT_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: banxia-secrets
+                  key: BANXIA_OBJECT_ACCESS_KEY
+            - name: BANXIA_OBJECT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: banxia-secrets
+                  key: BANXIA_OBJECT_SECRET_KEY
+            - name: BANXIA_CODE_COMMIT
+              valueFrom:
+                secretKeyRef:
+                  name: banxia-secrets
+                  key: BANXIA_CODE_COMMIT
           envFrom:
             - configMapRef:
                 name: tsp-product-runtime
             - secretRef:
                 name: tsp-product-secrets
+            - configMapRef:
+                name: banxia-runtime
           ports:
             - name: api
               containerPort: 3018
@@ -289,93 +225,11 @@ spec:
             - name: state
               mountPath: /state
               readOnly: true
-            - name: compute-socket
-              mountPath: /run/tsp
-              readOnly: true
             - name: tmp
               mountPath: /tmp
-        - name: gateway
-          image: tsp-product-runtime:v0.5.0
-          command:
-            - /app/.venv/bin/python
-            - -m
-            - uvicorn
-            - app.main:app
-            - --host
-            - 0.0.0.0
-            - --port
-            - "3019"
-            - --workers
-            - "1"
-            - --proxy-headers
-            - --forwarded-allow-ips
-            - "*"
-          env:
-            - name: SERVICE_ROLE
-              value: gateway
-          envFrom: &runtimeEnv
-            - configMapRef:
-                name: tsp-product-runtime
-            - secretRef:
-                name: tsp-product-secrets
-          ports:
-            - name: gateway
-              containerPort: 3019
-          startupProbe:
-            httpGet:
-              path: /health/live
-              port: gateway
-            periodSeconds: 5
-            failureThreshold: 60
-          readinessProbe:
-            httpGet:
-              path: /health/ready
-              port: gateway
-            periodSeconds: 10
-            timeoutSeconds: 8
-            failureThreshold: 12
-          livenessProbe:
-            httpGet:
-              path: /health/live
-              port: gateway
-            periodSeconds: 20
-            failureThreshold: 6
-          resources:
-            requests:
-              cpu: 100m
-              memory: 256Mi
-            limits:
-              cpu: "1"
-              memory: 1Gi
-          securityContext: &runtimeSecurity
-            runAsNonRoot: true
-            runAsUser: 10001
-            runAsGroup: 10001
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: [ALL]
-          volumeMounts: *runtimeMounts
-        - name: research
-          image: tsp-product-runtime:v0.5.0
-          command: [/app/.venv/bin/python, -m, app.multitenancy.research_worker]
-          env:
-            - name: SERVICE_ROLE
-              value: api
-            - name: TSP_CELL_WORKER_CONCURRENCY
-              value: "2"
-          envFrom: *runtimeEnv
-          resources:
-            requests:
-              cpu: 100m
-              memory: 256Mi
-            limits:
-              cpu: "1"
-              memory: 2Gi
-          securityContext: *runtimeSecurity
-          volumeMounts: *runtimeMounts
-        - name: realtime
-          image: tsp-product-runtime:v0.5.0
-          command: [/app/.venv/bin/python, -m, app.multitenancy.runtime]
+        - name: task-worker
+          image: tsp-product-runtime:v0.5.1
+          command: [/app/.venv/bin/python, -m, app.multitenancy.task_worker]
           env:
             - name: SERVICE_ROLE
               value: api
@@ -384,65 +238,48 @@ spec:
           envFrom: *runtimeEnv
           resources:
             requests:
-              cpu: 200m
-              memory: 512Mi
+              cpu: 350m
+              memory: 768Mi
             limits:
-              cpu: "2"
-              memory: 3Gi
-          securityContext: *runtimeSecurity
-          volumeMounts: *runtimeMounts
-        - name: notifications
-          image: tsp-product-runtime:v0.5.0
-          command: [/app/.venv/bin/python, -m, app.multitenancy.notification_worker]
-          env:
-            - name: SERVICE_ROLE
-              value: api
-            - name: TSP_CELL_WORKER_CONCURRENCY
-              value: "2"
-          envFrom: *runtimeEnv
-          resources:
-            requests:
-              cpu: 50m
-              memory: 128Mi
-            limits:
-              cpu: 500m
-              memory: 512Mi
-          securityContext: *runtimeSecurity
-          volumeMounts: *runtimeMounts
-        - name: scheduled
-          image: tsp-product-runtime:v0.5.0
-          command: [/app/.venv/bin/python, -m, app.multitenancy.scheduled_worker]
-          env:
-            - name: SERVICE_ROLE
-              value: api
-            - name: TSP_CELL_WORKER_CONCURRENCY
-              value: "2"
-          envFrom: *runtimeEnv
-          resources:
-            requests:
-              cpu: 100m
-              memory: 256Mi
-            limits:
-              cpu: "1"
-              memory: 2Gi
+              cpu: "3"
+              memory: 5Gi
           securityContext: *runtimeSecurity
           volumeMounts: *runtimeMounts
       volumes:
         - name: state
           persistentVolumeClaim:
             claimName: tsp-product-state
-        - name: compute-socket
-          emptyDir:
-            sizeLimit: 16Mi
-        - name: docker-graph
-          emptyDir:
-            sizeLimit: 12Gi
         - name: tmp
           emptyDir:
             sizeLimit: 2Gi
-        - name: registry-auth
-          secret:
-            secretName: banxia-registry
-            items:
-              - key: .dockerconfigjson
-                path: config.json
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: tsp-product
+  namespace: banxia
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: tsp-product
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: tsp-product
+  namespace: banxia
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: tsp-product
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

@@ -1,410 +1,214 @@
 # 部署与运维方案
 
-## 1. 环境划分
+## 1. 生产基线
 
-| 环境 | 目的 | 数据 |
+`v0.5.1` 使用火山引擎 VKE，生产入口为 <https://shanao.asia>。系统只提供行情研究、
+策略筛选、盘中监控和报告，不连接券商账户，不自动下单。
+
+权威架构见 [v0.5.1 精简生产架构](36-lean-architecture-v0.5.1.md)，部署清单见
+[`deploy/kubernetes/`](../deploy/kubernetes/README.md)。
+
+## 2. 工作负载
+
+| 工作负载 | 副本 | 职责 |
+| --- | ---: | --- |
+| `tsp-product` | 2 | React、统一 API、账户、多租户、SSE、任务监督 |
+| `tsp-platform` | 1 | 公共行情版本和平台配置 |
+| `tsp-compute` | 1 | 隔离研究与回测计算 |
+| `market-collector` | 2 | `market-worker`，通过 PostgreSQL 租约单活 |
+| `market-reference-sync` | 1 | 证券、板块和参考数据 |
+| 报告与研究 CronJob | 按计划 | 报告、历史、模拟盘和研究任务 |
+
+生产清单不再部署独立 Policy API、SSE Gateway、Kafka、Flink、MinIO、独立 TSP
+PostgreSQL或Pod内DinD。
+
+## 3. 数据与存储
+
+| 服务 | 责任 | 持久化 |
 | --- | --- | --- |
-| Local | 开发和单元测试 | Mock、录制行情或独立测试数据 |
-| Integration | 组件和契约测试 | 临时 Kafka、数据库和对象存储 |
-| Staging | 发布前验证、压测和故障演练 | 脱敏或可重复回放数据 |
-| Production | 正式研究监控 | mootdx 实时数据 |
+| PostgreSQL | Policy、账户、租户、策略、状态、任务和审计 | EBS `Retain` |
+| ClickHouse | 盘口、分钟线、特征和历史行情 | EBS `Retain` |
+| Redis | 最新行情、决策和 SSE 投影 | AOF，可重建 |
+| 火山引擎 TOS | 原始文件、报告和研究归档 | Bucket 版本控制 |
+| TSP 公共状态 | 公共行情版本和平台文件 | NAS RWX，过渡保留 |
+| Market Worker WAL | 尚未完成全链路持久化的事件 | 每 Pod 独立 EBS |
 
-不同环境必须使用独立的 Kafka Topic 前缀、数据库、Redis 命名空间和对象存储 Bucket。
+PostgreSQL 使用三个数据库：
 
-## 2. 生产拓扑
+- `banxia`：Policy 业务。
+- `tsp_control`：身份、租户和路由。
+- `tsp_data_production`：租户业务。
 
-### 2.1 应用服务
+TSP 控制库和业务库必须使用不同运行角色，两个角色均禁止 `SUPERUSER`、
+`BYPASSRLS`、`CREATEDB` 和角色继承。
 
-- `market-collector`：VKE StatefulSet 2 副本，每副本独立 EBS WAL，按 PostgreSQL
-  advisory lease 选举 Leader。
-- `market-sink`、`strategy-engine`、`outbox-relay` 和 `projection-worker`：各 2 副本，
-  通过 Kafka Consumer Group 或数据库租约并行运行。
-- `flink-feature-job`：1 个 JobManager、2 个 TaskManager；`feature-worker` 仅作排障后备。
-- `market-reference-sync`：1 副本，工作日 16:20 发布参考数据快照。
-- `report-worker`：16:30 和 23:30 两个 Kubernetes CronJob。
-- `api-service`：2 副本，HPA 范围 2~6，由火山 ALB 提供 HTTPS 入口。
+## 4. 发布前置
 
-### 2.2 基础设施
+1. 镜像通过测试、依赖扫描和构建清单校验。
+2. Policy、Web Runtime、Compute 镜像使用相同语义版本并固定 Registry digest。
+3. TOS 已创建 `strategy-reports` 和 `market-raw` Bucket。
+4. PostgreSQL、ClickHouse 和旧 TSP PostgreSQL 已完成逻辑备份。
+5. 所有 PVC 的 StorageClass 回收策略为 `Retain`。
+6. 暂停 CronJob，并确认没有正在运行的报告、回填或模拟盘任务。
 
-- PostgreSQL 16.4：单副本 StatefulSet，20Gi EBS。
-- Kafka 3.9.0 KRaft：单 Broker，复制因子 1，20Gi EBS。
-- ClickHouse 24.8：单副本 StatefulSet，40Gi EBS。
-- Redis 7.4.1：单副本、AOF，10Gi EBS。
-- MinIO：单副本，30Gi EBS。
-- 报告目录：10Gi NAS RWX；每个采集器另有 10Gi EBS WAL。
-- EBS 和 NAS StorageClass 使用 `Retain`，避免资源删除时级联删除数据卷。
+## 5. 数据迁移
 
-数据库、Kafka、Redis 和对象存储只允许集群私网访问。当前方案优先控制成本，数据服务存在
-单点；目标是逐步迁移到托管 Multi-AZ PostgreSQL、托管 Redis/Kafka、ByteHouse 和 TOS。
-完整现状见 [当前生产技术方案](13-current-production-solution.md)。
+### 5.1 PostgreSQL
 
-## 3. 配置管理
+首次从 `v0.5.0` 升级：
 
-配置分为：
-
-### 3.1 非敏感配置
-
-- 采集周期和行情时效阈值。
-- Kafka Topic 名称。
-- 监控股票上限。
-- 数据生命周期。
-- Flink 窗口参数。
-- 日报调度时间。
-
-非敏感配置通过版本化配置文件或 ConfigMap 发布。
-
-### 3.2 策略配置
-
-策略目录存入 PostgreSQL。`strategy_definition.name` 可单独修正，
-`current_config` 发布后不可原地修改。修改任何阈值都创建新策略并记录父子关系；
-每次报告仍生成对应 `strategy_version`，
-并保存：
-
-- 配置 JSON。
-- Git Commit。
-- 创建人和创建时间。
-- 生效交易日。
-- 变更说明。
-
-全库最多一条策略激活。定时任务、页面刷新和默认监控在开始执行时读取当前激活策略。
-研究生成的候选策略默认未激活，必须经人工切换后才进入运行链路。
-
-### 3.3 密钥
-
-- 当前生产使用 Kubernetes Secret 保存数据库、认证和对象存储凭证。
-- 目标是接入 Vault 或云 KMS，并实现自动轮换。
-- 不得写入 Git、镜像、ConfigMap 或日志。
-- 密钥必须支持轮换。
-
-### 3.4 P1 适配器开关
-
-兼容入口通过 `BANXIA_STORAGE_MODE` 控制新存储：
-
-| 值 | 行为 |
-| --- | --- |
-| `off` | 默认值，只运行本地报告和 JSONL 链路 |
-| `best_effort` | 启用双写；远端失败可降级，但必须暴露错误 |
-| `required` | 初始化、日报双写或队列接收失败时使命令失败 |
-
-连接参数见 `deploy/compose/.env.example`。生产环境不得使用示例凭证。盘中
-ClickHouse/PostgreSQL/Redis 写入在有界后台队列执行，`BANXIA_WRITER_QUEUE_SIZE`
-和 `BANXIA_WRITER_BATCH_SIZE` 必须结合压测设置。该队列在 P1 不提供进程崩溃恢复，
-生产数据完整性仍依赖 P2 的 Kafka 与本地 WAL。
-
-## 4. 容器和发布
-
-### 4.1 镜像
-
-- 使用固定 Python 和基础镜像版本。
-- 依赖必须锁定并生成 SBOM。
-- 运行时使用非 root 用户。
-- 镜像不得包含开发密钥、测试数据和本地报告。
-- 镜像以 Git Commit 和语义版本双标签发布。
-
-### 4.2 发布流程
-
-1. 静态检查、单元测试和 Schema 校验。
-2. 构建镜像并扫描依赖漏洞。
-3. 运行组件测试和数据库迁移检查。
-4. 部署 Staging。
-5. 执行回放、端到端和性能冒烟测试。
-6. 创建 Flink Savepoint。
-7. 滚动发布 Production。
-8. 验证核心指标、数据延迟和状态一致性。
-
-数据库迁移优先使用“扩展、切换、收缩”方式，禁止在同一次发布中直接删除旧字段。
-
-## 5. 调度
-
-日报任务由 Kubernetes CronJob 在 `Asia/Shanghai` 每个工作日 `16:30` 和 `23:30`
-触发。Worker 再通过 mootdx 交易日历确认日期；周末和节假日正常退出且不生成报告。
-本地 Compose 使用常驻 `report-scheduler` 执行同样的两个时点。调度器启动时回溯最近
-7 天的已到期时点，并以本地报告和持久化完成标记共同判断是否需要补跑。报告任务使用
-host 网络，避免 Colima 桥接网络导致通达信行情协议请求超时。
-
-页面刷新写入 `job_execution` 队列。每次点击创建独立任务；Worker 使用
-`FOR UPDATE SKIP LOCKED` 领取，运行超过 15 分钟的任务可重新领取。刷新不绑定排队时的
-策略，执行开始时重新读取激活策略，结果记录实际版本和生成时间。
-
-幂等要求：
-
-- 调度器只负责发起，不依赖其 exactly-once。
-- PostgreSQL 唯一键 `(trade_date, strategy_version_id)` 决定是否创建任务。
-- 节假日通过 mootdx 交易日历确认，不仅依赖星期判断。
-- 失败任务按指数退避重试。
-- 超过允许时间仍失败时告警，不生成不完整报告冒充成功。
-
-## 5.1 本地启动与停止
-
-当前开发机使用名为 `banxia` 的 Colima profile。启动前先确认 profile 和端口未被其他
-实例占用，再运行 Compose：
+1. 先按第 6 节生成 `/tmp/banxia-vke.yaml`，但不要整包应用。
+2. 在 `tsp-product-admin` 中配置新旧四条管理员 DSN，并更新两个运行角色密码。
+3. 只应用 `tsp-database-bootstrap`，在共享 PostgreSQL 中创建两个 TSP 数据库和角色：
 
 ```bash
-colima start --profile banxia
-make infra-up
-make infra-status
-make infra-check
+kubectl apply -f /tmp/banxia-vke.yaml -l app=tsp-database-bootstrap
+kubectl -n banxia wait \
+  --for=condition=complete job/tsp-database-bootstrap --timeout=15m
 ```
 
-停止应用和基础设施：
+4. 暂停旧 TSP 应用，确认旧数据库没有新写入。
+5. 执行显式迁移：
 
 ```bash
-make infra-down
-colima stop --profile banxia
+kubectl apply -f product/deploy/kubernetes/migrate-legacy-postgres.yaml
+kubectl -n banxia wait \
+  --for=condition=complete job/tsp-legacy-postgres-migration --timeout=30m
 ```
 
-`infra-down` 不删除数据卷。仅在明确需要清空本地数据时使用带 `--volumes` 的 Compose
-命令，并先确认 PostgreSQL、ClickHouse、Redis、MinIO 和 Kafka 数据无需保留。
+6. 对比用户、租户、文档、任务、策略和审计表数量。
+7. 整包应用 `/tmp/banxia-vke.yaml`，由 `tsp-product-initialize` 升级 Schema 并恢复服务。
+8. 完成登录和业务抽样后，旧 `tsp-postgres` 只缩容，不删除 PVC。
 
-## 6. 健康检查
+### 5.2 对象存储
 
-### 6.1 Liveness
+使用火山引擎数据迁移服务或 S3 兼容工具将 MinIO Bucket 迁移到 TOS。迁移完成后按对象数、
+总字节数和 SHA-256 抽样校验，再更新：
 
-只检查进程主循环是否正常，避免外部依赖故障导致实例反复重启。
+- `BANXIA_OBJECT_ENDPOINT`
+- `BANXIA_OBJECT_ACCESS_KEY`
+- `BANXIA_OBJECT_SECRET_KEY`
+- `BANXIA_OBJECT_REPORT_BUCKET`
+- `BANXIA_OBJECT_MARKET_BUCKET`
 
-### 6.2 Readiness
+上海地域 VKE 默认使用内网 S3 Endpoint
+`tos-s3-cn-shanghai.ivolces.com`。
 
-按服务职责检查关键依赖：
-
-| 服务 | 就绪依赖 |
-| --- | --- |
-| 采集器 | Kafka 可写、本地 WAL 可写、租约可续期 |
-| 策略引擎 | Kafka 可读、PostgreSQL 可写 |
-| API | PostgreSQL 可读；Redis 可降级；ClickHouse 按接口需要检查 |
-| 报告 Worker | PostgreSQL、ClickHouse、对象存储 |
-| Flink | Kafka、Checkpoint 存储 |
-
-## 7. 监控指标
-
-### 7.1 行情采集
-
-- `banxia_collector_running`、`banxia_collector_leader`
-- `banxia_collector_heartbeat_timestamp_seconds`
-- `banxia_collector_last_success_timestamp_seconds`
-- `banxia_collector_candidate_count`、`banxia_collector_market_open`
-- `banxia_collector_quote_age_p95_seconds`、`banxia_collector_quote_coverage_ratio`
-- `banxia_collector_errors_total`、`banxia_collector_publish_failures_total`
-- `banxia_collector_wal_pending`
-
-实际部署方式、11 条规则及故障处置见 [盘中连续采集监控](31-intraday-monitoring.md)。
-
-### 7.2 Kafka
-
-- Producer 错误率。
-- Consumer Lag。
-- ISR 数量。
-- Under-replicated Partition。
-- DLQ 写入速率。
-
-### 7.3 Flink
-
-- Checkpoint 成功率和耗时。
-- Restart 次数。
-- Watermark 延迟。
-- Backpressure。
-- 迟到事件数。
-
-### 7.4 策略
-
-- 每分钟处理事件数。
-- 重复 Inbox 命中数。
-- 状态迁移数。
-- 不可逆放弃数。
-- Outbox 未发布数量和最大等待时间。
-
-### 7.5 API
-
-- 请求量、状态码和 P50/P95/P99 延迟。
-- Redis 命中率。
-- PostgreSQL 和 ClickHouse 查询延迟。
-- SSE 连接数和重连数。
-
-## 8. 告警
-
-| 级别 | 条件示例 |
-| --- | --- |
-| P0 | 连续交易时段有候选的主节点超过 30 秒未成功发布有效 rustdx 行情，持续 1 分钟 |
-| P0 | PostgreSQL 不可写或策略状态无法提交 |
-| P0 | 交易时段行情 P95 延迟超过 10 秒持续 2 分钟 |
-| P1 | Kafka Consumer Lag 超过 30 秒 |
-| P1 | Flink 连续 3 次 Checkpoint 失败 |
-| P1 | Outbox 最老未发布事件超过 60 秒 |
-| P1 | ClickHouse 或 S3 对账差异超过阈值 |
-| P2 | Redis 命中率持续低于 80% |
-| P2 | 单实例 CPU 或内存持续超过 80% |
-
-所有告警必须包含环境、服务、分片、开始时间、最近错误和 Runbook 链接。
-盘中采集规则已提供环境、服务及分片/实例标签；开始时间由评估器记录，
-错误文本查采集器日志，Runbook 见上面的监控文档。
-通知联系人和接收渠道需单独配置；本地规则评估成功不等于已完成消息投递。
-
-## 13. v0.5.0 VKE 全量重建 Runbook
-
-目标集群为 `cdaus2p98m08ce3b12nn0`，命名空间为 `banxia`。全量重建只清理业务控制器
-和 Service，不删除系统命名空间、Secret、PV/PVC、StorageClass、IngressClass、
-ALBInstance 和证书。
-
-### 13.1 发布前
-
-1. `main` 已包含完整文档、测试和 VKE 清单，Git Tag 与版本文件一致。
-2. Policy、TSP Runtime、Broker、Compute 和 DinD 镜像已推送并记录 digest。
-3. 导出资源清单、两个 Secret 的加密备份和 PostgreSQL 逻辑备份。
-4. 确认所有现有 PVC 的 StorageClass 回收策略为 `Retain`。
-5. 暂停 CronJob，确认没有正在执行的报告、回填或模拟盘任务。
-
-### 13.2 Secret 创建
-
-保留 `banxia-secrets` 和 `banxia-registry`。根据
-`product/deploy/kubernetes/secrets.example.yaml` 创建：
-
-- `tsp-product-admin`
-- `tsp-product-secrets`
-
-SMTP 字段从 `BANXIA_SMTP_*` 映射到 `AUTH_SMTP_*`；Policy Token 从
-`BANXIA_API_TOKEN` 映射到 `POLICY_SERVICE_TOKEN`。数据库和内部 Token 必须独立随机
-生成，所有密码在 DSN 中使用 URL 编码值。
-
-### 13.3 清理范围
+## 6. 发布
 
 ```bash
-kubectl -n banxia delete deployment,statefulset,daemonset,job,cronjob,service \
-  --all --wait=true
+kubectl kustomize \
+  --load-restrictor LoadRestrictionsNone \
+  deploy/kubernetes/overlays/volcengine \
+  > /tmp/banxia-vke.yaml
+
+! rg -n 'REPLACE_WITH_' /tmp/banxia-vke.yaml
+! rg -n 'privileged: true|name: kafka|name: minio|name: flink-' /tmp/banxia-vke.yaml
+kubectl apply --server-side --force-conflicts --dry-run=server -f /tmp/banxia-vke.yaml
+kubectl apply --server-side --force-conflicts -f /tmp/banxia-vke.yaml
 ```
 
-执行后必须再次确认 Secret、PVC、Ingress、ALBInstance 和 StorageClass 仍存在。若任一
-PVC 丢失，立即停止，不得继续创建同名空数据服务。
-
-### 13.4 重建顺序
-
-1. 应用 StorageClass、ServiceAccount、Secret 和数据服务。
-2. 等待 Policy PostgreSQL、ClickHouse、Kafka、Redis、MinIO 和 TSP PostgreSQL Ready。
-3. 删除固定名称旧 Job 后应用完整 Kustomize 清单。
-4. 等待 `banxia-schema-migration`、`banxia-catalog-bootstrap`、
-   `tsp-product-initialize` 和 Flink 初始化完成。
-5. 等待 Policy 常驻服务、`tsp-platform`、`tsp-product` Rollout。
-6. 更新 Ingress，把 `/api/events*` 指向 Gateway，其余路径指向 TSP API。
-
-### 13.5 验收与回滚
+等待初始化和发布：
 
 ```bash
-kubectl -n banxia get pods,svc,pvc,ingress
+kubectl -n banxia wait \
+  --for=condition=complete job/banxia-schema-migration --timeout=15m
+kubectl -n banxia wait \
+  --for=condition=complete job/tsp-database-bootstrap --timeout=15m
+kubectl -n banxia wait \
+  --for=condition=complete job/tsp-product-initialize --timeout=20m
+kubectl -n banxia rollout status deployment/tsp-platform --timeout=20m
+kubectl -n banxia rollout status deployment/tsp-compute --timeout=20m
+kubectl -n banxia rollout status deployment/tsp-product --timeout=30m
+kubectl -n banxia rollout status statefulset/market-collector --timeout=20m
+```
+
+固定名称的 Job 需要重跑时，先删除对应 Job，再重新应用清单。
+
+Kustomize 中的删除补丁只会把旧对象排除出新渲染结果，不会删除集群中已经存在的对象。
+新链路完成切换验收后，应立即显式删除旧工作负载和 Service，避免继续写旧链路：
+
+```bash
+kubectl -n banxia delete deployment \
+  api market-sink strategy-engine outbox-relay projection-worker \
+  flink-jobmanager flink-taskmanager --ignore-not-found
+kubectl -n banxia delete statefulset \
+  kafka minio tsp-postgres --ignore-not-found
+kubectl -n banxia delete service \
+  api kafka minio tsp-postgres flink-jobmanager --ignore-not-found
+kubectl -n banxia delete job \
+  banxia-kafka-bootstrap banxia-minio-bootstrap flink-feature-job-v1 \
+  --ignore-not-found
+kubectl -n banxia delete hpa api --ignore-not-found
+kubectl -n banxia delete pdb api strategy-engine --ignore-not-found
+kubectl -n banxia delete networkpolicy api-ingress --ignore-not-found
+```
+
+上述命令不得扩展到 PVC、PV、Secret、StorageClass 或 ALB。旧数据卷和 Bucket 保留至少
+五个交易日，只在备份、迁移核对和回滚观察期全部完成后单独审批回收。
+
+## 7. 健康检查
+
+| 服务 | 就绪条件 |
+| --- | --- |
+| `tsp-product` | 双库、公共行情、平台连接、Worker 心跳、Compute |
+| `market-worker` | 进程心跳、PostgreSQL 租约、WAL、ClickHouse、Redis |
+| `tsp-compute` | TCP 服务存活；Pod 无 Secret、无出网 |
+| 报告 Worker | PostgreSQL、ClickHouse、TOS |
+
+公网验收：
+
+```bash
 curl -fsS https://shanao.asia/health/ready
 ```
 
-健康检查未全部通过时不得宣告发布完成。回滚时将 Ingress 根路径临时切回 Policy
-`api:80`，并恢复上一组镜像 digest；禁止删除本次创建的 TSP 数据卷，除非已完成备份并
-明确决定废弃该环境。
+同时验证登录、九项菜单、次日计划、当日实盘、SSE、SMTP、回测和移动端布局。
 
-### 13.6 DinD 安全例外
+## 8. 监控与告警
 
-Compute Broker 使用 Pod 内 `docker:27-dind`，该容器需要 `privileged`。它不挂载宿主
-Docker socket，不挂载 Kubernetes Token；Docker 数据使用临时 `emptyDir`，Compute
-容器无网络、无密钥、只读公共行情。此方案必须由 NetworkPolicy、固定镜像 digest 和
-单 Pod 边界共同约束，后续以 Kubernetes 原生 Compute Runner 替换。
+必须监控：
 
-## 9. 备份
+- Market Worker 主节点、心跳、采集成功时间、候选覆盖率和行情 P95 延迟。
+- WAL 待处理数量、持久化失败数和最近错误。
+- PostgreSQL 连接、事务延迟、Outbox 积压和最老任务年龄。
+- ClickHouse 写入延迟和分区容量。
+- Redis 命中率、内存和投影重建状态。
+- TSP API P50/P95/P99、错误率、SSE 连接数。
+- Task Worker 四类心跳。
+- Compute 并发、超时、取消和资源使用。
 
-当前数据卷使用 `Retain` 防止 Kubernetes 资源删除时自动回收，但单副本 EBS 和 MinIO
-不等于备份。以下条目是生产增强要求，完成自动任务和隔离恢复验证后才能视为已具备：
+P0 条件包括：交易时段行情停止、PostgreSQL 不可写、策略状态无法提交或过期行情仍参与判断。
 
-### 9.1 PostgreSQL
+## 9. 备份与恢复
 
-- 每日全量备份。
-- 持续 WAL 归档。
-- 生产备份保留至少 35 天。
-- 每月执行隔离恢复验证。
+- PostgreSQL：每日全量、持续 WAL 归档、保留 35 天、每月恢复演练。
+- ClickHouse：每日增量到 TOS，每周抽样恢复交易日分区。
+- TOS：开启版本控制；报告与审计 Bucket 开启对象锁或等价防篡改能力。
+- Redis：不作为权威数据，不设置业务 RPO；故障后从 PostgreSQL 和 ClickHouse 重建。
+- Market Worker WAL：保留旧主 EBS，确认全部事件处理后再回收。
 
-### 9.2 ClickHouse
-
-- 每日增量备份到对象存储。
-- 每周验证随机交易日分区恢复。
-- 恢复后执行记录数、最大时间和内容哈希对账。
-
-### 9.3 S3/MinIO
-
-- 启用对象版本控制。
-- 报告和审计 Bucket 启用对象锁或等价防篡改能力。
-- 跨区域复制。
-- 删除由生命周期策略执行。
-
-### 9.4 Flink
-
-- Checkpoint 用于自动故障恢复。
-- 版本升级前创建 Savepoint。
-- Savepoint 与应用版本建立映射。
-
-## 10. 容灾目标
-
-下表是目标 SLO，不代表当前单副本数据层已经达到。当前可快速恢复应用 Pod，但 Kafka、
-PostgreSQL、ClickHouse、Redis 或 MinIO 实例故障需要依赖 EBS 重挂载或备份恢复。
+目标：
 
 | 场景 | RPO | RTO |
 | --- | --- | --- |
 | 单应用 Pod 故障 | 0 | 小于 60 秒 |
-| 单 Kafka Broker 故障 | 0 | 自动恢复 |
-| PostgreSQL 主节点故障 | 0 或同步复制窗口内 | 小于 5 分钟 |
-| 单可用区故障 | 0 | 小于 10 分钟 |
-| 区域故障 | 不超过 5 分钟 | 不超过 30 分钟 |
+| Redis 故障 | 0 | 小于 10 分钟 |
+| PostgreSQL 主节点故障 | 同步复制窗口内 | 小于 5 分钟 |
+| 单可用区故障 | 小于 1 分钟 | 小于 15 分钟 |
 
-mootdx 在 Kafka 确认前产生但尚未被系统接收的行情无法保证零丢失。系统应记录缺口，
-不得伪造缺失快照。
+## 10. 回滚
+
+1. 保留旧镜像 digest、旧 TSP PostgreSQL PVC 和 MinIO 数据卷。
+2. 新版本异常时回滚镜像和 Kustomize 提交，不反向覆盖数据库。
+3. 若已切换 TSP 数据库，只允许从发布前逻辑备份恢复到隔离实例后再切换 DSN。
+4. Market Worker 回滚到 Kafka/Flink 链路前，必须先停止新 Worker并核对WAL和Outbox。
+5. 未完成数据校验前禁止删除任何旧 PVC、Bucket 或数据库。
 
 ## 11. 安全
 
-- OIDC 用户认证和基于角色的授权。
-- 管理、重放和配置操作使用独立权限。
-- 服务间 mTLS。
-- Kubernetes NetworkPolicy 限制横向访问。
-- 数据库账号按服务最小权限拆分。
-- 所有审计日志包含操作者、请求 ID、变更前后值和时间。
-- 日志禁止记录 Token、密码和完整凭证。
-- 对象下载使用短时签名 URL。
-- Web API 设置速率限制和请求体大小限制。
-
-## 12. Runbook
-
-### 12.1 mootdx 节点全部失败
-
-1. 确认不是本地网络或 DNS 故障。
-2. 查看节点健康分数和最近异常。
-3. 保持最后行情只读展示，策略状态标记 `data_stale`。
-4. 恢复后记录数据缺口，不补造不存在的 1 秒快照。
-5. 对缺口期间所有决策执行审计。
-
-### 12.2 Kafka 积压
-
-1. 确认 Broker、网络和 Consumer Group 状态。
-2. 检查 ClickHouse、PostgreSQL 或 Flink 是否背压。
-3. 必要时扩展消费者，但保持同股票有序。
-4. 恢复后对比事件时间和处理时间。
-
-### 12.3 Redis 丢失
-
-1. API 自动回源并标记缓存降级。
-2. 暂停非必要批量查询。
-3. 从 PostgreSQL 恢复策略状态投影。
-4. 从 ClickHouse 恢复最新行情和指标。
-5. 对比重建结果后恢复正常模式。
-
-### 12.4 PostgreSQL 故障
-
-1. 策略引擎停止提交新状态。
-2. 保持行情进入 Kafka、ClickHouse 和 S3。
-3. 执行主备切换或时间点恢复。
-4. 从 Kafka 重放未确认策略事件。
-5. 校验 Inbox、状态、决策和 Outbox 一致性。
-
-## 13. 上线检查
-
-- 所有镜像和 Schema 版本固定。
-- 数据库迁移已在 Staging 演练。
-- Flink Savepoint 可用。
-- 关键告警和通知渠道生效。
-- 备份处于成功状态。
-- 看板显示正确交易日、计划版本和数据时效。
-- 当前生产计划不包含自动下单能力。
-- 数据库已应用 `004_strategy_research.sql`、`005_multi_strategy.sql`、
-  `006_immutable_active_strategy.sql`、`007_mutable_strategy_name.sql` 和
-  `008_strategy_cascade_delete.sql`。
-- 至少一条未归档策略处于激活状态，且唯一激活索引有效。
-- 四个 Web 页面加载同版本共享 UI 样式并通过桌面/移动端检查。
+- 外部只开放 ALB 443，数据库和内部 Service 不暴露公网。
+- Cookie 使用 `HttpOnly + Secure + SameSite`，写操作校验 CSRF。
+- Secret 不进入镜像、ConfigMap、日志或浏览器。
+- Compute Pod 无业务 Secret、无出网、只读根文件系统和公共行情卷。
+- 审计记录包含租户、用户、请求 ID、版本、变更前后值和时间。
+- 行情超过时效阈值时必须 fail closed，禁止继续输出有效入场判断。

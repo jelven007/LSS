@@ -42,13 +42,6 @@ spec:
     - host: shanao.asia
       http:
         paths:
-          - path: /api/events
-            pathType: Prefix
-            backend:
-              service:
-                name: tsp-product
-                port:
-                  number: 81
           - path: /
             pathType: Prefix
             backend:

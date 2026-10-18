@@ -7,20 +7,22 @@
 
 ## 项目状态
 
-当前仓库已实现可运行的多服务研究系统：
+当前仓库已实现精简的生产研究系统：
 
 ```text
-rustdx native -> SQLite WAL -> Kafka -> Flink / 策略状态机
-       -> PostgreSQL + ClickHouse + Redis + S3/MinIO
-       -> /api/v1 -> Web 看板
+rustdx native -> Market Worker + SQLite WAL
+       -> PostgreSQL + ClickHouse + Redis + TOS
+       -> 统一 FastAPI -> React Web
 ```
 
-当前发布版本为 `v0.5.0`。生产环境部署在火山引擎 VKE，通过
-<https://shanao.asia> 提供完整 Web 产品；本地 Compose 保留为开发和集成验证环境。
+当前开发版本为 `v0.5.1`，最新已记录生产版本为 `v0.5.0`。生产环境部署在火山引擎
+VKE，通过 <https://shanao.asia> 提供完整 Web 产品；本地 Compose 保留为兼容回归环境。
 
 [`product/`](product/) 是 TSP 产品主干，提供首页看板、自选、策略、复盘、回测、
-个股分析、设置及完整账户体系，并通过服务端受控桥接使用本项目的次日计划和当日实盘。
-Web 是唯一客户端，Android/APK 已删除。发布范围见
+个股分析、设置及完整账户体系。Policy 作为内嵌业务模块提供次日计划和当日实盘，不再
+经过独立 HTTP Bridge。Web 是唯一客户端，Android/APK 已删除。精简架构见
+[v0.5.1 技术架构](docs/36-lean-architecture-v0.5.1.md)，发布状态见
+[v0.5.1 发布候选](docs/releases/2026-10-18-lean-v0.5.1.md)，上一生产范围见
 [v0.5.0 生产记录](docs/releases/2026-10-18-web-v0.5.0.md)，变更历史见
 [CHANGELOG](CHANGELOG.md)，完整文档以 [docs/README.md](docs/README.md) 为统一入口：
 
@@ -39,12 +41,13 @@ Web 是唯一客户端，Android/APK 已删除。发布范围见
 - [游资策略原型库 PRD](docs/12-yu-zi-strategy-library-prd.md)
 - [当前生产技术方案](docs/13-current-production-solution.md)
 - [TSP 产品移植与 Policy 整合](docs/35-tsp-product-integration.md)
+- [v0.5.1 精简技术架构](docs/36-lean-architecture-v0.5.1.md)
 - [版本记录](CHANGELOG.md)
 - [OpenAPI](docs/openapi.yaml) / [AsyncAPI](docs/asyncapi.yaml)
 
 ## 本地基础设施
 
-生产化迭代使用 Docker Compose 提供 PostgreSQL、ClickHouse、Redis、MinIO 和 Kafka：
+兼容回归环境使用 Docker Compose 提供 PostgreSQL、ClickHouse、Redis、MinIO 和 Kafka：
 
 ```bash
 cp deploy/compose/.env.example deploy/compose/.env
@@ -56,8 +59,8 @@ make infra-status
 初始化 Schema 位于 `migrations/postgres/` 和 `migrations/clickhouse/`。详细说明见
 [deploy/compose/README.md](deploy/compose/README.md)。
 
-当前 Compose 已接入 Kafka、SQLite WAL、Flink、PostgreSQL、ClickHouse、Redis 和 MinIO，
-同时保留本地报告和 JSONL 作为兼容链路。
+Compose 保留旧 Kafka/Flink 链路用于历史回归；VKE 生产清单使用精简 Market Worker
+和火山引擎 TOS，不再部署 Kafka、Flink 或 MinIO。
 
 ## 策略范围
 
@@ -206,13 +209,13 @@ export BANXIA_CODE_COMMIT="$(git rev-parse --short HEAD)"
 ```
 
 - `banxia-strategy run` 继续写本地 Markdown、JSON、CSV，同时将内容寻址对象上传至
-  MinIO，并在 PostgreSQL 保存策略版本、运行、计划、候选和对象元数据。
+  S3 兼容对象存储，并在 PostgreSQL 保存策略版本、运行、计划、候选和对象元数据。
 - `banxia-strategy serve` 继续写 JSONL，同时通过有界后台队列批量写 ClickHouse
   盘口/分钟线、PostgreSQL 决策状态与 Outbox，并更新 Redis 监控快照。
 - `best_effort` 适用于迁移验证：本地链路继续运行，远端错误写入 stderr 或监控 API
   的 `storage.last_error`。`required` 用于要求初始化和队列接收成功的环境。
-- 远端写入不替代本地数据，也不包含自动下单能力。后台队列不是 WAL；进入 Kafka/WAL
-  阶段前，进程异常仍可能造成尚未落远端的数据丢失。
+- 远端写入不替代本地数据，也不包含自动下单能力。该本地兼容队列不是 WAL；VKE
+  生产使用 `market-worker` 的 SQLite WAL。
 
 真实组件双写测试要求 Compose 已健康启动：
 
@@ -305,7 +308,7 @@ PYTHONPATH=src .venv/bin/python -m banxia_strategy.research \
 ```
 
 配置存储连接后添加 `--persist`，将输入快照、报告、CSV、独立参数和全过程归档到
-MinIO，并写入 PostgreSQL 研究表。已有数据库需先应用
+S3 兼容对象存储，并写入 PostgreSQL 研究表。已有数据库需先应用
 `migrations/postgres/004_strategy_research.sql`。运行方法、实验结果、指标和限制见
 [历史策略研究说明](docs/08-strategy-research.md)。
 

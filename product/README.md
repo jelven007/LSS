@@ -4,8 +4,8 @@
 沿用 `TSP` 作为应用标识和 API Token 前缀。
 
 > 本目录是 Policy 仓库中的生产 Web 产品。产品主导航收敛为首页、自选、策略、次日计划、
-> 当日实盘、复盘、回测、个股分析、设置；次日计划和当日实盘通过服务端桥接读取
-> Policy 权威数据。上游基线和部署边界见 [INTEGRATION.md](INTEGRATION.md)。
+> 当日实盘、复盘、回测、个股分析、设置；Policy 领域以内嵌 ASGI 模块提供次日计划和
+> 当日实盘。上游基线和部署边界见 [INTEGRATION.md](INTEGRATION.md)。
 
 [![CI](https://github.com/jelven007/TSP/actions/workflows/ci.yml/badge.svg)](https://github.com/jelven007/TSP/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
@@ -15,10 +15,10 @@
 
 ## 版本状态
 
-仓库最新集成线为 `main`，应用语义版本为 `0.5.0`。生产部署位于火山引擎 VKE，
+仓库最新集成线为 `main`，应用语义版本为 `0.5.1`。生产部署位于火山引擎 VKE，
 入口为 <https://shanao.asia>；完整镜像 digest 与验收证据见
 [版本基线](docs/version-baseline.md)和 Policy 仓库的
-[v0.5.0 发布记录](../docs/releases/2026-10-18-web-v0.5.0.md)。
+[v0.5.1 精简架构](../docs/36-lean-architecture-v0.5.1.md)。
 
 ## 项目定位
 

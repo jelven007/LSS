@@ -5,6 +5,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.custom.policy_bridge import (
+    EmbeddedPolicyRuntime,
     PolicyBridge,
     PolicyBridgeSettings,
     _date,
@@ -96,6 +97,62 @@ async def test_bridge_fails_closed_when_service_is_not_configured() -> None:
 
     assert error.value.status_code == 503
     assert error.value.detail == "Policy 服务尚未配置"
+
+
+@pytest.mark.asyncio
+async def test_embedded_policy_still_validates_timeout() -> None:
+    bridge = PolicyBridge(
+        PolicyBridgeSettings("embedded://policy", "", timeout_seconds=0),
+    )
+
+    with pytest.raises(HTTPException) as error:
+        await bridge.request("GET", "/api/v1/reports")
+
+    assert error.value.status_code == 503
+    assert error.value.detail == "Policy 服务超时配置无效"
+
+
+@pytest.mark.asyncio
+async def test_embedded_policy_uses_asgi_transport_without_server_token() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(
+            host=request.url.host,
+            path=request.url.path,
+            authorization=request.headers.get("authorization"),
+        )
+        return httpx.Response(200, json={"items": []})
+
+    bridge = PolicyBridge(
+        PolicyBridgeSettings("embedded://policy", "unused-token"),
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert await bridge.request("GET", "/api/v1/reports") == {"items": []}
+    assert seen == {
+        "host": "policy.internal",
+        "path": "/api/v1/reports",
+        "authorization": None,
+    }
+
+
+def test_embedded_policy_runtime_closes_owned_resources() -> None:
+    closed: list[str] = []
+
+    class Resource:
+        def close(self) -> None:
+            closed.append("closed")
+
+    runtime = EmbeddedPolicyRuntime()
+    runtime._transport = object()
+    runtime._resources = (Resource(), Resource())
+
+    runtime.close()
+
+    assert closed == ["closed", "closed"]
+    assert runtime._transport is None
+    assert runtime._resources == ()
 
 
 @pytest.mark.parametrize(

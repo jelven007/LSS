@@ -1,11 +1,18 @@
 # TSP 产品整合说明
 
+## v0.5.1 生产候选
+
+Policy 已安装到 TSP Runtime 镜像并通过 ASGI Transport 在同一进程调用；
+`/api/policy/*` 契约保持不变。生产清单不再部署独立 Policy API、独立 Gateway、
+独立 TSP PostgreSQL 或特权 DinD。完整说明见
+[`v0.5.1 精简架构`](../docs/36-lean-architecture-v0.5.1.md)。
+
 ## 基线
 
 - 上游仓库：`https://github.com/jelven007/TSP`
 - 上游提交：`bb8ea7045b613f189159e7ebd84162567ffb09e5`
 - 上游版本：`0.4.8`
-- 整合产品版本：`0.5.0`
+- 整合产品版本：`0.5.1`
 - 许可证：MIT，原许可证保留在 `product/LICENSE`
 
 `product/` 保留 TSP 的 React/FastAPI 产品、完整业务模块、测试和服务端部署定义。
@@ -28,44 +35,45 @@
 首页直接使用 TSP 市场看板。自选、策略、复盘、回测、个股分析、设置以及注册、登录、
 找回密码使用 TSP 实现。TSP 其他业务页面和后端能力仍保留，但不进入主导航。
 
-## Policy 专用业务域
+## Policy 内嵌业务域
 
-次日计划和当日实盘继续由现有 Policy 服务负责计算和持久化：
+次日计划和当日实盘继续由 Policy 领域负责计算和持久化：
 
 ```text
 浏览器
   -> TSP 会话认证与租户权限
   -> /api/policy/*
-  -> TSP Policy bridge
-  -> Policy /api/v1/*
+  -> 同进程 Policy facade
+  -> httpx ASGI Transport
+  -> 内嵌 Policy /api/v1/*
   -> PostgreSQL / Redis / ClickHouse
 ```
 
-浏览器不会获得 Policy API Token。桥接只开放次日计划、报告任务和盘中监控所需的
-固定路径；日期、股票代码和任务 ID 在转发前校验。读取需要有效 TSP 会话，报告刷新还
+生产链路不再创建或传递 Policy 服务间 Token。门面只开放次日计划、报告任务和盘中监控
+所需的固定路径；日期、股票代码和任务 ID 在调用前校验。读取需要有效 TSP 会话，报告刷新还
 需要 `data:manage` 权限。
 
 运行配置：
 
 ```dotenv
-POLICY_SERVICE_URL=http://api.banxia.svc.cluster.local
-POLICY_SERVICE_TOKEN=<server-side-token>
+POLICY_SERVICE_URL=embedded://policy
 POLICY_SERVICE_TIMEOUT_SECONDS=30
 ```
 
-生产环境应使用 Kubernetes Secret 或权限为 `0600` 的环境文件保存 Token。
+独立 HTTP URL 和服务端 Token 仅保留用于非生产兼容测试。
 
 ## 数据归属
 
 | 数据 | 权威系统 |
 | --- | --- |
-| 用户、租户、角色、会话、找回密码 | TSP |
-| 自选、TSP 策略、复盘、回测、个股分析、用户设置 | TSP |
-| Policy 次日计划、候选和策略版本 | Policy PostgreSQL |
+| 用户、租户、角色、会话、找回密码 | 共享 PostgreSQL 集群的 `tsp_control` |
+| 自选、TSP 策略、复盘、回测、个股分析、用户设置 | 共享 PostgreSQL 集群的 `tsp_data_production` |
+| Policy 次日计划、候选和策略版本 | 共享 PostgreSQL 集群的 `banxia` |
 | Policy 盘中行情和决策投影 | Policy ClickHouse / Redis / PostgreSQL |
-| 行情采集与 rustdx 连接 | 两套系统按各自现有边界运行，部署时必须控制连接预算 |
+| Policy 行情采集 | 精简 `market-worker` 的 rustdx 长连接 |
+| TSP 公共行情发布 | `tsp-platform`，按不可变版本发布 |
 
-## 生产发布边界
+## v0.5.0 生产发布边界（历史）
 
 `v0.5.0` 统一部署到火山引擎 VKE：
 

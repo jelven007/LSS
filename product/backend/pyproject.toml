@@ -1,6 +1,6 @@
 [project]
 name = "tsp-backend"
-version = "0.5.0"
+version = "0.5.1"
 description = "A 股选股 + 监控 + 回测面板 — TickFlow 适配"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -12,6 +12,7 @@ dependencies = [
     "pydantic-settings>=2.4",
     "python-multipart>=0.0.6",
     "sse-starlette>=2.0",
+    "prometheus-client>=0.21,<1",
     # Data
     # 1.44 起含流式引擎 executor 线程调度修复; 上限锁定一个已验证的大版本,
     # 升级需重跑 scripts/stress_polars_concurrency.py 压测 (并发死锁回归)。
@@ -22,6 +23,10 @@ dependencies = [
     "psutil>=5.9",                # 独立回测 worker 的峰值 RSS 与退出后内存指标
     # 单机和 full-product 共用模拟盘/告警模块，主应用导入时即需要 SQL 适配类型。
     "psycopg[binary,pool]>=3.2,<4",
+    "clickhouse-connect>=0.8,<0.11",
+    "minio>=7.2,<8",
+    "pycryptodome>=3.20,<4",
+    "redis>=5,<7",
     # llvmlite 不再提供 macOS Intel wheel；该平台使用 Matrix 纯 Python fallback。
     "numba>=0.65.1; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     "fastexcel>=0.10",            # Polars 读取 xlsx/xls

@@ -1,26 +1,23 @@
 # Kubernetes 部署
 
-`base/` 是云厂商无关的应用基线，`overlays/volcengine/` 是火山引擎
-VKE（ECS Worker 节点）生产部署。当前生产 overlay 采用经济型自托管
-方案：PostgreSQL、Kafka、ClickHouse、Redis 和 MinIO 以单副本
-StatefulSet 运行，并使用独立 EBS 云盘持久化。
+`base/` 是云厂商无关的兼容基线，`overlays/volcengine/` 是火山引擎
+VKE 生产部署。`v0.5.1` 的生产 overlay 使用 PostgreSQL、ClickHouse、Redis、
+TOS 和带本地 WAL 的 Market Worker，不再部署 Kafka、Flink、MinIO 或独立 Policy API。
 
 该 overlay 部署到集群 `cdaus2p98m08ce3b12nn0`，生产入口为
-<https://shanao.asia>。`v0.5.0` 起同时渲染 Policy 与 TSP Web 产品，应用镜像均按摘要
-固定。架构见 [当前生产技术方案](../../docs/13-current-production-solution.md)，发布记录见
-[v0.5.0 Web 产品发布](../../docs/releases/2026-10-18-web-v0.5.0.md)。
+<https://shanao.asia>。架构见
+[v0.5.1 精简生产架构](../../docs/36-lean-architecture-v0.5.1.md)。
 
 VKE overlay 包含：
 
-- API、业务 Worker、工作日报 CronJob 和 Flink 工作负载。
-- TSP PostgreSQL、平台、Web/API、Gateway、四类 Worker 和隔离 Compute Broker。
+- 统一 Web/API、`task-worker`、`tsp-platform` 和隔离 `tsp-compute`。
+- 带 SQLite WAL 的双副本 `market-worker`，通过 PostgreSQL 租约单活。
 - 工作日 16:20 参考数据同步、16:30/23:30 报告、16:35 涨停历史和 16:50 模拟盘任务。
-- 使用 NAS CSI 的 RWX 报告目录。
 - 使用独立 RWO 云盘保存每个 `market-collector` 副本的本地 WAL。
-- 使用 `Retain` 回收策略的 EBS 云盘保存五个数据服务的数据。
-- PostgreSQL/ClickHouse 迁移 Job、Kafka topic、MinIO bucket 和策略目录初始化 Job。
-- 创建公网 ALB 的 HTTPS Ingress，并将 HTTP 重定向到 HTTPS。
-- ALB 将 `/api/events*` 转发到 TSP Gateway，其余路径转发到 TSP API。
+- Policy、TSP 控制库和 TSP 业务库共享 PostgreSQL 集群并使用独立角色。
+- PostgreSQL/ClickHouse 迁移、TSP 数据库初始化和策略目录初始化 Job。
+- TOS 保存 Policy 报告和原始归档；TSP 公共行情目录暂保留一个 NAS RWX 卷。
+- 公网 ALB 统一转发到 `tsp-product:80`，SSE 与普通 API 共用入口。
 - PDB、HPA、跨可用区/节点软分散和默认拒绝入站的 NetworkPolicy。
 - 可选的 ServiceMonitor/PodMonitor。
 
@@ -28,10 +25,10 @@ VKE overlay 包含：
 
 1. VKE 集群已安装 NAS CSI、ALB Ingress Controller 和 metrics-server。
 2. `ssl-redirect` 要求 ALB Ingress Controller `v0.35.0` 或更高版本。
-3. VKE Worker 子网可通过 NAT 访问 rustdx 使用的通达信行情节点。
-4. 已创建 CR 镜像仓库，并镜像应用、Flink 及全部基础镜像。
+3. VKE Worker 子网可访问 rustdx 行情节点和上海地域 TOS 内网 Endpoint。
+4. 已创建 CR 镜像仓库，并推送 Policy、Web Runtime 和 Compute 镜像。
 5. 已开通 ALB 服务授权，并准备证书中心证书。
-6. 已准备 NAS 文件系统；集群已提供 `ebs-ssd` StorageClass。
+6. TOS 已创建 `strategy-reports` 与 `market-raw` Bucket；TSP 公共行情仍需 NAS。
 
 火山引擎 ESSD 云盘的最小容量为 10GiB，数据卷和 Collector WAL 均不得
 低于此容量。
@@ -52,17 +49,17 @@ rg -n 'REPLACE_WITH_' \
 主要配置位置：
 
 - `overlays/volcengine/kustomization.yaml`：CR 地址和 Git commit 镜像标签。
-- `overlays/volcengine/data-services.yaml`：集群内数据服务及 EBS 容量。
+- `overlays/volcengine/data-services.yaml`：PostgreSQL、ClickHouse、Redis 及 EBS 容量。
 - `overlays/volcengine/runtime-config.yaml`：集群内数据服务地址。
-- `overlays/volcengine/flink-*-patch.yaml`：Flink 使用的 Kafka 和 MinIO 地址。
-- `overlays/volcengine/storage.yaml`：NAS 文件系统 ID 和挂载地址。
+- `overlays/volcengine/storage.yaml`：EBS `Retain` 存储类。
+- `overlays/volcengine/tsp-storage.yaml`：TSP 公共行情兼容 NAS。
 - `overlays/volcengine/collector-statefulset.yaml`：WAL 使用的块存储类。
 - `overlays/volcengine/ingress.yaml`：新建 ALB 的子网和证书中心证书 ID。
-- `banxia-secrets.example.yaml`：数据库、Redis、对象存储及 CR 凭据。
+- `banxia-secrets.example.yaml`：数据库、Redis、TOS 及 CR 凭据。
 
-`BANXIA_MINIO_ENDPOINT` 不带 URL scheme；Flink 配置中的
-`s3.endpoint` 使用完整的 `http://minio:9000` 地址。密码出现在
-PostgreSQL DSN 或 Redis URL 中时必须进行 URL 编码。
+`BANXIA_OBJECT_ENDPOINT` 不带 URL scheme，VKE 默认使用
+`tos-s3-cn-shanghai.ivolces.com`。密码出现在 PostgreSQL DSN 或 Redis URL 中时必须
+进行 URL 编码。
 
 ## Secret
 
@@ -92,16 +89,22 @@ kubectl apply --server-side --force-conflicts --dry-run=server -f /tmp/banxia-vk
 kubectl apply --server-side --force-conflicts -f /tmp/banxia-vke.yaml
 ```
 
-首次部署先创建 Secret、StorageClass 和数据服务，完成生产数据恢复后
-再应用完整清单。不要在恢复前启动采集器、消费者或定时任务。完整清单应用后，
-等待数据库迁移和目录初始化完成，再检查工作负载：
+升级前先完成 PostgreSQL 与对象迁移，具体顺序见
+[精简架构发布顺序](../../docs/36-lean-architecture-v0.5.1.md#7-发布顺序)。不要在迁移
+校验前删除旧 `tsp-postgres` PVC。完整清单应用后等待数据库初始化，再检查工作负载：
 
 ```bash
 kubectl -n banxia wait \
   --for=condition=complete job/banxia-schema-migration --timeout=15m
 kubectl -n banxia wait \
+  --for=condition=complete job/tsp-database-bootstrap --timeout=15m
+kubectl -n banxia wait \
+  --for=condition=complete job/tsp-product-initialize --timeout=20m
+kubectl -n banxia wait \
   --for=condition=complete job/banxia-catalog-bootstrap --timeout=15m
-kubectl -n banxia rollout status deployment/api --timeout=10m
+kubectl -n banxia rollout status deployment/tsp-product --timeout=10m
+kubectl -n banxia rollout status deployment/tsp-compute --timeout=10m
+kubectl -n banxia rollout status statefulset/market-collector --timeout=10m
 kubectl -n banxia get pods,pvc,ingress
 ```
 
@@ -110,9 +113,8 @@ kubectl -n banxia get pods,pvc,ingress
 
 ```bash
 kubectl -n banxia delete job \
-  banxia-schema-migration banxia-kafka-bootstrap \
-  banxia-minio-bootstrap banxia-catalog-bootstrap \
-  flink-feature-job-v1 --ignore-not-found
+  banxia-schema-migration tsp-database-bootstrap \
+  tsp-product-initialize banxia-catalog-bootstrap --ignore-not-found
 kubectl apply --server-side --force-conflicts -f /tmp/banxia-vke.yaml
 ```
 
@@ -132,16 +134,15 @@ kubectl -n banxia get albinstance banxia-alb
 kubectl -n banxia get ingress banxia-api
 ```
 
-入口由 ALB 终止 TLS。TSP Web 使用 `tsp-product:80`，事件流使用
-`tsp-product:81`；Policy `api:80` 仅供集群内 Bridge 使用。域名只应解析到当前 ALB
-公网地址。
+入口由 ALB 终止 TLS。TSP Web、普通 API、Policy Facade 和事件流统一使用
+`tsp-product:80`。域名只应解析到当前 ALB 公网地址。
 
 ## 全量重建
 
-全量重建保留 `banxia-secrets`、`banxia-registry`、所有 PVC/PV、StorageClass、
-IngressClass 和 ALBInstance，只删除业务 Deployment、StatefulSet、Job、CronJob 和
-Service。完整顺序、备份和回滚见
-[部署与运维](../../docs/06-deployment-operations.md#13-v050-vke-全量重建-runbook)。
+全量重建只替换应用 Deployment、Market Worker StatefulSet、Job 和 CronJob。
+PostgreSQL、ClickHouse、Redis、PVC/PV、Secret、StorageClass、IngressClass 和
+ALBInstance 不得批量删除。完整迁移、发布和回滚顺序见
+[部署与运维](../../docs/06-deployment-operations.md#5-数据迁移)。
 
 ## 可选监控
 

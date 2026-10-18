@@ -36,24 +36,6 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-api-metrics
-  namespace: banxia
-spec:
-  podSelector:
-    matchLabels:
-      app: banxia-api
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: kube-system
-      ports:
-        - {protocol: TCP, port: 8765}
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
   name: allow-datastore-access
   namespace: banxia
 spec:
@@ -69,28 +51,5 @@ spec:
       ports:
         - {protocol: TCP, port: 5432}
         - {protocol: TCP, port: 6379}
-        - {protocol: TCP, port: 9092}
-        - {protocol: TCP, port: 9093}
         - {protocol: TCP, port: 8123}
         - {protocol: TCP, port: 9000}
-        - {protocol: TCP, port: 9001}
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-flink-control-plane
-  namespace: banxia
-spec:
-  podSelector:
-    matchLabels:
-      app: banxia-flink
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: banxia
-      ports:
-        - {protocol: TCP, port: 6123}
-        - {protocol: TCP, port: 6124}
-        - {protocol: TCP, port: 8081}

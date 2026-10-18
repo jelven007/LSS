@@ -59,7 +59,7 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
-  policy-bridge:
+  unified-api:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -70,8 +70,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install fastapi httpx pytest pytest-asyncio ruff
-      - run: ruff check app/custom/policy_bridge.py app/multitenancy/access.py app/multitenancy/bootstrap.py tests/test_policy_bridge.py
-      - run: PYTHONPATH=. pytest -q tests/test_policy_bridge.py
+      - run: ruff check app/custom/policy_bridge.py app/multitenancy/access.py app/multitenancy/bootstrap.py app/multitenancy/compute_broker.py app/multitenancy/executor.py app/multitenancy/lifespan.py app/multitenancy/task_worker.py tests/test_policy_bridge.py tests/test_task_worker.py
+      - run: PYTHONPATH=. pytest -q tests/test_policy_bridge.py tests/test_task_worker.py
 
   candidate-deploy:
     runs-on: ubuntu-latest
@@ -116,6 +116,12 @@ jobs:
           -f deploy/full/Broker.Dockerfile
           --build-arg RUNTIME_IMAGE=python:3.11-slim-bookworm
           .
+      - run: docker build --check -f Dockerfile ..
+      - run: >-
+          docker build --check
+          -f deploy/full/Compute.Dockerfile
+          --build-arg RUNTIME_IMAGE=python:3.11-slim-bookworm
+          ..
 
   version-and-kubernetes:
     runs-on: ubuntu-latest
@@ -135,6 +141,10 @@ jobs:
           root = pathlib.Path(".")
           versions = {
               tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"],
+              re.search(
+                  r'__version__ = "([^"]+)"',
+                  (root / "src/banxia_strategy/__init__.py").read_text(),
+              ).group(1),
               tomllib.loads((root / "product/backend/pyproject.toml").read_text())["project"]["version"],
               next(
                   package["version"]
@@ -162,4 +172,8 @@ jobs:
           test -s /tmp/banxia-vke.yaml
           ! grep -n "REPLACE_WITH_" /tmp/banxia-vke.yaml
           grep -q "name: tsp-product" /tmp/banxia-vke.yaml
-          grep -q "name: api" /tmp/banxia-vke.yaml
+          grep -q "name: tsp-compute" /tmp/banxia-vke.yaml
+          grep -q "market-worker" /tmp/banxia-vke.yaml
+          ! grep -q "privileged: true" /tmp/banxia-vke.yaml
+          ! grep -q "name: kafka" /tmp/banxia-vke.yaml
+          ! grep -q "name: minio" /tmp/banxia-vke.yaml

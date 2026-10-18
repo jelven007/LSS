@@ -3,8 +3,8 @@
 services:
   app:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: product/Dockerfile
       args:
         BASE_IMAGE_REGISTRY: ${BASE_IMAGE_REGISTRY:-docker.io}
         BACKEND_EXTRAS: ${BACKEND_EXTRAS:-}

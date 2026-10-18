@@ -4,9 +4,10 @@
 [需求基线](./requirements.md)，工程细则依据[贡献与复审指南](../CONTRIBUTING.md)，
 被测源码、生产和标签状态依据[版本基线](./version-baseline.md)。
 
-`v0.5.0` 生产门禁额外包含 200 项前端测试、11 项 Policy Bridge 测试、版本一致性检查、
-VKE Kustomize 渲染与服务端 dry-run。部署后必须验证九项菜单、SMTP、SSE、Policy
-降级页面和 `/health/ready`。
+`v0.5.1` 生产门禁包含 200 项前端测试、14 项 Policy Facade 测试、Policy 401 项回归、
+Task Worker 与 Compute TCP 定向回归、版本一致性检查、VKE Kustomize 渲染与服务端
+dry-run。部署后必须验证九项菜单、SMTP、SSE、Policy 降级页面和 `/health/ready`。
+`v0.5.0` 的 11 项 Policy Bridge 门禁仅作为历史基线。
 
 ## 1. 测试目标
 

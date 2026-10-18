@@ -1,26 +1,16 @@
 FROM rust:1.89-slim-bookworm AS rustdx-builder
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git python3-dev python3-venv \
+    && apt-get install -y --no-install-recommends python3-dev python3-venv \
     && rm -rf /var/lib/apt/lists/* \
     && python3 -m venv /opt/maturin
 ARG PIP_INDEX_URL
 RUN /opt/maturin/bin/pip install --no-cache-dir "maturin==1.9.6"
 WORKDIR /build/rustdx-native
 COPY native/rustdx_native ./
-RUN --mount=type=secret,id=github_token \
-    TOKEN="$(cat /run/secrets/github_token 2>/dev/null || true)" \
-    && if [ -n "$TOKEN" ]; then \
-         git config --global \
-           url."https://x-access-token:${TOKEN}@github.com/".insteadOf \
-           "https://github.com/"; \
-       fi \
-    && CARGO_NET_GIT_FETCH_WITH_CLI=true \
-       /opt/maturin/bin/maturin build --locked --release --interpreter python3 --out /wheels \
-    && if [ -n "$TOKEN" ]; then \
-         git config --global --remove-section \
-           url."https://x-access-token:${TOKEN}@github.com/"; \
-       fi
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    /opt/maturin/bin/maturin build --locked --release \
+      --interpreter python3 --out /wheels
 
 FROM python:3.12.7-slim-bookworm
 

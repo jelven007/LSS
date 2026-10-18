@@ -15,7 +15,6 @@ data:
   BANXIA_DATA_PROVIDER: rustdx
   BANXIA_RUSTDX_SERVERS: ""
   BANXIA_RUSTDX_TIMEOUT_SECONDS: "5"
-  BANXIA_KAFKA_BOOTSTRAP_SERVERS: REPLACE_WITH_KAFKA_BOOTSTRAP_SERVERS
   BANXIA_REPORT_DIRS: /app/reports
   BANXIA_REPORT_OUTPUT_DIR: /app/reports
   BANXIA_REPORT_SCHEDULE: 16:30,23:30
@@ -28,24 +27,13 @@ data:
   BANXIA_CLICKHOUSE_PORT: "8123"
   BANXIA_CLICKHOUSE_DATABASE: banxia
   BANXIA_CLICKHOUSE_USER: banxia
-  BANXIA_MINIO_ENDPOINT: REPLACE_WITH_TOS_OR_MINIO_ENDPOINT
-  BANXIA_MINIO_SECURE: "true"
-  BANXIA_MINIO_REPORT_BUCKET: strategy-reports
-  BANXIA_MINIO_MARKET_BUCKET: market-raw
+  BANXIA_OBJECT_ENDPOINT: REPLACE_WITH_TOS_S3_ENDPOINT
+  BANXIA_OBJECT_SECURE: "true"
+  BANXIA_OBJECT_REGION: REPLACE_WITH_OBJECT_REGION
+  BANXIA_OBJECT_REPORT_BUCKET: strategy-reports
+  BANXIA_OBJECT_MARKET_BUCKET: market-raw
   BANXIA_STRATEGY_VERSION: v2
   BANXIA_METRICS_PORT: "9100"
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: banxia-reports
-  namespace: banxia
-spec:
-  accessModes: [ReadWriteMany]
-  storageClassName: REPLACE_WITH_RWX_STORAGE_CLASS
-  resources:
-    requests:
-      storage: 10Gi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -95,7 +83,7 @@ spec:
             - {name: reports, mountPath: /app/reports}
       volumes:
         - name: reports
-          persistentVolumeClaim: {claimName: banxia-reports}
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -149,7 +137,7 @@ spec:
         - name: wal
           emptyDir: {}
         - name: reports
-          persistentVolumeClaim: {claimName: banxia-reports}
+          emptyDir: {}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -244,7 +232,7 @@ spec:
             - {name: reports, mountPath: /app/reports}
       volumes:
         - name: reports
-          persistentVolumeClaim: {claimName: banxia-reports}
+          emptyDir: {}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -446,7 +434,7 @@ spec:
                 - {name: reports, mountPath: /app/reports}
           volumes:
             - name: reports
-              persistentVolumeClaim: {claimName: banxia-reports}
+              emptyDir: {}
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -481,7 +469,7 @@ spec:
                 - {name: reports, mountPath: /app/reports}
           volumes:
             - name: reports
-              persistentVolumeClaim: {claimName: banxia-reports}
+              emptyDir: {}
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -517,7 +505,7 @@ spec:
                 - {name: reports, mountPath: /app/reports}
           volumes:
             - name: reports
-              persistentVolumeClaim: {claimName: banxia-reports}
+              emptyDir: {}
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget

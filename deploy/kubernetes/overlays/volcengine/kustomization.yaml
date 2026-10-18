@@ -15,11 +15,23 @@ resources:
   - intraday-monitor.yaml
 patches:
   - path: runtime-config.yaml
-  - path: reports-pvc-patch.yaml
   - path: delete-market-collector.yaml
-  - path: flink-jobmanager-patch.yaml
-  - path: flink-taskmanager-patch.yaml
-  - path: flink-feature-job-patch.yaml
+  - path: delete-market-sink.yaml
+  - path: delete-strategy-engine.yaml
+  - path: delete-outbox-relay.yaml
+  - path: delete-projection-worker.yaml
+  - path: delete-strategy-engine-pdb.yaml
+  - path: delete-kafka-service.yaml
+  - path: delete-kafka-statefulset.yaml
+  - path: delete-kafka-bootstrap.yaml
+  - path: delete-minio-service.yaml
+  - path: delete-minio-statefulset.yaml
+  - path: delete-minio-bootstrap.yaml
+  - path: delete-policy-api-deployment.yaml
+  - path: delete-policy-api-service.yaml
+  - path: delete-policy-api-pdb.yaml
+  - path: delete-policy-api-hpa.yaml
+  - path: delete-policy-api-network-policy.yaml
   - target:
       group: apps
       version: v1
@@ -33,45 +45,22 @@ patches:
 images:
   - name: banxia-strategy
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
-    newTag: v0.5.0
-    digest: sha256:2747fca3bdfb39fe8fdf2717bc907c69692567d81e0fd01b01df9f20c636a517
+    newTag: v0.5.1
   - name: tsp-product-runtime
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
-    newTag: web-v0.5.0
-    digest: sha256:4100e144e5bf000193930d26a40c15438301ce73d961e6696467276d620e05d2
-  - name: tsp-product-broker
-    newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
-    newTag: broker-v0.5.0
-    digest: sha256:5e57b84b728621f1238e043369411211078db18c391a435d9b9f77e18ece57f4
+    newTag: web-v0.5.1
   - name: tsp-product-compute
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
-    newTag: compute-v0.5.0
-    digest: sha256:21d149be6b92a8077ae5729e0eba9b78d57d71c99c6eb291dea26abdb8c41620
-  - name: docker
-    newName: xm1001-cn-shanghai.cr.volces.com/banxia/docker
-    newTag: 27-dind
-    digest: sha256:f649ef046008ca7f926a2571c32b0ac22e5c59eb61b959617f9acc2a4c638cf5
-  - name: banxia-flink
-    newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-flink
-    newTag: 59f59a6
+    newTag: compute-v0.5.1
   - name: postgres
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/postgres
     newTag: 16.4-alpine
   - name: redis
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/redis
     newTag: 7.4.1-alpine
-  - name: apache/kafka
-    newName: xm1001-cn-shanghai.cr.volces.com/banxia/kafka
-    newTag: 3.9.0
   - name: clickhouse/clickhouse-server
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/clickhouse
     newTag: "24.8"
-  - name: quay.io/minio/minio
-    newName: xm1001-cn-shanghai.cr.volces.com/banxia/minio
-    newTag: RELEASE.2024-09-22T00-33-43Z
-  - name: quay.io/minio/mc
-    newName: xm1001-cn-shanghai.cr.volces.com/banxia/minio-mc
-    newTag: RELEASE.2024-09-16T17-43-14Z
 configMapGenerator:
   - name: banxia-intraday-prometheus
     namespace: banxia

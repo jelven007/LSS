@@ -54,7 +54,8 @@ def persist_research(payload, directory: Path, snapshot_path: Path, settings):
     repository = PostgresStorage(settings.postgres_dsn)
     store = MinioObjectAssetStore(
         settings.minio_endpoint, settings.minio_access_key, settings.minio_secret_key,
-        bucket=settings.minio_report_bucket, secure=settings.minio_secure, ensure_bucket=True,
+        bucket=settings.minio_report_bucket, secure=settings.minio_secure,
+        region=settings.minio_region, ensure_bucket=True,
     )
     archive = directory / "experiment.tar.gz"
     files = sorted(path for path in directory.rglob("*")

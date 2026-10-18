@@ -1,8 +1,10 @@
-"""Authenticated bridge to the existing Policy planning and live-monitor API."""
+"""Authenticated Policy facade with an in-process production backend."""
 from __future__ import annotations
 
+import atexit
 import os
 import re
+import threading
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -36,11 +38,13 @@ class PolicyBridgeSettings:
         )
 
     def validate(self) -> None:
+        if not 1 <= self.timeout_seconds <= 300:
+            raise HTTPException(status_code=503, detail="Policy 服务超时配置无效")
+        if self.base_url == "embedded://policy":
+            return
         parsed = urlparse(self.base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise HTTPException(status_code=503, detail="Policy 服务尚未配置")
-        if not 1 <= self.timeout_seconds <= 300:
-            raise HTTPException(status_code=503, detail="Policy 服务超时配置无效")
 
 
 class PolicyBridge:
@@ -62,17 +66,29 @@ class PolicyBridge:
     ) -> Any:
         self.settings.validate()
         headers = {"Accept": "application/json"}
-        if self.settings.token:
+        base_url = self.settings.base_url
+        transport = self.transport
+        if base_url == "embedded://policy":
+            base_url = "http://policy.internal"
+            if transport is None:
+                try:
+                    transport = _embedded_policy.transport()
+                except Exception as exc:
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Policy 内嵌服务初始化失败",
+                    ) from exc
+        elif self.settings.token:
             headers["Authorization"] = f"Bearer {self.settings.token}"
         try:
             async with httpx.AsyncClient(
                 timeout=self.settings.timeout_seconds,
-                transport=self.transport,
+                transport=transport,
                 follow_redirects=False,
             ) as client:
                 response = await client.request(
                     method,
-                    f"{self.settings.base_url}{path}",
+                    f"{base_url}{path}",
                     params=params,
                     headers=headers,
                 )
@@ -103,6 +119,45 @@ class PolicyBridge:
                 detail=str(detail or "Policy 服务请求失败"),
             )
         return payload
+
+
+class EmbeddedPolicyRuntime:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._transport: httpx.ASGITransport | None = None
+        self._resources: tuple[Any, ...] = ()
+
+    def transport(self) -> httpx.ASGITransport:
+        with self._lock:
+            if self._transport is None:
+                from banxia_strategy.api import create_api_app
+                from banxia_strategy.config import RuntimeSettings
+                from banxia_strategy.service import build_api_services
+
+                settings = RuntimeSettings.from_env(
+                    service_name="embedded-policy-api",
+                )
+                services, self._resources = build_api_services(
+                    settings,
+                    embedded=True,
+                )
+                self._transport = httpx.ASGITransport(
+                    app=create_api_app(services),
+                )
+            return self._transport
+
+    def close(self) -> None:
+        with self._lock:
+            resources, self._resources = self._resources, ()
+            self._transport = None
+        for resource in resources:
+            close = getattr(resource, "close", None)
+            if close is not None:
+                close()
+
+
+_embedded_policy = EmbeddedPolicyRuntime()
+atexit.register(_embedded_policy.close)
 
 
 router = APIRouter(prefix="/api/policy", tags=["policy"])
@@ -203,3 +258,7 @@ async def monitor_events(
 
 def setup(registrar: BackendExtensionRegistrar) -> None:
     registrar.include_router(router)
+
+
+def shutdown() -> None:
+    _embedded_policy.close()

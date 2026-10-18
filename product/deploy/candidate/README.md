@@ -30,20 +30,18 @@ Docker socket，而使用 [`../kubernetes`](../kubernetes/README.md) 定义的 P
 RUNTIME=registry.example.com/tsp/runtime:candidate
 COMPUTE=registry.example.com/tsp/compute:candidate
 BROKER=registry.example.com/tsp/broker:candidate
-export GITHUB_TOKEN="$(security find-internet-password -w -s github.com)"
 
 docker build -f product/Dockerfile \
-  --secret id=github_token,env=GITHUB_TOKEN \
   --build-arg BACKEND_EXTRAS=cell \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
-  -t "$RUNTIME" product
+  -t "$RUNTIME" .
 docker build -f product/deploy/full/Compute.Dockerfile \
   --build-arg RUNTIME_IMAGE="$RUNTIME" \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
-  -t "$COMPUTE" product
+  -t "$COMPUTE" .
 docker build -f product/deploy/full/Broker.Dockerfile \
   --build-arg RUNTIME_IMAGE="$RUNTIME" \
-  -t "$BROKER" product
+  -t "$BROKER" .
 ```
 
 推送后把 `candidate.env` 中所有镜像改为 Registry 返回的不可变 digest。不能用浮动 tag
