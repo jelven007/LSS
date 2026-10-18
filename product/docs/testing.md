@@ -4,7 +4,11 @@
 [需求基线](./requirements.md)，工程细则依据[贡献与复审指南](../CONTRIBUTING.md)，
 被测源码、生产和标签状态依据[版本基线](./version-baseline.md)。
 
-`v0.5.1` 生产门禁包含 200 项前端测试、14 项 Policy Facade 测试、Policy 401 项回归、
+最新精简提交验证为前端 178 项、TSP 53 项及 Policy 394 项（25 项按环境跳过）。
+本次全新安装从空库、新凭据与空 NAS 验证，部署结果见
+[发布记录](../../docs/releases/2026-10-19-fresh-install-v0.5.1.md)。
+
+最初 `v0.5.1` 候选门禁包含 200 项前端测试、14 项 Policy Facade 测试、Policy 401 项回归、
 Task Worker 与 Compute TCP 定向回归、版本一致性检查、VKE Kustomize 渲染与服务端
 dry-run。部署后必须验证九项菜单、SMTP、SSE、Policy 降级页面和 `/health/ready`。
 `v0.5.0` 的 11 项 Policy Bridge 门禁仅作为历史基线。

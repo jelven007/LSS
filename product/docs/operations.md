@@ -13,7 +13,9 @@
 
 - 当前 VKE 多租户按角色运行平台、API、Gateway 和四类 Worker；PostgreSQL、公共版本、
   Broker、备份和恢复见[VKE 部署](../deploy/kubernetes/README.md)。
-- 生产版本为 `v0.5.0`/schema v6，实际 commit 和镜像 digest 见版本基线与发布记录。
+- 待发布版本为 `v0.5.1`/schema v6，实际 commit、镜像 digest 和线上验收状态见版本基线。
+- 本次 VKE 按全新环境安装，不恢复旧业务数据；应用 Secret 重新生成，
+  SMTP 未配置时禁用。执行结果见[安装记录](../../docs/releases/2026-10-19-fresh-install-v0.5.1.md)。
 - 下方根目录 Compose 操作适用于独立运行模式，其生产形态是单容器、单 Uvicorn worker。
 - 同一 `DATA_DIR` 只能由一个 TSP 主实例写入。
 - 默认服务端口为 `3018`。

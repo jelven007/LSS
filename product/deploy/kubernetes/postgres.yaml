@@ -122,6 +122,7 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: [ALL]
+              add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data

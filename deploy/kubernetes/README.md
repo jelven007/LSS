@@ -142,10 +142,14 @@ kubectl -n banxia get ingress banxia-api
 
 ## 全量重建
 
-全量重建只替换应用 Deployment、Market Worker StatefulSet、Job 和 CronJob。
-PostgreSQL、ClickHouse、Redis、PVC/PV、Secret、StorageClass、IngressClass 和
-ALBInstance 不得批量删除。完整迁移、发布和回滚顺序见
-[部署与运维](../../docs/06-deployment-operations.md#5-数据迁移)。
+必须先确定是保留数据升级还是全新安装。本次已授权全新安装，清空项目旧业务卷、
+数据库和 NAS 业务目录，重新生成应用 Secret，不恢复旧用户或报告。VKE 系统、
+镜像拉取认证、StorageClass、域名证书和 ALB 继续提供安装通道。
+操作和验证顺序见[全新安装](../../docs/06-deployment-operations.md#4-本次全新安装)。
+
+后续保留数据升级仅替换应用工作负载，按
+[数据迁移](../../docs/06-deployment-operations.md#5-保留数据升级的迁移流程)执行，
+不得将本次清空授权套用到其他项目或后续日常升级。
 
 ## 可选监控
 

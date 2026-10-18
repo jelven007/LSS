@@ -13,6 +13,11 @@
 
 ## 2. v0.5.1 自动化基线
 
+最新精简提交的已执行验证：Policy 394 项（369 通过、25 项按环境跳过），TSP 53 项，
+前端 41 文件、178 项，TypeScript 与生产构建通过；Kustomize 渲染 54 个资源。
+本轮部署继续验证空库初始化、实际镜像架构和公网 HTTPS，结果以
+[安装记录](releases/2026-10-19-fresh-install-v0.5.1.md)为准。
+
 截至 `2026-10-18`：
 
 | 范围 | 结果 |
@@ -207,6 +212,6 @@ kubectl kustomize --load-restrictor LoadRestrictionsNone \
 
 ## 10. 兼容回归
 
-旧 Kafka/Flink/MinIO 链路仍保留单元测试、Compose 和 AsyncAPI 契约，用于验证历史数据和
-紧急回滚。它不是 `v0.5.1` 的生产就绪依赖；旧链路测试通过不能替代 Market Worker、
-共享 PostgreSQL、TOS 和 Compute TCP 的新链路验收。
+Kafka/Flink 适配器、旧 Worker 入口和 Compose 链路已退役。历史回归与回滚使用对应
+Git 提交和旧镜像；不能替代 Market Worker、共享 PostgreSQL、TOS 和 Compute TCP 验收。
+全新安装必须从空库、空 NAS 和新凭据验证，不使用恢复旧数据代替首次初始化。

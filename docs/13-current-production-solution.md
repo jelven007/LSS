@@ -3,7 +3,7 @@
 ## 1. 状态与口径
 
 - 仓库当前版本：`v0.5.1`。
-- 架构状态：代码与 VKE Kustomize 清单已完成，等待镜像构建、数据迁移和生产验收。
+- 架构状态：按全新环境发布，等待 amd64 镜像和生产验收，不恢复旧业务数据。
 - 生产入口：<https://shanao.asia>。
 - 行情来源：`rustdx native`。
 - 服务范围：行情研究、策略筛选、盘中监控、回测与报告；不连接券商账户，不自动下单。
@@ -56,22 +56,22 @@ flowchart LR
 
 | 工作负载 | 副本 | 职责 |
 | --- | ---: | --- |
-| `tsp-product` | HPA 2～4 | React、统一 API、账户、多租户、SSE、内嵌 Policy、Task Worker |
+| `tsp-product` | HPA 2～4 | React、统一 API、账户、多租户、SSE、内嵌 Policy |
+| `tsp-task-worker` | 1 | 独立监督研究、规则、通知和定时任务 |
+| `report-scheduler` | 1 | Policy 持久任务队列、定时报告与补跑 |
 | `tsp-platform` | 1 | 公共行情版本、平台配置和只读行情接口 |
 | `tsp-compute` | 1 | 隔离执行回测、优化、挖掘等计算任务 |
 | `market-collector` | 2，租约单活 | 容器内运行 `market-worker`，负责采集、特征、决策与投影 |
 | `market-reference-sync` | 1 | 证券目录、板块和每日参考数据同步 |
 | `intraday-monitor` | 1 | 采集指标、规则计算和告警暴露 |
 
-`tsp-product` 每个 Pod 包含 API 与一个 `task-worker`。后者监督研究、实时规则、通知和
-定时任务四类子进程；子进程异常退出会使容器失败，由 Kubernetes 整体重建。
+`tsp-product` 每个 Pod 只运行统一 API。Task Worker 独立监督四类子进程，
+子进程异常退出会使 Worker 容器失败，由 Kubernetes 重建；API 扩容不复制任务进程。
 
 ### 3.2 定时任务
 
 | 工作负载 | 职责 |
 | --- | --- |
-| `report-worker-1630` | 生成收盘后初版报告 |
-| `report-worker-2330` | 使用完整日线覆盖更新 |
 | `limit-up-history-sync` | 增量同步涨停历史 |
 | `paper-trading-1650` | 结算冻结规则的模拟样本 |
 | `stock-history-sync` | 增量补齐历史行情 |
@@ -127,8 +127,7 @@ Policy、TSP 控制库和 TSP 业务库共享同一个 PostgreSQL 集群，但�
 服务重启和 WAL 重放不会使状态回退。
 
 Kafka、Flink、`market-sink`、独立 `strategy-engine`、独立 `outbox-relay` 和
-`projection-worker` 不进入 `v0.5.1` 生产清单。本地 Compose 暂时保留旧链路，仅用于
-历史回归和紧急回滚验证。
+`projection-worker` 已从当前源码与本地、生产部署退役；历史回滚使用对应 Git 提交和旧镜像。
 
 ## 6. Web、API 与计算
 
@@ -151,7 +150,7 @@ Policy 门面通过 `httpx.ASGITransport` 调用同进程 Policy FastAPI，不�
 API 通过 `tsp-compute:7000` 的 JSON 行协议发送受限任务。Compute Pod：
 
 - 不注入数据库、SMTP、TOS 或平台管理 Secret。
-- NetworkPolicy 默认拒绝全部出站，只允许 `tsp-product` 入站。
+- NetworkPolicy 默认拒绝全部出站，只允许 API 健康探测和 Task Worker 计算入站。
 - 只读挂载公共行情版本，根文件系统只读，临时文件写入受限 `emptyDir`。
 - 使用非 root 用户、删除全部 Linux capabilities，并限制 CPU、内存和并发。
 - 请求不能覆盖入口程序、环境变量、数据目录或资源限制。
@@ -183,6 +182,10 @@ API 通过 `tsp-compute:7000` 的 JSON 行协议发送受限任务。Compute Pod
 Kafka Lag 和 Flink Checkpoint 指标只属于旧链路，不得作为 `v0.5.1` 生产就绪条件。
 
 ## 9. 发布门禁
+
+本次采用[全新安装流程](06-deployment-operations.md#4-本次全新安装)，不执行下列
+旧数据备份与迁移项。必须验证空库初始化和公网访问；TOS 或 SMTP 未配置时记录真实限制，
+不能宣称报告归档、验证码与邮件找回已通过。下列迁移门禁仅适用于保留数据升级。
 
 以下条件全部满足后才能切换生产：
 

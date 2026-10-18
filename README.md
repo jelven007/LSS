@@ -15,8 +15,10 @@ rustdx native -> Market Worker + SQLite WAL
        -> 统一 FastAPI -> React Web
 ```
 
-当前开发版本为 `v0.5.1`，最新已记录生产版本为 `v0.5.0`。生产环境部署在火山引擎
-VKE，通过 <https://shanao.asia> 提供完整 Web 产品；本地 Compose 用于 Policy 开发与集成验证。
+当前版本为 `v0.5.1`，正按全新环境安装到火山引擎 VKE，入口为 <https://shanao.asia>。
+实际部署状态、镜像摘要与功能限制见
+[本次安装记录](docs/releases/2026-10-19-fresh-install-v0.5.1.md)；
+本地 Compose 用于 Policy 开发与集成验证。
 
 [`product/`](product/) 是 TSP 产品主干，提供首页看板、自选、策略、复盘、回测、
 个股分析、设置及完整账户体系。Policy 作为内嵌业务模块提供次日计划和当日实盘，不再

@@ -19,13 +19,14 @@
 真实密钥不得提交仓库。以 [`secrets.example.yaml`](secrets.example.yaml) 为字段契约，
 在集群中创建：
 
-- `tsp-product-admin`：TSP 数据库运行密码、新旧数据库管理员 DSN。
+- `tsp-product-admin`：TSP 双库运行密码和共享 PostgreSQL 管理员 DSN。
 - `tsp-product-secrets`：运行时双库 DSN、平台 Token、流票据密钥和 SMTP。
 - `banxia-registry`：火山引擎 CR 拉取凭据。
 
-SMTP 从原 `banxia-secrets` 映射，端口 `465` 使用 `ssl`，端口 `587` 使用
-`starttls`。Policy 内嵌运行时复用 `banxia-runtime` 和 `banxia-secrets`，浏览器不可见
-数据库或对象存储凭据。
+全新安装重新生成应用凭据，不继承旧 SMTP。配置邮件服务时，端口 `465` 使用 `ssl`，
+端口 `587` 使用 `starttls`；未配置时禁用邮件功能并记录限制。
+Policy 内嵌运行时复用 `banxia-runtime` 和 `banxia-secrets`，浏览器不可见数据库或
+对象存储凭据。TOS AK/SK 必须来自有效云端授权。
 
 ## 发布
 
@@ -53,7 +54,12 @@ kubectl kustomize --load-restrictor LoadRestrictionsNone \
 kubectl apply --server-side --force-conflicts --dry-run=server -f /tmp/banxia-vke.yaml
 ```
 
-升级已有集群时，先从完整渲染结果中只应用数据库 Bootstrap：
+本次生产按全新环境安装：停止旧应用、清空授权范围内的业务卷和 NAS 目录、
+重建应用 Secret，再应用新资源。从空 PostgreSQL 创建三库和两个 TSP 运行角色，
+随后执行 schema v6 与管理员初始化；不运行旧数据库迁移 Job。
+详见[全新安装流程](../../../docs/06-deployment-operations.md#4-本次全新安装)。
+
+需要保留数据的后续升级，先从完整渲染结果中只应用数据库 Bootstrap：
 
 ```bash
 kubectl apply -f /tmp/banxia-vke.yaml -l app=tsp-database-bootstrap
@@ -84,6 +90,7 @@ curl -fsS https://shanao.asia/health/ready
 ```
 
 `/health/ready` 必须同时通过双库、公共行情版本、平台连接、指标缓存、Compute 和
-四类任务心跳。随后验证管理员登录、九项菜单、SMTP、内嵌 Policy 页面和 SSE。
+四类任务心跳。随后验证管理员登录、九项菜单、内嵌 Policy 页面和 SSE；
+SMTP 仅在已配置时执行邮件验收，不能将缺少凭据算作通过。
 Task Worker 启动检查数据库 Schema 与公共行情标记，不等待 API readiness，
 避免与四类心跳检查互相等待。Compute 网络入口同时允许 API 健康探测和 Task Worker 计算。

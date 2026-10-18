@@ -126,6 +126,11 @@ Policy、TSP 控制库和 TSP 业务库使用同一个 PostgreSQL 集群：
 
 ## 7. 发布顺序
 
+2026-10-19 的本次安装按用户授权清空旧业务环境，不执行旧数据备份、迁移或恢复。
+先固定最新 amd64 镜像，再重建应用凭据、业务卷和空库 Schema，验证 HTTPS、登录和
+各 Worker。具体步骤见[全新安装](06-deployment-operations.md#4-本次全新安装)。
+下列顺序保留给需要保留数据的后续升级。
+
 1. 备份 Policy PostgreSQL、旧 TSP PostgreSQL、ClickHouse、MinIO 和 NAS。
 2. 创建 TOS Bucket，迁移对象并验证 SHA-256。
 3. 更新 `banxia-secrets` 的 TOS AK/SK，更新 TSP 新旧数据库 DSN。

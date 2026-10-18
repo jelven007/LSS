@@ -1,0 +1,198 @@
+# Isolated integration environment; shares no databases with older local stacks.
+name: policy-lean-test
+
+x-tsp: &tsp
+  image: ${TSP_RUNTIME_IMAGE:?Build the current runtime first}
+  user: "10001:10001"
+  env_file: ${LEAN_STATE_DIR:?Private state directory required}/runtime.env
+  environment: &tsp-env
+    SERVICE_ROLE: api
+    MULTITENANCY_ENABLED: "true"
+    TSP_CELL_ID: local
+    TSP_CELL_SCHEMA_VERSION: "6"
+    TSP_CELL_POOL_SIZE: "4"
+    TSP_CELL_MARKET_URL: http://platform:3018
+    TSP_COMPUTE_ADDRESS: compute:7000
+    DATA_DIR: /state/public/current
+    PLATFORM_CONFIG_DIR: /state/platform-config
+    TENANT_ARTIFACTS_DIR: /state/tenant-artifacts
+    TICKFLOW_ENV_FILE: /dev/null
+    POLARS_MAX_THREADS: "2"
+    NUMBA_NUM_THREADS: "2"
+    OPENBLAS_NUM_THREADS: "1"
+    OMP_NUM_THREADS: "1"
+    NUMBA_CACHE_DIR: /tmp/numba
+    PYTHONDONTWRITEBYTECODE: "1"
+    TZ: Asia/Shanghai
+  volumes:
+    - ${LEAN_STATE_DIR}/public:/state/public:ro
+    - ${LEAN_STATE_DIR}/platform-config:/state/platform-config:ro
+    - ${LEAN_STATE_DIR}/tenant-artifacts:/state/tenant-artifacts
+  read_only: true
+  tmpfs: [/tmp:rw,nosuid,nodev,size=1g,uid=10001,gid=10001]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  networks: [default, compute]
+  init: true
+  restart: unless-stopped
+  stop_grace_period: 60s
+  mem_limit: 4g
+  cpus: 2
+
+services:
+  postgres:
+    extends: {file: ../../../deploy/compose/docker-compose.yml, service: postgres}
+    image: postgres:16
+    environment:
+      TSP_CONTROL_RUNTIME_PASSWORD: ${TSP_CONTROL_RUNTIME_PASSWORD:?Required}
+      TSP_DATA_RUNTIME_PASSWORD: ${TSP_DATA_RUNTIME_PASSWORD:?Required}
+    volumes:
+      - ./postgres-init.sh:/docker-entrypoint-initdb.d/900-tsp.sh:ro
+
+  clickhouse:
+    extends: {file: ../../../deploy/compose/docker-compose.yml, service: clickhouse}
+    mem_limit: 2g
+
+  redis:
+    extends: {file: ../../../deploy/compose/docker-compose.yml, service: redis}
+    mem_limit: 256m
+
+  minio:
+    extends: {file: ../../../deploy/compose/docker-compose.yml, service: minio}
+    mem_limit: 512m
+
+  minio-init:
+    extends: {file: ../../../deploy/compose/docker-compose.yml, service: minio-init}
+
+  catalog-bootstrap:
+    extends: {file: ../../../deploy/compose/docker-compose.yml, service: catalog-bootstrap}
+    image: ${POLICY_IMAGE:?Build the current Policy image first}
+
+  market-worker:
+    extends: {file: ../../../deploy/compose/docker-compose.yml, service: market-worker}
+    image: ${POLICY_IMAGE}
+    mem_limit: 1g
+
+  report-scheduler:
+    extends: {file: ../../../deploy/compose/docker-compose.yml, service: report-scheduler}
+    image: ${POLICY_IMAGE}
+    mem_limit: 2g
+
+  market-reference-sync:
+    extends: {file: ../../../deploy/compose/docker-compose.yml, service: market-reference-sync}
+    image: ${POLICY_IMAGE}
+    mem_limit: 1g
+
+  initialize:
+    image: ${TSP_RUNTIME_IMAGE}
+    user: "10001:10001"
+    env_file: ${LEAN_STATE_DIR}/admin.env
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        /app/.venv/bin/python -m app.cell.admin migrate --kind control --runtime-role tsp_control_runtime --target-version 6
+        /app/.venv/bin/python -m app.cell.admin migrate --kind data --runtime-role tsp_data_runtime --cell-id local --target-version 6
+        /app/.venv/bin/python -m app.cell.admin bootstrap-full-identity
+        /app/.venv/bin/python -m app.cell.admin register-cell --cell-id local --api-url "http://127.0.0.1:${LEAN_WEB_PORT:-3051}"
+        /app/.venv/bin/python -m app.cell.admin sync-strategies
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: "no"
+
+  platform:
+    <<: *tsp
+    env_file: ${LEAN_STATE_DIR}/platform.env
+    environment:
+      <<: *tsp-env
+      SERVICE_ROLE: platform
+      MULTITENANCY_ENABLED: "false"
+      DATA_DIR: /state/platform-data
+      TSP_PUBLIC_MARKET_DIR: /state/public
+    command: [/app/.venv/bin/python, -m, uvicorn, app.main:app, --host, 0.0.0.0, --port, "3018"]
+    volumes:
+      - ${LEAN_STATE_DIR}/platform-data:/state/platform-data
+      - ${LEAN_STATE_DIR}/platform-config:/state/platform-config
+      - ${LEAN_STATE_DIR}/public:/state/public
+    networks: [default]
+    healthcheck:
+      test: [CMD, /app/.venv/bin/python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3018/health/ready',timeout=5)"]
+      start_period: 120s
+      interval: 15s
+      timeout: 8s
+      retries: 8
+
+  compute:
+    image: ${TSP_COMPUTE_IMAGE:?Build the current compute image first}
+    user: "10001:10001"
+    entrypoint: [/app/.venv/bin/python, -m, app.multitenancy.compute_broker]
+    command: [--listen, "0.0.0.0:7000", --market-root, /state/public, --capacity, "2"]
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      DATA_DIR: /state/public/current
+      TICKFLOW_ENV_FILE: /dev/null
+    volumes:
+      - ${LEAN_STATE_DIR}/public:/state/public:ro
+    networks: [compute]
+    read_only: true
+    tmpfs: [/tmp:rw,nosuid,nodev,size=1g,uid=10001,gid=10001]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 4g
+    cpus: 2
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, /app/.venv/bin/python, -c, "from app.multitenancy.executor import ComputeExecutor; assert ComputeExecutor(address='127.0.0.1:7000').health()['ready']"]
+      start_period: 20s
+      interval: 15s
+      timeout: 5s
+      retries: 8
+
+  task-worker:
+    <<: *tsp
+    command: [/app/.venv/bin/python, -m, app.multitenancy.task_worker]
+    depends_on:
+      initialize: {condition: service_completed_successfully}
+      platform: {condition: service_healthy}
+      compute: {condition: service_healthy}
+    healthcheck: {disable: true}
+
+  api:
+    <<: *tsp
+    env_file:
+      - ${LEAN_STATE_DIR}/runtime.env
+      - ${LEAN_STATE_DIR}/policy.env
+    environment:
+      <<: *tsp-env
+      POLICY_SERVICE_URL: embedded://policy
+    command: [/app/.venv/bin/python, -m, uvicorn, app.main:app, --host, 0.0.0.0, --port, "3018", --workers, "1"]
+    ports:
+      - "127.0.0.1:${LEAN_WEB_PORT:-3051}:3018"
+    depends_on:
+      initialize: {condition: service_completed_successfully}
+      catalog-bootstrap: {condition: service_completed_successfully}
+      platform: {condition: service_healthy}
+      compute: {condition: service_healthy}
+      task-worker: {condition: service_started}
+    healthcheck:
+      test: [CMD, /app/.venv/bin/python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3018/health/ready',timeout=6)"]
+      start_period: 120s
+      interval: 15s
+      timeout: 8s
+      retries: 8
+
+networks:
+  default:
+  # No external route. Only API and Task Worker share this network with Compute.
+  # VKE enforces stricter peer egress denial through its NetworkPolicy.
+  compute:
+    internal: true
+
+volumes:
+  postgres-data:
+  clickhouse-data:
+  redis-data:
+  minio-data:
+  collector-wal:
+  reports:
