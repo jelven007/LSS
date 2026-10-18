@@ -286,6 +286,8 @@ Web 是唯一客户端入口，不再提供 Android/APK。登录后的固定主�
 | AC-022 | 浏览器检查 Policy 请求 | 请求只到同源 `/api/policy/*`，无 Policy Token |
 | AC-023 | VKE 全新安装 | 不恢复旧数据；三库、双运行角色、公共行情标记和管理员初始化成功，HTTPS 与登录可用 |
 | AC-024 | 渲染生产清单 | 无 Kafka、Flink、MinIO、独立 Policy API 或 `privileged` 容器 |
+| AC-025 | 首次行情同步与 Web 并行启动 | 快照读取不等待全量计算，未就绪行情显示真实空态 |
+| AC-026 | 浏览器加载正式制品 | 首页引用的 JavaScript、CSS 和图标均存在并可通过 HTTPS 获取 |
 
 ### 11.5 本次安装边界
 

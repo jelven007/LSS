@@ -160,6 +160,8 @@ const extension: FrontendExtension = {
 ### 3.4 前端禁止事项
 
 - 不直接在多个组件中拼接后端 URL，统一使用 `frontend/src/lib/api.ts` 或未来公开客户端。
+- 打包后执行 `scripts/check_static.py <dist目录>`，核对首页引用的本地资源完整；
+  文件哈希 Manifest 只证明已有文件未改变，不能替代引用完整性和公网资源验收。
 - 不自行创建与现有 TanStack Query 重复的缓存；查询键仍由 `queryKeys.ts` 集中管理。
 - 不用插槽绕过权限、数据口径或表单校验。
 - 不通过 DOM 查询、全局事件或 monkey patch 修改核心组件。

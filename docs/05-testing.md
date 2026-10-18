@@ -215,3 +215,13 @@ kubectl kustomize --load-restrictor LoadRestrictionsNone \
 Kafka/Flink 适配器、旧 Worker 入口和 Compose 链路已退役。历史回归与回滚使用对应
 Git 提交和旧镜像；不能替代 Market Worker、共享 PostgreSQL、TOS 和 Compute TCP 验收。
 全新安装必须从空库、空 NAS 和新凭据验证，不使用恢复旧数据代替首次初始化。
+
+## 11. 首次启动与静态制品
+
+- 首次全量同步持有独占计算槽时，股票/ETF/指数 `refresh=False` 快照读取应立即
+  返回现有缓存或真实空态，不能进入同步历史计算。板块和异动仅在股票快照就绪时计算。
+- 回归覆盖计算槽被占用、默认懒加载保留、已有缓存读取和全快照冷启动。
+- 文件 Manifest 校验之外，执行 `product/scripts/check_static.py`，核对首页引用的
+  JavaScript、CSS 和图标都存在；公网必须实际请求这些资源，首页 HTTP 200 不够。
+- 数据初始化 Job 在非 root 环境中使用 `/tmp` HOME 与 Numba 缓存，确认内置策略
+  目录初始化数量；不能只按 Job Complete 判断策略目录已正确创建。

@@ -161,6 +161,7 @@ def full_snapshot(request: Request, authorization: Annotated[str | None, Header(
     repo = state.repo
     status = service.status()
     frames, days = {}, {}
+    stock_frame = None
     for asset in ("stock", "etf", "index"):
         frame, day = repo.get_enriched_latest_asset(asset, refresh=False)
         # Only standardized public fields enter the bridge. Platform process
@@ -169,17 +170,19 @@ def full_snapshot(request: Request, authorization: Annotated[str | None, Header(
         if asset == "stock" and day is not None:
             frame = service._inject_volume_delta(frame)
             frame = service._inject_sealed_vol(frame, day)
+        if asset == "stock":
+            stock_frame = frame
         frames[asset] = encode_frame(frame)
         days[asset] = str(day) if day else None
     sector_service = getattr(state, "sector_monitor_service", None)
     sectors = {}
-    if sector_service:
+    if sector_service and stock_frame is not None and not stock_frame.is_empty():
         targets = [target for values in sector_service.list_targets().values() for target in values]
         sectors = sector_service.build_snapshots(
-            repo.get_enriched_latest()[0], service.get_index_quotes(), targets, set(range(1, 31)), now=time.time(),
+            stock_frame, service.get_index_quotes(), targets, set(range(1, 31)), now=time.time(),
         )
     abnormal = []
-    if status.get("is_trading_hours"):
+    if status.get("is_trading_hours") and stock_frame is not None and not stock_frame.is_empty():
         from app.services.abnormal_moves import build_overview
 
         abnormal_cache = getattr(state, "full_public_abnormal", None)

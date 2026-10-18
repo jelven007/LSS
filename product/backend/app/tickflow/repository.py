@@ -1236,13 +1236,18 @@ class KlineRepository:
         return self._enriched_cache, self._enriched_cache_date
 
     def get_enriched_latest_asset(self, asset_type: str, refresh: bool = True) -> tuple[pl.DataFrame, date | None]:
-        """按资产类型返回最新 enriched 缓存。stock 保持旧缓存语义。
+        """按资产类型返回最新 enriched 缓存。
 
-        refresh=False: 缓存冷时不触发同步 _refresh_etf_enriched(300 天 scan+compute)。
+        refresh=False: 所有资产缓存冷时均不触发同步历史 scan+compute。
         供行情轮询线程使用 —— 避免在热路径上做重活阻塞股票行情/告警;缓存由 ETF 实时
         flush 焐热, 未焐热(无 ETF 实时数据)时返回空表, 本轮跳过 ETF 评估即可。
         """
         if asset_type == "stock":
+            if not refresh:
+                return (
+                    self._enriched_cache if self._enriched_cache is not None else pl.DataFrame(),
+                    self._enriched_cache_date,
+                )
             return self.get_enriched_latest()
         if asset_type == "etf":
             if self._etf_enriched_cache is None and refresh:

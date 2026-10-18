@@ -33,9 +33,11 @@ images:
   - name: tsp-product-runtime
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
     newTag: web-v0.5.1
+    digest: sha256:4e3ebc7243d3ef9bc7052ba7bfbe5b4a260fd789925fc598f536f6e578c75732
   - name: tsp-product-compute
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
     newTag: compute-v0.5.1
+    digest: sha256:9e3b5a03593621fb8b3c09a326bcf388378cb88409cd4da525778ae559c21329
   - name: postgres
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/postgres
     newTag: 16.4-alpine

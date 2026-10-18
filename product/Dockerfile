@@ -184,7 +184,10 @@ RUN codex --version
 ARG SOURCE_COMMIT=
 COPY product/VERSION /app/VERSION
 COPY product/scripts/build_manifest.py /app/build_manifest.py
-RUN python /app/build_manifest.py create --root /app \
+COPY product/scripts/check_static.py /tmp/check_static.py
+RUN python /tmp/check_static.py /app/static \
+    && rm /tmp/check_static.py \
+    && python /app/build_manifest.py create --root /app \
     --include app --include static --include tiers.yaml --include VERSION \
     --include pyproject.toml --include uv.lock --include native-wheels \
     --include policy-src --include config --include build_manifest.py \

@@ -13,6 +13,8 @@
 - `tsp-task-worker` 与 API 分开部署；Policy `report-scheduler` 常驻消费刷新和历史队列，
   同时负责日终报告调度。旧 Kafka/Flink 源码与部署已删除，详见[精简记录](37-production-simplification.md)。
 - PostgreSQL、ClickHouse、Redis 和 TOS 分别承担业务事实、行情历史、实时投影和对象归档。
+- 公共快照对所有资产使用只读缓存路径；冷缓存不能申请重计算槽。
+  板块和异动从同次已就绪股票快照派生，首次同步在后台继续运行。
 
 下文记录 `v0.5.0` 及更早的流式架构，仅用于迁移、回滚和设计追溯，不再代表当前生产
 Kustomize 拓扑。旧图中的 mootdx 已由 rustdx native 替代。

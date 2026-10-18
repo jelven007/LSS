@@ -693,6 +693,11 @@ if _static.exists():
     if (_static / "assets").exists():
         app.mount("/assets", StaticFiles(directory=_static / "assets"), name="assets")
 
+    if (_static / "favicon.svg").is_file():
+        @app.get("/favicon.svg", include_in_schema=False)
+        def favicon():
+            return FileResponse(_static / "favicon.svg", media_type="image/svg+xml")
+
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa_fallback(full_path: str):  # noqa: ARG001
         """所有未匹配路径回退到 index.html — React Router 接管。
