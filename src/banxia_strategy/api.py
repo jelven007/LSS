@@ -168,7 +168,6 @@ class ApiServices:
     cache: Any
     object_store: Optional[Any] = None
     api_token: Optional[str] = None
-    kafka_ready: Optional[Callable[[], bool]] = None
     clickhouse_ready: Optional[Callable[[], bool]] = None
     market_history: Optional[Any] = None
     strategy_version: str = "v1"
@@ -1253,18 +1252,11 @@ def create_api_app(services: ApiServices):
             "postgres": "ok" if services.repository.ready() else "unavailable",
             "redis": "ok" if services.cache.ready() else "degraded",
         }
-        if services.kafka_ready is not None:
-            dependencies["kafka"] = (
-                "ok" if services.kafka_ready() else "unavailable"
-            )
         if services.clickhouse_ready is not None:
             dependencies["clickhouse"] = (
                 "ok" if services.clickhouse_ready() else "degraded"
             )
-        required_ready = all(
-            dependencies.get(name) == "ok" for name in ("postgres", "kafka")
-            if name in dependencies
-        )
+        required_ready = dependencies["postgres"] == "ok"
         status = "ready" if required_ready else "not_ready"
         return JSONResponse(
             status_code=200 if required_ready else 503,
@@ -1281,8 +1273,8 @@ def create_api_app(services: ApiServices):
         payload = json.loads(ready.body)
         return {
             "server_time": _now(),
-            "collection": {"mode": "kafka", "source": provider_source},
-            "messaging": {"broker": payload["dependencies"].get("kafka", "unknown")},
+            "collection": {"mode": "market-worker", "source": provider_source},
+            "messaging": {"transport": "sqlite-wal", "delivery": "at-least-once"},
             "storage": payload["dependencies"],
         }
 

@@ -27,6 +27,7 @@
 | 文档 | 作用 |
 | --- | --- |
 | [v0.5.1 精简生产架构](36-lean-architecture-v0.5.1.md) | 当前统一应用、Market Worker、数据归属、计算隔离和迁移顺序 |
+| [生产架构精简与功能退役](37-production-simplification.md) | 旧链路删除、独立任务容量、报告队列修复与回归结果 |
 | [rustdx 数据源迁移](30-rustdx-migration.md) | 当前原生桥接、安装与部署配置、历史兼容和实测验证 |
 | [rustdx 生产发布记录](releases/2026-10-15-rustdx-r1.md) | 镜像摘要、上线验收结果和回滚方式 |
 | [v0.5.0 Web 产品发布](releases/2026-10-18-web-v0.5.0.md) | 整合产品、镜像、VKE 重建和验收记录 |
@@ -37,7 +38,7 @@
 | [数据与存储](03-data-storage.md) | 数据模型、多模存储、幂等、保留和归档策略 |
 | [接口规范](04-api.md) | HTTP API、事件接口、版本和错误规范 |
 | [OpenAPI](openapi.yaml) | 目标 HTTP API 的机器可读契约 |
-| [AsyncAPI](asyncapi.yaml) | Kafka 兼容回归链路的事件消息契约 |
+| [AsyncAPI](asyncapi.yaml) | WAL 与进程内处理共用的内部事件消息契约 |
 | [测试策略](05-testing.md) | 测试分层、覆盖矩阵、性能和发布门槛 |
 | [部署与运维](06-deployment-operations.md) | 环境、拓扑、监控、备份、容灾和安全 |
 | [迭代计划](07-iteration-plan.md) | 分阶段改造顺序、交付物和退出条件 |

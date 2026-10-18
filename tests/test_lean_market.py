@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import unittest
+import tempfile
+from contextlib import ExitStack
 from datetime import datetime
+from pathlib import Path
+from unittest.mock import Mock, patch
 
+from banxia_strategy.adapters.wal import SQLiteEventWAL
 from banxia_strategy.application.lean_market import LeanMarketPipeline
+from banxia_strategy.application.reliable_publish import ReliableEventPublisher
+from banxia_strategy.config import RuntimeSettings
 from banxia_strategy.domain.events import EventEnvelope
+from banxia_strategy.service import run_market_worker
 
 STAMP = datetime.fromisoformat("2026-09-24T09:45:00+08:00")
 
@@ -121,6 +129,54 @@ class Cache:
 
 
 class LeanMarketPipelineTest(unittest.TestCase):
+    def test_worker_starts_without_local_reports_and_loads_database_plan(self):
+        with tempfile.TemporaryDirectory() as directory, ExitStack() as stack:
+            settings = RuntimeSettings(
+                report_dirs=(Path(directory) / "missing-reports",),
+                wal_path=Path(directory) / "wal.sqlite3",
+            )
+            repository = Mock()
+            repository.list_monitor_plans.return_value = Repository().list_monitor_plans()
+            stack.enter_context(patch("banxia_strategy.service._postgres", return_value=repository))
+            stack.enter_context(patch("banxia_strategy.service._clickhouse", return_value=MarketStore()))
+            stack.enter_context(patch("banxia_strategy.service._redis", return_value=Cache()))
+            stack.enter_context(patch("banxia_strategy.service.PostgresAdvisoryLease"))
+            stack.enter_context(patch("banxia_strategy.service.OutboxRelay"))
+            stack.enter_context(patch("banxia_strategy.service.signal.signal"))
+            stack.enter_context(patch("banxia_strategy.service.register_collector_metrics"))
+            collector = stack.enter_context(patch("banxia_strategy.service.MarketCollector"))
+            run_market_worker(settings, Mock())
+            options = collector.call_args.kwargs
+            self.assertEqual(options["candidates"], ())
+            candidates = options["candidate_loader"]()
+            self.assertEqual(candidates[0]["code"], "002635")
+            self.assertEqual(candidates[0]["plan_date"], "2026-09-24")
+            repository.persist_report.assert_not_called()
+            collector.return_value.run_forever.assert_called_once()
+            # The mocked collector does not own/close its real publisher.
+            options["publisher"].close()
+
+    def test_failed_minute_projection_stays_in_wal_until_recovery(self):
+        market, cache = MarketStore(), Cache()
+        pipeline = LeanMarketPipeline(repository=Repository(), market_store=market, cache=cache)
+        bar = event("market.bar.1m.v1", {
+            "trade_date": "2026-09-24", "symbol": "002635",
+            "bar_time": STAMP.isoformat(), "volume": 100, "close": 10.2,
+        })
+        with tempfile.TemporaryDirectory() as directory:
+            wal = SQLiteEventWAL(Path(directory) / "wal.sqlite3")
+            publisher = ReliableEventPublisher(wal=wal, publisher=pipeline)
+            with patch.object(cache, "append_minute_bar", side_effect=RuntimeError("redis down")):
+                with self.assertRaisesRegex(RuntimeError, "redis down"):
+                    publisher.publish(bar.event_type, "002635", bar)
+            self.assertEqual(wal.count(), 1)
+            self.assertFalse(market.features)
+            self.assertEqual(publisher.replay(), 1)
+            self.assertEqual(wal.count(), 0)
+            self.assertEqual(cache.bars[0][0], bar)
+            self.assertEqual(cache.stream[0][0], "2026-09-24")
+            publisher.close()
+
     def test_quote_runs_the_complete_lean_pipeline(self):
         repository = Repository()
         market = MarketStore()

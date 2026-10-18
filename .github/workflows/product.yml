@@ -172,6 +172,8 @@ jobs:
           test -s /tmp/banxia-vke.yaml
           ! grep -n "REPLACE_WITH_" /tmp/banxia-vke.yaml
           grep -q "name: tsp-product" /tmp/banxia-vke.yaml
+          grep -q "name: tsp-task-worker" /tmp/banxia-vke.yaml
+          grep -q "name: report-scheduler" /tmp/banxia-vke.yaml
           grep -q "name: tsp-compute" /tmp/banxia-vke.yaml
           grep -q "market-worker" /tmp/banxia-vke.yaml
           ! grep -q "privileged: true" /tmp/banxia-vke.yaml

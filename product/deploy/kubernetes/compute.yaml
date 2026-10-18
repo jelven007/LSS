@@ -115,8 +115,11 @@ spec:
   ingress:
     - from:
         - podSelector:
-            matchLabels:
-              app: tsp-product
+            matchExpressions:
+              - key: app
+                operator: In
+                # API performs the readiness probe; tasks execute in the worker.
+                values: [tsp-product, tsp-task-worker]
       ports:
         - protocol: TCP
           port: 7000

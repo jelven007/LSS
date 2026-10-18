@@ -5,6 +5,8 @@
 - Policy 以内嵌 ASGI 模块运行，不再经过集群 HTTP Bridge。
 - SSE Gateway 并入统一 API。
 - research、realtime、notifications、scheduled 由 `task-worker` 统一监督。
+- `tsp-task-worker` 独立于 Web/API 部署，API 的 HPA 不复制后台任务进程。
+- Policy 报告调度独立常驻，消费页面刷新及历史生成任务。
 - Compute 使用无密钥、禁止出网的独立 Pod，不再使用特权 DinD。
 - TSP 与 Policy 共用 PostgreSQL 集群，控制库和业务库仍保持角色隔离。
 
@@ -20,9 +22,11 @@
 TSP 保留模块化单体的完整业务引擎，提供 VKE 多租户、完整单机多租户与独立运行三种模式。
 
 生产 VKE 拓扑由 `deploy/kubernetes/` 定义：TSP 与 Policy 共享 PostgreSQL 集群并保持
-三库与运行角色隔离，`tsp-platform` 负责公共行情版本，`tsp-product` 运行统一 API 和
-`task-worker`，`tsp-compute` 作为无密钥、禁止出网的独立计算 Pod。Policy 次日计划和
+三库与运行角色隔离，`tsp-platform` 负责公共行情版本，`tsp-product` 运行统一 API，
+`tsp-task-worker` 独立运行后台任务，`tsp-compute` 作为无密钥、禁止出网的独立计算 Pod。Policy 次日计划和
 当日实盘通过同进程 ASGI 调用接入。
+品牌预览、开发演示、演示数据生成与强制预警接口、第三方开源发布监控已删除；
+范围与验证见[生产精简记录](../../docs/37-production-simplification.md)。
 
 ## 2. v0.5.0 历史结构与独立运行
 

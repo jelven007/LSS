@@ -5,6 +5,7 @@ resources:
   - platform.yaml
   - compute.yaml
   - runtime.yaml
+  - task-worker.yaml
   - network-policy.yaml
 generatorOptions:
   disableNameSuffixHash: true

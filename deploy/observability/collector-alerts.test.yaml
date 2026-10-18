@@ -101,7 +101,7 @@ tests:
         alertname: BanxiaCollectorPublishFailures
         exp_alerts:
           - exp_labels: {environment: production, shard: "0", severity: critical, service: market-collector}
-            exp_annotations: {runbook: *collector_runbook, summary: Kafka行情发布持续失败}
+            exp_annotations: {runbook: *collector_runbook, summary: 行情持久化链路持续失败}
       - eval_time: 4m
         alertname: BanxiaCollectorWalPending
         exp_alerts:

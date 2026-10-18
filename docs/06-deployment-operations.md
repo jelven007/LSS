@@ -12,12 +12,14 @@
 
 | 工作负载 | 副本 | 职责 |
 | --- | ---: | --- |
-| `tsp-product` | 2 | React、统一 API、账户、多租户、SSE、任务监督 |
+| `tsp-product` | HPA 2～4 | React、统一 API、账户、多租户、SSE |
+| `tsp-task-worker` | 1 | 独立监督研究、实时规则、通知与定时任务 |
+| `report-scheduler` | 1 | Policy 页面刷新、历史生成、定时报告 |
 | `tsp-platform` | 1 | 公共行情版本和平台配置 |
 | `tsp-compute` | 1 | 隔离研究与回测计算 |
 | `market-collector` | 2 | `market-worker`，通过 PostgreSQL 租约单活 |
 | `market-reference-sync` | 1 | 证券、板块和参考数据 |
-| 报告与研究 CronJob | 按计划 | 报告、历史、模拟盘和研究任务 |
+| 数据与模拟盘 CronJob | 按计划 | 行情历史、板块资金、模拟盘对账 |
 
 生产清单不再部署独立 Policy API、SSE Gateway、Kafka、Flink、MinIO、独立 TSP
 PostgreSQL或Pod内DinD。
@@ -50,6 +52,9 @@ TSP 控制库和业务库必须使用不同运行角色，两个角色均禁止 
 4. PostgreSQL、ClickHouse 和旧 TSP PostgreSQL 已完成逻辑备份。
 5. 所有 PVC 的 StorageClass 回收策略为 `Retain`。
 6. 暂停 CronJob，并确认没有正在运行的报告、回填或模拟盘任务。
+7. 升级时先暂停并停用旧 `report-worker-1630/2330`，再启动常驻 `report-scheduler`。
+   Kubernetes apply 不会自动删除已移出清单的旧对象；不能仅凭渲染结果认为退役完成。
+   旧 API 侧车在滚动升级结束后必须全部退出，再核对 Task Worker 仅一组进程。
 
 ## 5. 数据迁移
 
@@ -120,6 +125,8 @@ kubectl -n banxia wait \
 kubectl -n banxia rollout status deployment/tsp-platform --timeout=20m
 kubectl -n banxia rollout status deployment/tsp-compute --timeout=20m
 kubectl -n banxia rollout status deployment/tsp-product --timeout=30m
+kubectl -n banxia rollout status deployment/tsp-task-worker --timeout=20m
+kubectl -n banxia rollout status deployment/report-scheduler --timeout=20m
 kubectl -n banxia rollout status statefulset/market-collector --timeout=20m
 ```
 

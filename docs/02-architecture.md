@@ -10,6 +10,8 @@
 - SQLite WAL、PostgreSQL Inbox/Outbox 和稳定事件 ID 保留可靠性与幂等语义。
 - VKE 不再部署 Kafka、Flink、独立 Policy API、独立 TSP PostgreSQL或MinIO。
 - TSP 后台任务收敛为 `task-worker`，计算运行在无密钥、禁止出网的独立 Compute Pod。
+- `tsp-task-worker` 与 API 分开部署；Policy `report-scheduler` 常驻消费刷新和历史队列，
+  同时负责日终报告调度。旧 Kafka/Flink 源码与部署已删除，详见[精简记录](37-production-simplification.md)。
 - PostgreSQL、ClickHouse、Redis 和 TOS 分别承担业务事实、行情历史、实时投影和对象归档。
 
 下文记录 `v0.5.0` 及更早的流式架构，仅用于迁移、回滚和设计追溯，不再代表当前生产

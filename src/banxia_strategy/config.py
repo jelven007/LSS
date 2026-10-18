@@ -70,8 +70,6 @@ class RuntimeSettings:
     environment: str = "local"
     service_name: str = "banxia"
     log_level: str = "INFO"
-    kafka_bootstrap_servers: str = "127.0.0.1:29092"
-    kafka_topic_prefix: str = ""
     report_dirs: Tuple[Path, ...] = (Path("scheduled_reports"), Path("reports"))
     report_output_dir: Path = Path("reports")
     report_date: Optional[str] = None
@@ -101,9 +99,6 @@ class RuntimeSettings:
     storage: StorageSettings = field(default_factory=StorageSettings)
     data_provider: str = DEFAULT_PROVIDER
 
-    def topic(self, name: str) -> str:
-        return f"{self.kafka_topic_prefix}{name}"
-
     @classmethod
     def from_env(
         cls,
@@ -126,11 +121,6 @@ class RuntimeSettings:
             environment=source.get("BANXIA_ENVIRONMENT", "local"),
             service_name=service_name or source.get("BANXIA_SERVICE_NAME", "banxia"),
             log_level=source.get("BANXIA_LOG_LEVEL", "INFO").upper(),
-            kafka_bootstrap_servers=source.get(
-                "BANXIA_KAFKA_BOOTSTRAP_SERVERS",
-                "127.0.0.1:29092",
-            ),
-            kafka_topic_prefix=source.get("BANXIA_KAFKA_TOPIC_PREFIX", ""),
             report_dirs=report_dirs,
             report_output_dir=Path(
                 source.get("BANXIA_REPORT_OUTPUT_DIR", "reports")

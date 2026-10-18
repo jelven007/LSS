@@ -6,7 +6,6 @@
 import { toast } from '@/components/Toast'
 import { accountFetch as fetch, confirmAccount, hasPermission, multitenancyEnabled } from './accountSession'
 import { secondQuotesApi, type SecondQuoteArchiveStatus } from '@/lib/api/secondQuotes'
-import { openSourceReleaseApi } from '@/lib/api/openSourceRelease'
 import {
   COMPUTE_REQUEST_TIMEOUT_MS,
   extPullTimeoutMs,
@@ -2416,7 +2415,6 @@ export interface AuthResult {
 // ===== API surface =====
 export const api = {
   ...secondQuotesApi,
-  ...openSourceReleaseApi,
   health: () => request<{ status: string; version: string; mode: string }>('/health'),
 
   // ===== Auth =====
@@ -4306,38 +4304,6 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  /** 模拟触发 ladder 封单监控 (Dev 调试, 不落盘不推送) */
-  monitorRuleTestLadder: () =>
-    request<{
-      ok: boolean
-      as_of: string
-      sealed_count: number
-      triggered: Array<{
-        rule_id: string; rule_name: string; symbol: string; name?: string
-        type: string; message: string; severity: string
-        sealed_value: number; sealed_metric: string
-        current_sealed_vol?: number; current_sealed_amount?: number
-      }>
-      not_triggered: Array<{
-        rule_id: string; rule_name: string; symbol: string
-        metric: string; threshold: number; current_value: number | null
-        current_sealed_vol?: number; current_sealed_amount?: number | null
-        reason: string
-      }>
-    }>('/api/monitor-rules/test-ladder', { method: 'POST' }),
-
-  /** 真实触发 ladder 预警 (落盘+飞书+SSE), Dev 调试用 */
-  monitorRuleTriggerLadder: () =>
-    request<{
-      ok: boolean
-      triggered: number
-      events: Array<{ symbol: string; name: string; message: string }>
-    }>('/api/monitor-rules/trigger-ladder', { method: 'POST' }),
-
-  /** 生成演示监控规则 (Dev 页用) */
-  monitorRuleSeed: () =>
-    request<{ ok: boolean; generated: number }>('/api/monitor-rules/seed', { method: 'POST' }),
-
   // ===== Alerts (触发记录) =====
   alertsList: (params?: { days?: number; limit?: number; source?: string; type?: string; extColumns?: string }) => {
     const qs = new URLSearchParams()
@@ -4355,10 +4321,6 @@ export const api = {
 
   alertDelete: (ts: number) =>
     request<{ ok: boolean }>(`/api/alerts/${ts}`, { method: 'DELETE' }),
-
-  /** 生成演示触发记录 (Dev 页用) */
-  alertSeed: (count = 12, recent = true) =>
-    request<{ ok: boolean; generated: number }>(`/api/alerts/seed?count=${count}&recent=${recent}`, { method: 'POST' }),
 
   /** 检查 AI 配置状态 */
   strategyAiStatus: () =>

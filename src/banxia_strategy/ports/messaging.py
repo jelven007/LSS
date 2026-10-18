@@ -30,27 +30,19 @@ class ConsumedEvent:
 
 class EventWAL(Protocol):
     def append(self, topic: str, key: str, event: EventEnvelope) -> bool:
-        """Persist an event before attempting broker publication."""
+        """Persist an event before attempting pipeline processing."""
 
     def pending(self, limit: int = 100) -> Iterable[PendingEvent]:
         """Return unpublished events in insertion order."""
 
     def mark_published(self, event_id: str) -> None:
-        """Remove an event only after broker acknowledgement."""
+        """Remove an event only after successful pipeline processing."""
 
     def mark_failed(self, event_id: str, error: str) -> None:
         """Record a failed publication attempt without dropping the event."""
 
     def count(self) -> int:
         """Return the number of events awaiting publication."""
-
-
-class EventConsumer(Protocol):
-    def poll(self, timeout: float = 1.0) -> Optional[ConsumedEvent]:
-        """Return one event or None when the poll interval expires."""
-
-    def commit(self, event: ConsumedEvent) -> None:
-        """Commit progress only after downstream processing succeeds."""
 
 
 class Closable(Protocol):

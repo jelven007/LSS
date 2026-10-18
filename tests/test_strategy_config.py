@@ -15,7 +15,6 @@ from fastapi.testclient import TestClient
 
 from banxia_strategy.api import ApiServices, create_api_app
 from banxia_strategy.application.collector import MarketCollector
-from banxia_strategy.application.plans import ActivePlan
 from banxia_strategy.application.report_worker import ReportWorker
 from banxia_strategy.application.persistence import PersistenceResult
 from banxia_strategy.application.strategy_engine import StrategyEventProcessor
@@ -24,7 +23,7 @@ from banxia_strategy.domain.intraday import evaluate
 from banxia_strategy.intraday import plan_for
 from banxia_strategy.ports.messaging import ConsumedEvent
 from banxia_strategy.ports.storage import ReportIdentity
-from banxia_strategy.service import _config_store, _consume_report_refresh, _generate_scheduled_report, _prepare_plan
+from banxia_strategy.service import _config_store, _consume_report_refresh, _generate_scheduled_report
 from banxia_strategy.storage_config import StorageSettings
 from banxia_strategy.strategy import StrategyEngine
 from banxia_strategy.strategy_archetypes import LEADER_FUSION, initial_strategy_config
@@ -231,20 +230,6 @@ class StrategyConfigTest(unittest.TestCase):
             result = processor.process(ConsumedEvent(quote.event_type, 0, 2, "600001", quote))
             states.append(result.payload["state"])
         self.assertEqual(states, ["near_limit", "watch", "watch"])
-
-    def test_startup_preserves_historical_active_plan(self):
-        repository = Mock()
-        repository.get_active_plan.return_value = {
-            "reference_date": "2026-09-23", "run_id": "run", "plan_id": "plan",
-            "strategy_version": "original", "strategy_version_id": "original-id",
-        }
-        with patch("banxia_strategy.service._load_plan", return_value=ActivePlan(
-            report={"as_of": "2026-09-23", "next_session": "2026-09-24"}, candidates=(),
-        )):
-            plan, identity = _prepare_plan(repository, RuntimeSettings(strategy_config_path=self.path))
-        repository.persist_report.assert_not_called()
-        self.assertEqual(identity.strategy_version_id, "original-id")
-        self.assertEqual(plan.report["strategy_version"], "original")
 
     def test_report_worker_reads_saved_parameters_for_each_run(self):
         worker = ReportWorker(strategy_config_path=self.path, output_dir=Path(self.temp.name) / "reports",

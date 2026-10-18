@@ -15,23 +15,6 @@ resources:
   - intraday-monitor.yaml
 patches:
   - path: runtime-config.yaml
-  - path: delete-market-collector.yaml
-  - path: delete-market-sink.yaml
-  - path: delete-strategy-engine.yaml
-  - path: delete-outbox-relay.yaml
-  - path: delete-projection-worker.yaml
-  - path: delete-strategy-engine-pdb.yaml
-  - path: delete-kafka-service.yaml
-  - path: delete-kafka-statefulset.yaml
-  - path: delete-kafka-bootstrap.yaml
-  - path: delete-minio-service.yaml
-  - path: delete-minio-statefulset.yaml
-  - path: delete-minio-bootstrap.yaml
-  - path: delete-policy-api-deployment.yaml
-  - path: delete-policy-api-service.yaml
-  - path: delete-policy-api-pdb.yaml
-  - path: delete-policy-api-hpa.yaml
-  - path: delete-policy-api-network-policy.yaml
   - target:
       group: apps
       version: v1

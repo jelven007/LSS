@@ -9,8 +9,6 @@ from unittest.mock import Mock
 from banxia_strategy.adapters.wal import SQLiteEventWAL
 from banxia_strategy.application.collector import MarketCollector
 from banxia_strategy.application.features import RealtimeFeatureProcessor
-from banxia_strategy.application.market_sink import MarketSinkWorker
-from banxia_strategy.application.projection import ProjectionWorker
 from banxia_strategy.application.reliable_publish import ReliableEventPublisher
 from banxia_strategy.application.strategy_engine import StrategyEventProcessor
 from banxia_strategy.domain.events import EventEnvelope
@@ -459,99 +457,6 @@ class StrategyProcessorTest(unittest.TestCase):
         self.assertEqual(result.payload["state"], "watch")
         self.assertEqual(result.payload["label"], "板块确认不足")
         self.assertEqual(result.payload["strategy_version"], "v1")
-
-
-class FakeConsumer:
-    def __init__(self, consumed):
-        self.consumed = consumed
-        self.committed = []
-
-    def poll(self, _timeout):
-        result, self.consumed = self.consumed, None
-        return result
-
-    def commit(self, consumed):
-        self.committed.append(consumed)
-
-
-class FakeMarketStore:
-    def __init__(self):
-        self.quotes = []
-
-    def append_quote_snapshots(self, events):
-        self.quotes.extend(events)
-
-
-class FakeProjectionCache:
-    def __init__(self):
-        self.quotes = []
-        self.stream = []
-        self.bars = []
-
-    def set_latest_quote(self, event, ttl):
-        self.quotes.append((event, ttl))
-
-    def append_minute_bar(self, event, ttl):
-        self.bars.append((event, ttl))
-
-    def append_monitor_event(self, trade_date, event, **kwargs):
-        self.stream.append((trade_date, event, kwargs))
-
-
-class WorkerCommitTest(unittest.TestCase):
-    def test_market_sink_commits_only_after_storage(self):
-        source = event(
-            "market.quote.snapshot.v1",
-            {
-                "trade_date": "2026-09-24",
-                "symbol": "002635",
-                "source_time": STAMP,
-                "collected_at": STAMP,
-            },
-        )
-        consumed = ConsumedEvent(source.event_type, 0, 1, "002635", source)
-        consumer = FakeConsumer(consumed)
-        store = FakeMarketStore()
-        worker = MarketSinkWorker(consumer=consumer, store=store)
-        self.assertTrue(worker.run_once())
-        self.assertEqual(store.quotes, [source])
-        self.assertEqual(consumer.committed, [consumed])
-
-    def test_projection_writes_cache_and_stream_before_commit(self):
-        source = event(
-            "market.quote.snapshot.v1",
-            {
-                "trade_date": "2026-09-24",
-                "symbol": "002635",
-                "source_time": STAMP,
-                "collected_at": STAMP,
-            },
-        )
-        consumed = ConsumedEvent(source.event_type, 0, 1, "002635", source)
-        consumer = FakeConsumer(consumed)
-        cache = FakeProjectionCache()
-        worker = ProjectionWorker(consumer=consumer, cache=cache)
-        self.assertTrue(worker.run_once())
-        self.assertEqual(cache.quotes[0][0], source)
-        self.assertEqual(cache.stream[0][0], "2026-09-24")
-        self.assertEqual(consumer.committed, [consumed])
-
-    def test_projection_persists_minute_bar_before_commit(self):
-        source = event(
-            "market.bar.1m.v1",
-            {
-                "trade_date": "2026-09-24",
-                "symbol": "002635",
-                "bar_time": STAMP,
-            },
-        )
-        consumed = ConsumedEvent(source.event_type, 0, 2, "002635", source)
-        consumer = FakeConsumer(consumed)
-        cache = FakeProjectionCache()
-        worker = ProjectionWorker(consumer=consumer, cache=cache)
-        self.assertTrue(worker.run_once())
-        self.assertEqual(cache.bars[0][0], source)
-        self.assertEqual(consumer.committed, [consumed])
 
 
 if __name__ == "__main__":

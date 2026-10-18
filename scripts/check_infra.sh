@@ -42,36 +42,10 @@ fi
 
 "${compose[@]}" run --rm minio-init
 
-kafka_topics=""
-required_topics=(
-  market.quote.snapshot.v1
-  market.bar.1m.v1
-  market.feature.realtime.v1
-  strategy.plan.created.v1
-  strategy.decision.v1
-  strategy.audit.v1
-  report.generated.v1
-)
-for _attempt in {1..30}; do
-  kafka_topics="$(
-    "${compose[@]}" exec -T kafka \
-      /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
-  )"
-  missing_topic=""
-  for topic in "${required_topics[@]}"; do
-    if ! grep -qx "$topic" <<<"$kafka_topics"; then
-      missing_topic="$topic"
-      break
-    fi
-  done
-  [[ -z "$missing_topic" ]] && break
-  sleep 2
-done
-for topic in "${required_topics[@]}"; do
-  if ! grep -qx "$topic" <<<"$kafka_topics"; then
-    echo "error: missing Kafka topic $topic" >&2
-    exit 1
-  fi
-done
+"${compose[@]}" exec -T api python -c \
+  'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8765/api/v1/health/ready", timeout=5)'
+
+"${compose[@]}" exec -T market-worker python -c \
+  'import urllib.request; urllib.request.urlopen("http://127.0.0.1:9100/metrics", timeout=5)'
 
 echo "Infrastructure smoke check passed."

@@ -9,7 +9,9 @@
 
 - `postgres`：Policy、TSP 控制库和 TSP 业务库共享的 PostgreSQL 集群。
 - `tsp-platform`：行情平台与公共只读版本发布，使用独立 NAS RWX 状态卷。
-- `tsp-product`：统一 Web/API 与 `task-worker`，两个副本滚动发布。
+- `tsp-product`：统一 Web/API，HPA 2～4 副本滚动发布。
+- `tsp-task-worker`：独立后台任务，1 副本 Recreate；API 扩容不复制任务进程。
+- `report-scheduler`：根部署中的常驻 Policy 调度，处理刷新队列、历史生成和定时报告。
 - `tsp-compute`：独立计算服务，无业务 Secret、禁止出网、只读公共行情。
 
 ## Secret
@@ -62,6 +64,9 @@ kubectl -n banxia wait \
 再按 [`migrate-legacy-postgres.yaml`](migrate-legacy-postgres.yaml) 迁移旧 TSP 双库，
 完成数据核对后才能整包应用新清单。验证账户、租户和业务表后才能删除旧
 `tsp-postgres` StatefulSet；旧 PVC 必须继续保留。
+先暂停旧 `report-worker-1630/2330` 并等待存量任务结束，再启用报告调度。
+清单删除不会自动删除集群旧对象，退役列表与回滚边界见
+[精简记录](../../../docs/37-production-simplification.md)。
 
 ## 验收
 
@@ -72,9 +77,13 @@ kubectl -n banxia wait --for=condition=complete \
 kubectl -n banxia rollout status deployment/tsp-platform --timeout=20m
 kubectl -n banxia rollout status deployment/tsp-compute --timeout=20m
 kubectl -n banxia rollout status deployment/tsp-product --timeout=30m
+kubectl -n banxia rollout status deployment/tsp-task-worker --timeout=20m
+kubectl -n banxia rollout status deployment/report-scheduler --timeout=20m
 kubectl -n banxia rollout status statefulset/market-collector --timeout=20m
 curl -fsS https://shanao.asia/health/ready
 ```
 
 `/health/ready` 必须同时通过双库、公共行情版本、平台连接、指标缓存、Compute 和
 四类任务心跳。随后验证管理员登录、九项菜单、SMTP、内嵌 Policy 页面和 SSE。
+Task Worker 启动检查数据库 Schema 与公共行情标记，不等待 API readiness，
+避免与四类心跳检查互相等待。Compute 网络入口同时允许 API 健康探测和 Task Worker 计算。

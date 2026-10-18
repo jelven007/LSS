@@ -73,7 +73,7 @@ class CollectorMetrics:
             "market_open": ("Verified trading day in a continuous trading window.", state["market_open"]),
             "quote_coverage_ratio": ("Fraction of candidates with a valid price and source time.", state["quote_coverage_ratio"]),
             "quote_age_p95_seconds": ("P95 age of the last valid quote batch, increasing between fetches.", state["quote_age_p95_seconds"]),
-            "wal_pending": ("Cached number of events awaiting Kafka acknowledgement.", state["messaging"].get("wal_pending", 0)),
+            "wal_pending": ("Cached number of events awaiting market pipeline completion.", state["messaging"].get("wal_pending", 0)),
         }
         for suffix, (help_text, value) in gauges.items():
             metric = GaugeMetricFamily(

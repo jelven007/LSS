@@ -105,7 +105,7 @@ spec:
                       raise RuntimeError("TSP platform or database schema did not become ready")
                   time.sleep(5)
               PY
-          envFrom: &runtimeEnv
+          envFrom:
             - configMapRef:
                 name: tsp-product-runtime
             - secretRef:
@@ -114,7 +114,7 @@ spec:
             - name: state
               mountPath: /state
               readOnly: true
-          securityContext: &runtimeSecurity
+          securityContext:
             runAsNonRoot: true
             runAsUser: 10001
             runAsGroup: 10001
@@ -221,30 +221,12 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: [ALL]
-          volumeMounts: &runtimeMounts
+          volumeMounts:
             - name: state
               mountPath: /state
               readOnly: true
             - name: tmp
               mountPath: /tmp
-        - name: task-worker
-          image: tsp-product-runtime:v0.5.1
-          command: [/app/.venv/bin/python, -m, app.multitenancy.task_worker]
-          env:
-            - name: SERVICE_ROLE
-              value: api
-            - name: TSP_CELL_WORKER_CONCURRENCY
-              value: "4"
-          envFrom: *runtimeEnv
-          resources:
-            requests:
-              cpu: 350m
-              memory: 768Mi
-            limits:
-              cpu: "3"
-              memory: 5Gi
-          securityContext: *runtimeSecurity
-          volumeMounts: *runtimeMounts
       volumes:
         - name: state
           persistentVolumeClaim:

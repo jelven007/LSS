@@ -3,90 +3,51 @@ info:
   title: Banxia Strategy Event API
   version: 1.0.0
   description: |
-    一进二策略研究系统 Kafka 事件契约。所有事件至少一次投递，
+    一进二策略研究系统内部事件契约。行情由 SQLite WAL 至少一次投递至
+    Market Worker，策略事务由 PostgreSQL Inbox/Outbox 保证可重试，
     消费者必须通过 event_id 或业务唯一键实现幂等。
     多策略运行通过不可变 strategy_version/strategy_version_id 和 plan_id 隔离；
     同一行情事件可以被多份有效计划独立消费。
 defaultContentType: application/json
-servers:
-  production:
-    url: kafka.strategy.svc:9093
-    protocol: kafka-secure
-    description: Production Kafka
 channels:
   market.quote.snapshot.v1:
     description: rustdx 盘口采样事件，不等同于交易所逐笔 Tick
-    bindings:
-      kafka:
-        partitions: 12
-        replicas: 3
-        bindingVersion: "0.4.0"
     subscribe:
       operationId: consumeMarketQuoteSnapshot
       message:
         $ref: "#/components/messages/MarketQuoteSnapshot"
   market.bar.1m.v1:
     description: 一分钟 K 线及其修订
-    bindings:
-      kafka:
-        partitions: 12
-        replicas: 3
-        bindingVersion: "0.4.0"
     subscribe:
       operationId: consumeMarketBarOneMinute
       message:
         $ref: "#/components/messages/MarketBarOneMinute"
   market.feature.realtime.v1:
-    description: Flink 生成的实时窗口和板块指标
-    bindings:
-      kafka:
-        partitions: 12
-        replicas: 3
-        bindingVersion: "0.4.0"
+    description: Market Worker 进程内生成的实时窗口和板块指标
     subscribe:
       operationId: consumeRealtimeFeature
       message:
         $ref: "#/components/messages/RealtimeFeature"
   strategy.plan.created.v1:
     description: 日报完成后创建的次日策略计划
-    bindings:
-      kafka:
-        partitions: 3
-        replicas: 3
-        bindingVersion: "0.4.0"
     subscribe:
       operationId: consumeStrategyPlanCreated
       message:
         $ref: "#/components/messages/StrategyPlanCreated"
   strategy.decision.v1:
     description: 策略状态机输出的状态变化
-    bindings:
-      kafka:
-        partitions: 12
-        replicas: 3
-        bindingVersion: "0.4.0"
     subscribe:
       operationId: consumeStrategyDecision
       message:
         $ref: "#/components/messages/StrategyDecision"
   strategy.audit.v1:
     description: 用于长期审计的策略判断依据
-    bindings:
-      kafka:
-        partitions: 12
-        replicas: 3
-        bindingVersion: "0.4.0"
     subscribe:
       operationId: consumeStrategyAudit
       message:
         $ref: "#/components/messages/StrategyAudit"
   report.generated.v1:
     description: 报告产物生成完成事件
-    bindings:
-      kafka:
-        partitions: 3
-        replicas: 3
-        bindingVersion: "0.4.0"
     subscribe:
       operationId: consumeReportGenerated
       message:

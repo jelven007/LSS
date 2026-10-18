@@ -25,8 +25,10 @@ flowchart LR
     MW --> PG
     MW --> RD
 
-    APP --> CW[Task Worker]
-    CW --> PG
+    PG --> CW[独立 Task Worker]
+    PG --> RS[Policy 报告调度]
+    RS --> PG
+    RS --> TOS
     CW --> COMP[隔离 Compute]
     COMP --> DATA[(只读公共行情)]
 ```
@@ -36,13 +38,19 @@ flowchart LR
 | 工作负载 | 职责 | 副本 |
 | --- | --- | ---: |
 | `tsp-product` | React 静态资源、统一 API、账户、多租户、SSE | HPA 2～4 |
+| `tsp-task-worker` | TSP 研究、实时规则、通知、定时任务 | 1，Recreate |
+| `report-scheduler` | Policy 刷新队列、历史生成、定时报告与补跑 | 1，Recreate |
 | `tsp-platform` | 公共行情版本与平台配置 | 1 |
 | `tsp-compute` | 无密钥、禁止出网的受限计算进程 | 1 |
 | `market-collector` | `market-worker` 入口，行情、特征、策略和投影 | 2，租约单活 |
 | `market-reference-sync` | 证券、板块和参考数据同步 | 1 |
 
-研究、实时规则、通知和定时任务由 `task-worker` 统一监督。任一子进程异常退出时，
+研究、实时规则、通知和定时任务由独立 `tsp-task-worker` 统一监督。API 扩容不会
+复制后台进程。任一子进程异常退出时，
 容器失败并由 Kubernetes 重建，避免部分 Worker 无声失效。
+Policy 定时报告与页面刷新共用 `report-scheduler`，不再额外运行 16:30/23:30 报告
+CronJob。重启后本地完成标记丢失时允许幂等重算，不能仅凭已保存的计划判定对象归档已完成。
+Market Worker 启动及候选刷新直接读取数据库计划，不挂载报告目录。
 
 ### 2.2 数据职责
 
@@ -66,8 +74,11 @@ flowchart LR
 - 独立 SSE Gateway。
 - Pod 内 DinD 和特权容器。
 
-旧 Kafka/Flink 代码与本地 Compose 暂时保留，用于历史回归和紧急回滚，不属于
-`v0.5.1` VKE 生产拓扑。
+旧 Kafka/Flink 适配器、Worker 入口、依赖、Compose 服务、Kubernetes 定义和排除补丁
+均已从当前源码删除。本地 Policy Compose 使用相同 Market Worker；MinIO 只作为本地
+S3 模拟器保留。回滚使用 Git 历史与旧镜像，不能用新镜像运行已退役入口。
+品牌预览、开发演示及其数据生成/强制预警接口、第三方开源版本轮询已退役。
+具体范围及验证见 [生产精简记录](37-production-simplification.md)。
 
 ## 4. 一致性设计
 
@@ -95,7 +106,8 @@ Redis 丢失不影响权威数据，可从 PostgreSQL 和 ClickHouse 重建。
 - 非 root 用户、无 Linux capabilities。
 - 固定并发、CPU 和内存上限。
 
-API 通过集群内 TCP 使用原有 JSON 行协议。相比 DinD，该方案消除了特权容器和 Docker
+Task Worker 通过集群内 TCP 使用原有 JSON 行协议；API 只做健康探测。
+网络策略仅允许这两个工作负载访问 Compute。相比 DinD，该方案消除了特权容器和 Docker
 Socket，同时保留进度流、取消和大结果返回能力。
 
 ## 6. PostgreSQL 合并
@@ -120,8 +132,11 @@ Policy、TSP 控制库和 TSP 业务库使用同一个 PostgreSQL 集群：
 4. 应用 `tsp-database-bootstrap`，创建数据库和两个运行角色。
 5. 执行旧 TSP PostgreSQL 迁移 Job，并完成数量和抽样校验。
 6. 构建并推送 `v0.5.1` Policy、Web Runtime 和 Compute 镜像，固定 digest。
-7. 服务端 dry-run 后发布新清单。
-8. 验证统一登录、九项菜单、Policy 页面、SSE、Market Worker 和 Compute。
+7. 服务端 dry-run 后，先暂停旧报告 CronJob 并确认存量作业结束，再发布新清单。
+   旧 API 侧车与新 Task Worker 在滚动窗口内依靠持久任务租约协调；发布完成后确认
+   所有旧 API Pod 已退出，只保留一组后台进程。
+8. 验证统一登录、九项菜单、Policy 页面、
+   手动报告刷新、SSE、Market Worker 和 Compute。
 9. 验收后删除旧工作负载和 Service，保留旧 PVC/Bucket 至少五个交易日。
 10. 观察期和恢复核对完成后，再审批回收旧 PVC、Bucket 与兼容配置。
 

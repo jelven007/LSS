@@ -621,7 +621,6 @@ class ApiV1Test(unittest.TestCase):
             reports=ReportStore([root]),
             repository=FakeRepository(),
             cache=FakeCache(),
-            kafka_ready=lambda: True,
             clickhouse_ready=lambda: True,
             strategy_version="v2",
             history_provider=FakeHistoryProvider(),
@@ -639,6 +638,10 @@ class ApiV1Test(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["X-Request-ID"], "request-1")
         self.assertEqual(response.json()["status"], "ready")
+        self.assertNotIn("kafka", response.json()["dependencies"])
+        status = self.client.get("/api/v1/system/status").json()
+        self.assertEqual(status["collection"]["mode"], "market-worker")
+        self.assertEqual(status["messaging"]["transport"], "sqlite-wal")
 
         monitor = self.client.get("/api/v1/monitor").json()
         self.assertEqual(monitor["plan_id"], "plan")

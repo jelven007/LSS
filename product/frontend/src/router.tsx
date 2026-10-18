@@ -37,11 +37,9 @@ const NextPlan = lazy(() => import('./pages/NextPlan').then(m => ({ default: m.N
 const LiveTrading = lazy(() => import('./pages/LiveTrading').then(m => ({ default: m.LiveTrading })))
 const LimitUpLadder = lazy(() => import('./pages/LimitUpLadder').then(m => ({ default: m.LimitUpLadder })))
 const Indices = lazy(() => import('./pages/Indices').then(m => ({ default: m.Indices })))
-const Branding = lazy(() => import('./pages/Branding').then(m => ({ default: m.Branding })))
 const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })))
 const Regime = lazy(() => import('./pages/Regime').then(m => ({ default: m.Regime })))
 const AbnormalMoves = lazy(() => import('./pages/AbnormalMoves').then(m => ({ default: m.AbnormalMoves })))
-const Dev = lazy(() => import('./pages/Dev').then(m => ({ default: m.Dev })))
 // Onboarding 只在首次使用时进入, Auth 只在登录页用到 — 均改按需加载
 const Onboarding = lazy(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })))
 const Auth = lazy(() => import('./pages/Auth').then(m => ({ default: m.Auth })))
@@ -71,9 +69,7 @@ const CORE_ROUTE_PATHS = new Set([
   '/indices',
   '/regime',
   '/abnormal',
-  '/branding',
   '/settings',
-  '/dev',
   '/settings/keys',
   '/settings/ai',
   '/settings/queries',
@@ -198,10 +194,7 @@ export const router = createBrowserRouter([
       { path: 'indices', element: <Indices /> },
     { path: 'regime', element: <Regime /> },
       { path: 'abnormal', element: <AbnormalMoves /> },
-      { path: 'branding', element: <Branding /> },
       { path: 'settings', element: <Settings /> },
-      // 隐藏路由：开发者工具（不暴露在菜单，仅供调试）
-      { path: 'dev', element: <AccountGuard permission="settings:manage"><Dev /></AccountGuard> },
       // 旧路由兼容重定向
       { path: 'settings/keys', element: <Navigate to="/settings?tab=data-sources" replace /> },
       { path: 'settings/ai', element: <Navigate to="/settings?tab=ai" replace /> },

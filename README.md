@@ -16,7 +16,7 @@ rustdx native -> Market Worker + SQLite WAL
 ```
 
 当前开发版本为 `v0.5.1`，最新已记录生产版本为 `v0.5.0`。生产环境部署在火山引擎
-VKE，通过 <https://shanao.asia> 提供完整 Web 产品；本地 Compose 保留为兼容回归环境。
+VKE，通过 <https://shanao.asia> 提供完整 Web 产品；本地 Compose 用于 Policy 开发与集成验证。
 
 [`product/`](product/) 是 TSP 产品主干，提供首页看板、自选、策略、复盘、回测、
 个股分析、设置及完整账户体系。Policy 作为内嵌业务模块提供次日计划和当日实盘，不再
@@ -42,12 +42,14 @@ VKE，通过 <https://shanao.asia> 提供完整 Web 产品；本地 Compose 保�
 - [当前生产技术方案](docs/13-current-production-solution.md)
 - [TSP 产品移植与 Policy 整合](docs/35-tsp-product-integration.md)
 - [v0.5.1 精简技术架构](docs/36-lean-architecture-v0.5.1.md)
+- [生产架构精简与功能退役](docs/37-production-simplification.md)
 - [版本记录](CHANGELOG.md)
 - [OpenAPI](docs/openapi.yaml) / [AsyncAPI](docs/asyncapi.yaml)
 
 ## 本地基础设施
 
-兼容回归环境使用 Docker Compose 提供 PostgreSQL、ClickHouse、Redis、MinIO 和 Kafka：
+本地 Policy 环境提供 PostgreSQL、ClickHouse、Redis 和 MinIO（S3 模拟器），运行
+Market Worker、报告调度与参考数据同步：
 
 ```bash
 cp deploy/compose/.env.example deploy/compose/.env
@@ -59,8 +61,9 @@ make infra-status
 初始化 Schema 位于 `migrations/postgres/` 和 `migrations/clickhouse/`。详细说明见
 [deploy/compose/README.md](deploy/compose/README.md)。
 
-Compose 保留旧 Kafka/Flink 链路用于历史回归；VKE 生产清单使用精简 Market Worker
-和火山引擎 TOS，不再部署 Kafka、Flink 或 MinIO。
+本地与 VKE 共用 Market Worker 处理链路，Kafka/Flink 已从源码和部署中退役。
+生产统一 Web/API 与 Task Worker 独立扩容，Policy 报告调度常驻消费页面刷新任务；
+生产对象存储使用火山引擎 TOS。
 
 ## 策略范围
 
@@ -124,7 +127,8 @@ python3 -m venv .venv
 
 ## Web 看板
 
-启动本地看板：
+生产入口使用 `product/` 的 React Web。以下 `serve` 命令是保留的本地单进程研究模式，
+其文件清单和页面与生产数据库模式分开，不能代替生产 Market Worker：
 
 ```bash
 .venv/bin/banxia-strategy serve

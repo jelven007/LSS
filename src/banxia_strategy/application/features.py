@@ -6,8 +6,6 @@ from typing import Deque, Dict, Mapping, Optional
 
 from ..contracts.topics import MARKET_BAR_1M, MARKET_FEATURE_REALTIME, MARKET_QUOTE_SNAPSHOT
 from ..domain.events import EventEnvelope
-from ..ports.messaging import EventConsumer
-from ..ports.storage import EventPublisher, MarketHistoryStore
 
 
 class RealtimeFeatureProcessor:
@@ -151,42 +149,3 @@ class RealtimeFeatureProcessor:
             payload=feature_payload,
             trace_id=event.trace_id,
         )
-
-
-class FeatureWorker:
-    def __init__(
-        self,
-        *,
-        consumer: EventConsumer,
-        publisher: EventPublisher,
-        market_store: Optional[MarketHistoryStore] = None,
-        processor: Optional[RealtimeFeatureProcessor] = None,
-    ):
-        self.consumer = consumer
-        self.publisher = publisher
-        self.market_store = market_store
-        self.processor = processor or RealtimeFeatureProcessor()
-
-    def run_once(self, timeout: float = 1.0) -> bool:
-        consumed = self.consumer.poll(timeout)
-        if consumed is None:
-            return False
-        feature = self.processor.process(consumed.event)
-        if feature is not None:
-            if self.market_store is not None:
-                self.market_store.append_features([feature])
-            self.publisher.publish(
-                MARKET_FEATURE_REALTIME,
-                str(feature.payload["symbol"]),
-                feature,
-            )
-        self.consumer.commit(consumed)
-        return True
-
-    def close(self) -> None:
-        for target in (self.consumer, self.publisher, self.market_store):
-            if target is None:
-                continue
-            close = getattr(target, "close", None)
-            if close is not None:
-                close()

@@ -223,15 +223,8 @@ class ComposeLayoutTest(unittest.TestCase):
             "clickhouse",
             "redis",
             "minio",
-            "kafka",
-            "flink-jobmanager",
-            "flink-taskmanager",
-            "flink-feature-job",
-            "market-collector",
-            "market-sink",
-            "strategy-engine",
-            "outbox-relay",
-            "projection-worker",
+            "market-worker",
+            "catalog-bootstrap",
             "report-worker",
             "report-scheduler",
             "paper-trading",
@@ -242,54 +235,25 @@ class ComposeLayoutTest(unittest.TestCase):
             self.assertIn(service, services)
         self.assertIn("../../migrations/postgres", compose)
         self.assertIn("../../migrations/clickhouse", compose)
-        self.assertIn("RESTARTING", compose)
-        self.assertIn("RECONCILING", compose)
+        self.assertNotIn("kafka", compose.lower())
+        self.assertNotIn("flink", compose.lower())
         self.assertIn("16:30,23:30", compose)
         self.assertIn("BANXIA_REFERENCE_SYNC_SCHEDULE", compose)
-        self.assertIn("BANXIA_MINIO_MARKET_BUCKET", compose)
-        self.assertIn('"${BANXIA_API_PORT:-80}:8765"', compose)
+        self.assertIn("BANXIA_OBJECT_MARKET_BUCKET", compose)
+        self.assertIn('"127.0.0.1:${BANXIA_API_PORT:-8765}:8765"', compose)
         env_example = (ROOT / "deploy/compose/.env.example").read_text(
             encoding="utf-8"
         )
         self.assertIn("BANXIA_API_PORT=8765", env_example)
         for service in ("report-worker", "report-scheduler", "paper-trading"):
-            self.assertEqual(services[service]["network_mode"], "host")
+            self.assertNotIn("network_mode", services[service])
             self.assertIn(
-                "127.0.0.1",
+                "@postgres:",
                 services[service]["environment"]["BANXIA_POSTGRES_DSN"],
             )
-            self.assertIn(
-                "127.0.0.1",
-                services[service]["environment"]["BANXIA_MINIO_ENDPOINT"],
-            )
-        self.assertEqual(
-            services["report-worker"]["environment"]["BANXIA_METRICS_PORT"],
-            "${BANXIA_REPORT_WORKER_METRICS_PORT:-9101}",
-        )
-
-    def test_flink_job_computes_sector_and_volume_features(self):
-        sql = (ROOT / "deploy/flink/sql/realtime_features.sql").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn("market.quote.snapshot.v1", sql)
-        self.assertIn("market.bar.1m.v1", sql)
-        self.assertIn("market.feature.realtime.v1", sql)
-        self.assertIn("sector_rise_ratio", sql)
-        self.assertIn("baseline_volume", sql)
-        self.assertIn("first_minute_change_pct", sql)
-        self.assertIn(
-            "SUBSTRING(payload_bar_time, 12, 5) = '09:31'",
-            sql,
-        )
-        self.assertIn("EXACTLY_ONCE", sql)
-        self.assertIn(
-            "'sink.transactional-id-prefix' = 'banxia-flink-sector-v1'",
-            sql,
-        )
-        self.assertIn(
-            "'sink.transactional-id-prefix' = 'banxia-flink-volume-v1'",
-            sql,
-        )
+        for service in ("report-worker", "paper-trading"):
+            self.assertEqual(services[service]["restart"], "no")
+            self.assertEqual(services[service]["profiles"], ["jobs"])
 
     def test_kubernetes_has_runtime_controls_and_daily_job(self):
         text = (ROOT / "deploy/kubernetes/base/platform.yaml").read_text(
@@ -299,16 +263,19 @@ class ComposeLayoutTest(unittest.TestCase):
         kinds = {item["kind"] for item in manifests}
         self.assertIn("Deployment", kinds)
         self.assertIn("CronJob", kinds)
-        self.assertIn("PodDisruptionBudget", kinds)
-        self.assertIn("HorizontalPodAutoscaler", kinds)
-        self.assertIn("NetworkPolicy", kinds)
         cron_jobs = {
             item["metadata"]["name"]: item["spec"]["schedule"]
             for item in manifests
             if item["kind"] == "CronJob"
         }
-        self.assertEqual(cron_jobs["report-worker-1630"], "30 16 * * 1-5")
-        self.assertEqual(cron_jobs["report-worker-2330"], "30 23 * * 1-5")
+        self.assertNotIn("report-worker-1630", cron_jobs)
+        self.assertNotIn("report-worker-2330", cron_jobs)
+        scheduler = next(item for item in manifests if item["metadata"]["name"] == "report-scheduler")
+        self.assertEqual(scheduler["spec"]["replicas"], 1)
+        self.assertEqual(scheduler["spec"]["strategy"]["type"], "Recreate")
+        pod = scheduler["spec"]["template"]["spec"]
+        self.assertEqual(pod["containers"][0]["args"], ["report-scheduler"])
+        self.assertEqual(pod["volumes"][0]["name"], "reports")
         self.assertEqual(cron_jobs["paper-trading-1650"], "50 16 * * 1-5")
         self.assertEqual(cron_jobs["stock-history-sync"], "5 17 * * 1-5")
         self.assertEqual(cron_jobs["board-capital-sync"], "0 18 * * 1-5")
@@ -321,24 +288,7 @@ class ComposeLayoutTest(unittest.TestCase):
             text,
         )
         self.assertGreaterEqual(text.count("--incremental"), 2)
-        self.assertIn("readinessProbe", text)
         self.assertIn("resources:", text)
-
-    def test_topic_initializer_matches_event_contract(self):
-        script = (ROOT / "deploy/compose/kafka/create-topics.sh").read_text(
-            encoding="utf-8"
-        )
-        for topic in (
-            "market.quote.snapshot.v1",
-            "market.bar.1m.v1",
-            "market.feature.realtime.v1",
-            "strategy.plan.created.v1",
-            "strategy.decision.v1",
-            "strategy.audit.v1",
-            "report.generated.v1",
-        ):
-            self.assertIn(topic, script)
-        self.assertIn('"${topic}.dlq"', script)
 
 
 class LeanProductionLayoutTest(unittest.TestCase):
@@ -364,19 +314,21 @@ class LeanProductionLayoutTest(unittest.TestCase):
         )
 
         self.assertNotIn("- flink.yaml", base)
-        for resource in (
-            "delete-kafka-statefulset.yaml",
-            "delete-minio-statefulset.yaml",
-            "delete-market-sink.yaml",
-            "delete-strategy-engine.yaml",
-            "delete-outbox-relay.yaml",
-            "delete-projection-worker.yaml",
-            "delete-policy-api-deployment.yaml",
-        ):
-            self.assertIn(resource, overlay)
+        self.assertNotIn("delete-", overlay)
         self.assertIn("POLICY_SERVICE_URL: embedded://policy", runtime)
         self.assertIn("TSP_COMPUTE_ADDRESS: tsp-compute:7000", runtime)
-        self.assertIn("name: task-worker", runtime)
+        self.assertNotIn("name: task-worker", runtime)
+        worker = yaml.safe_load((ROOT / "product/deploy/kubernetes/task-worker.yaml").read_text())
+        self.assertEqual(worker["spec"]["replicas"], 1)
+        self.assertEqual(worker["spec"]["strategy"]["type"], "Recreate")
+        worker_pod = worker["spec"]["template"]["spec"]
+        self.assertEqual(worker_pod["containers"][0]["command"][-1], "app.multitenancy.task_worker")
+        compute = list(yaml.safe_load_all((ROOT / "product/deploy/kubernetes/compute.yaml").read_text()))
+        isolation = next(item for item in compute if item["kind"] == "NetworkPolicy")
+        callers = isolation["spec"]["ingress"][0]["from"][0]["podSelector"]["matchExpressions"][0]
+        self.assertEqual(set(callers["values"]), {"tsp-product", "tsp-task-worker"})
+        self.assertNotIn("http://tsp-product", str(worker_pod["initContainers"]))
+        self.assertEqual(isolation["spec"]["egress"], [])
         self.assertNotIn("name: dind", runtime)
         self.assertNotIn("name: gateway", runtime)
         self.assertNotIn("privileged: true", runtime)

@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import json
 import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
 
-from banxia_strategy.adapters.kafka import KafkaEventConsumer, KafkaEventPublisher
 from banxia_strategy.adapters.lease import PostgresAdvisoryLease
 from banxia_strategy.adapters.wal import SQLiteEventWAL, WalCapacityError
 from banxia_strategy.application.outbox import OutboxRelay
@@ -100,109 +98,6 @@ class ReliablePublisherTest(unittest.TestCase):
             self.assertEqual(broker.published[0][2], event)
             publisher.close()
             self.assertTrue(broker.closed)
-
-
-class FakeProducedMessage:
-    pass
-
-
-class FakeKafkaProducer:
-    def __init__(self, error=None, remaining=0):
-        self.error = error
-        self.remaining = remaining
-        self.calls = []
-
-    def produce(self, topic, **kwargs):
-        self.calls.append((topic, kwargs))
-        kwargs["on_delivery"](self.error, FakeProducedMessage())
-
-    def flush(self, _timeout):
-        return self.remaining
-
-
-class FakeKafkaMessage:
-    def __init__(self, event, error=None):
-        self._event = event
-        self._error = error
-
-    def error(self):
-        return self._error
-
-    def value(self):
-        return json.dumps(self._event.to_dict()).encode()
-
-    def key(self):
-        return b"002635"
-
-    def topic(self):
-        return "market.quote.snapshot.v1"
-
-    def partition(self):
-        return 2
-
-    def offset(self):
-        return 17
-
-
-class FakeKafkaConsumer:
-    def __init__(self, message):
-        self.message = message
-        self.subscriptions = []
-        self.commits = []
-        self.closed = False
-
-    def subscribe(self, topics):
-        self.subscriptions.append(topics)
-
-    def poll(self, _timeout):
-        message, self.message = self.message, None
-        return message
-
-    def commit(self, **kwargs):
-        self.commits.append(kwargs)
-
-    def close(self):
-        self.closed = True
-
-
-class KafkaAdapterTest(unittest.TestCase):
-    def test_publisher_waits_for_delivery_ack(self):
-        producer = FakeKafkaProducer()
-        publisher = KafkaEventPublisher(
-            "unused",
-            client_id="test",
-            producer=producer,
-        )
-        event = quote_event()
-        publisher.publish(event.event_type, "002635", event)
-        self.assertEqual(producer.calls[0][0], event.event_type)
-        self.assertEqual(producer.calls[0][1]["key"], b"002635")
-
-    def test_consumer_parses_and_commits_exact_message(self):
-        raw = FakeKafkaMessage(quote_event())
-        client = FakeKafkaConsumer(raw)
-        consumer = KafkaEventConsumer(
-            "unused",
-            group_id="test",
-            topics=["market.quote.snapshot.v1"],
-            consumer=client,
-        )
-        consumed = consumer.poll()
-        self.assertEqual(consumed.partition, 2)
-        self.assertEqual(consumed.offset, 17)
-        self.assertEqual(consumed.event.event_type, "market.quote.snapshot.v1")
-        consumer.commit(consumed)
-        self.assertIs(client.commits[0]["message"], raw)
-
-    def test_delivery_error_is_not_reported_as_success(self):
-        producer = FakeKafkaProducer(error="denied")
-        publisher = KafkaEventPublisher(
-            "unused",
-            client_id="test",
-            producer=producer,
-        )
-        with self.assertRaisesRegex(RuntimeError, "denied"):
-            publisher.publish("market.quote.snapshot.v1", "002635", quote_event())
 
 
 class FakeOutboxRepository:

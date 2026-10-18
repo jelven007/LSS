@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-import time
-from typing import Any, Callable, Dict, Mapping, Optional, Sequence
+from typing import Any, Dict, Mapping, Optional, Sequence
 
 from ..contracts.topics import (
     MARKET_FEATURE_REALTIME,
     MARKET_QUOTE_SNAPSHOT,
     STRATEGY_DECISION,
-    STRATEGY_PLAN_CREATED,
 )
 from ..domain.events import EventEnvelope
 from ..domain.intraday import (
@@ -18,7 +16,7 @@ from ..domain.intraday import (
     resolve_transition,
 )
 from ..intraday import plan_for
-from ..ports.messaging import ConsumedEvent, EventConsumer
+from ..ports.messaging import ConsumedEvent
 from ..ports.storage import DecisionRecord, DecisionRepository
 
 
@@ -254,90 +252,3 @@ class StrategyEventProcessor:
             offset=consumed.offset,
         )
         return decision_event if applied else None
-
-
-class StrategyWorker:
-    def __init__(
-        self,
-        *,
-        consumer: EventConsumer,
-        processor: StrategyEventProcessor,
-        plan_loader: Optional[
-            Callable[[str], Optional[Mapping[str, Any]]]
-        ] = None,
-        plans_loader=None,
-    ):
-        self.consumer = consumer
-        self.processor = processor
-        self.plan_loader = plan_loader
-        self.plans_loader = plans_loader
-        self.processors = {}
-        self.last_reload = 0.0
-
-    def reload_plans(self):
-        plans = self.plans_loader()
-        active = {}
-        for plan in plans:
-            plan_id = str(plan["plan_id"])
-            candidates = [{**item, "code": item["symbol"], "plan_date": plan["trade_date"],
-                           "reference_date": plan["reference_date"]} for item in plan["candidates"]]
-            processor = self.processors.get(plan_id)
-            if processor is None:
-                processor = StrategyEventProcessor(
-                    repository=self.processor.repository, plan_id=plan_id,
-                    strategy_version_id=str(plan["strategy_version_id"]),
-                    strategy_version=str(plan["strategy_version"]), candidates=candidates,
-                )
-            else:
-                processor.replace_plan(plan_id=plan_id, strategy_version_id=str(plan["strategy_version_id"]),
-                                       strategy_version=str(plan["strategy_version"]), candidates=candidates)
-            active[plan_id] = processor
-        self.processors = active
-        self.last_reload = time.monotonic()
-
-    def run_once(self, timeout: float = 1.0) -> bool:
-        if self.plans_loader is not None and time.monotonic() - self.last_reload >= 5:
-            self.reload_plans()
-        consumed = self.consumer.poll(timeout)
-        if consumed is None:
-            return False
-        if consumed.event.event_type == STRATEGY_PLAN_CREATED:
-            if self.plans_loader is not None:
-                self.reload_plans()
-            elif self.plan_loader is not None:
-                trade_date = str(consumed.event.payload["trade_date"])
-                plan = self.plan_loader(trade_date)
-                if plan is None:
-                    raise RuntimeError(
-                        f"strategy plan projection is unavailable for {trade_date}"
-                    )
-                candidates = [
-                    {
-                        **candidate,
-                        "code": candidate["symbol"],
-                        "plan_date": plan["trade_date"],
-                        "reference_date": plan["reference_date"],
-                    }
-                    for candidate in plan["candidates"]
-                ]
-                self.processor.replace_plan(
-                    plan_id=str(plan["plan_id"]),
-                    strategy_version_id=str(plan["strategy_version_id"]),
-                    strategy_version=str(plan["strategy_version"]),
-                    candidates=candidates,
-                )
-            self.consumer.commit(consumed)
-            return True
-        if self.plans_loader is not None:
-            for processor in self.processors.values():
-                processor.process(consumed)
-        else:
-            self.processor.process(consumed)
-        self.consumer.commit(consumed)
-        return True
-
-    def close(self) -> None:
-        for target in (self.consumer, self.processor.repository):
-            close = getattr(target, "close", None)
-            if close is not None:
-                close()

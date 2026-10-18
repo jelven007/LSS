@@ -8,23 +8,18 @@ from datetime import date, datetime, time
 from typing import Any, Dict, Literal, Optional, Sequence, Union
 
 from .adapters.clickhouse import ClickHouseMarketHistoryStore
-from .adapters.kafka import KafkaEventConsumer, KafkaEventPublisher
 from .adapters.lease import PostgresAdvisoryLease
 from .adapters.minio import MinioObjectAssetStore
-from .adapters.postgres import STRATEGY_CODE, PostgresStorage, _uuid
+from .adapters.postgres import PostgresStorage
 from .adapters.redis import RedisSnapshotCache
 from .adapters.strategy_catalog import CatalogConfigStore, SharedCollectionConfig
 from .adapters.wal import SQLiteEventWAL
 from .api import ApiServices, create_api_app
 from .application.collector import MarketCollector
-from .application.features import FeatureWorker
 from .application.lean_market import LeanMarketPipeline
 from .application.limit_up_history_sync import LimitUpHistorySync
-from .application.market_sink import MarketSinkWorker
 from .application.outbox import OutboxRelay
 from .application.paper_trading import PaperTradingWorker
-from .application.plans import ActivePlan, load_active_plan
-from .application.projection import ProjectionWorker
 from .application.reference_sync import MarketReferenceSync
 from .application.reliable_publish import ReliableEventPublisher
 from .application.report_scheduler import (
@@ -34,29 +29,18 @@ from .application.report_scheduler import (
     report_is_fresh,
 )
 from .application.report_worker import NonTradingDayError, ReportWorker
-from .application.strategy_engine import StrategyEventProcessor, StrategyWorker
 from .auth import AuthenticationManager, SmtpSettings, SmtpVerificationMailer
 from .catalog_bootstrap import ensure_initial_catalog
 from .config import RuntimeSettings
-from .contracts.topics import (
-    MARKET_BAR_1M,
-    MARKET_FEATURE_REALTIME,
-    MARKET_QUOTE_SNAPSHOT,
-    STRATEGY_DECISION,
-    STRATEGY_PLAN_CREATED,
-)
 from .data_provider import make_provider
 from .observability import (
     configure_logging,
     register_collector_metrics,
     start_metrics_server,
 )
-from .ports.storage import ReportIdentity
 from .strategy_config import (
-    StrategyConfig,
     StrategyConfigStore,
     revision_for,
-    version_for,
 )
 from .strategy_history import materialize_strategy_history
 from .web_server import ReportStore
@@ -108,71 +92,6 @@ def _market_minio(settings: RuntimeSettings) -> MinioObjectAssetStore:
     )
 
 
-def _publisher(settings: RuntimeSettings, service_name: str) -> KafkaEventPublisher:
-    return KafkaEventPublisher(
-        settings.kafka_bootstrap_servers,
-        client_id=service_name,
-    )
-
-
-def _consumer(
-    settings: RuntimeSettings,
-    service_name: str,
-    topics: Sequence[str],
-) -> KafkaEventConsumer:
-    return KafkaEventConsumer(
-        settings.kafka_bootstrap_servers,
-        group_id=f"{settings.environment}.{service_name}",
-        topics=[settings.topic(topic) for topic in topics],
-    )
-
-
-def _load_plan(settings: RuntimeSettings) -> ActivePlan:
-    return load_active_plan(
-        settings.report_dirs,
-        watch_date=settings.watch_date,
-        watchlist_path=settings.watchlist_path,
-    )
-
-
-def _prepare_plan(repository: PostgresStorage, settings: RuntimeSettings) -> tuple[ActivePlan, Any]:
-    plan = _load_plan(settings)
-    if isinstance(repository, PostgresStorage):
-        day = repository.get_strategy_day(_uuid(f"strategy:{STRATEGY_CODE}"), plan.report["as_of"])
-        saved = day.get("next_plan") if day else None
-        if saved and saved.get("generated_at", "") >= plan.report.get("generated_at", ""):
-            plan = ActivePlan(report=saved, candidates=tuple(
-                {**item, "plan_date": saved["next_session"], "reference_date": saved["as_of"]}
-                for item in plan.candidates
-            ))
-    existing = repository.get_active_plan(plan.report.get("next_session"))
-    if (
-        existing and existing["reference_date"] == plan.report["as_of"]
-        and (not plan.report.get("strategy_version") or existing["strategy_version"] == plan.report["strategy_version"])
-    ):
-        return ActivePlan(
-            report={**plan.report, "strategy_version": existing["strategy_version"]},
-            candidates=plan.candidates,
-        ), ReportIdentity(
-            run_id=existing["run_id"], plan_id=existing["plan_id"],
-            strategy_version_id=existing["strategy_version_id"],
-        )
-    from dataclasses import asdict
-    strategy_config = plan.report.get("strategy_config") or asdict(StrategyConfig())
-    commit = plan.report.get("code_commit") or settings.storage.code_commit
-    version = plan.report.get("strategy_version") or version_for(strategy_config, settings.storage.strategy_version, commit)
-    identity = repository.persist_report(
-        plan.report,
-        strategy_version=version,
-        strategy_config=strategy_config,
-        code_commit=commit,
-    )
-    if identity.plan_id is None:
-        raise RuntimeError("active report did not produce a strategy plan")
-    repository.persist_watchlist(identity.plan_id, plan.candidates)
-    return ActivePlan(report={**plan.report, "strategy_version": version}, candidates=plan.candidates), identity
-
-
 def _config_store(settings: RuntimeSettings):
     return StrategyConfigStore(settings.strategy_config_path, {
         "report_schedule": ",".join(settings.report_schedule),
@@ -181,72 +100,8 @@ def _config_store(settings: RuntimeSettings):
     })
 
 
-def _run_polling_worker(worker: Any, logger: Any) -> None:
-    stop = threading.Event()
-
-    def request_stop(_signum, _frame):
-        stop.set()
-
-    signal.signal(signal.SIGTERM, request_stop)
-    signal.signal(signal.SIGINT, request_stop)
-    logger.info("service started")
-    try:
-        while not stop.is_set():
-            try:
-                worker.run_once(timeout=1.0)
-            except Exception:
-                logger.exception("worker iteration failed")
-                stop.wait(1.0)
-    finally:
-        worker.close()
-        logger.info("service stopped")
-
-
-def run_collector(settings: RuntimeSettings, logger: Any) -> None:
-    plan = _load_plan(settings)
-    repository = _postgres(settings)
-    def candidates():
-        return [{**item, "code": item["symbol"], "plan_date": current["trade_date"]}
-                for current in repository.list_monitor_plans() for item in current["candidates"]]
-    reliable = ReliableEventPublisher(
-        wal=SQLiteEventWAL(
-            settings.wal_path,
-            max_bytes=settings.wal_max_bytes,
-        ),
-        publisher=_publisher(settings, "market-collector"),
-    )
-    collector = MarketCollector(
-        candidates=plan.candidates,
-        publisher=reliable,
-        lease=PostgresAdvisoryLease(
-            settings.storage.postgres_dsn,
-            lease_key=f"{settings.environment}:market-collector:shard-0",
-        ),
-        quote_interval_seconds=settings.quote_interval_seconds,
-        idle_interval_seconds=settings.idle_interval_seconds,
-        config_store=SharedCollectionConfig(repository, _config_store(settings)),
-        candidate_loader=candidates,
-        session_checker=repository.is_trading_session,
-    )
-    register_collector_metrics(collector, environment=settings.environment)
-
-    def request_stop(_signum, _frame):
-        collector.stop()
-
-    signal.signal(signal.SIGTERM, request_stop)
-    signal.signal(signal.SIGINT, request_stop)
-    logger.info("collector started")
-    try:
-        collector.run_forever()
-    finally:
-        collector.close()
-        repository.close()
-        logger.info("collector stopped")
-
-
 def run_market_worker(settings: RuntimeSettings, logger: Any) -> None:
     """Run collection, feature calculation, persistence and decisions together."""
-    plan = _load_plan(settings)
     repository = _postgres(settings)
 
     def candidates():
@@ -275,7 +130,7 @@ def run_market_worker(settings: RuntimeSettings, logger: Any) -> None:
         publisher=pipeline,
     )
     collector = MarketCollector(
-        candidates=plan.candidates,
+        candidates=(),
         publisher=reliable,
         lease=PostgresAdvisoryLease(
             settings.storage.postgres_dsn,
@@ -327,92 +182,6 @@ def run_market_worker(settings: RuntimeSettings, logger: Any) -> None:
         outbox_repository.close()
         collector.close()
         logger.info("lean market worker stopped")
-
-
-def run_market_sink(settings: RuntimeSettings, logger: Any) -> None:
-    worker = MarketSinkWorker(
-        consumer=_consumer(
-            settings,
-            "market-sink",
-            (MARKET_QUOTE_SNAPSHOT, MARKET_BAR_1M, MARKET_FEATURE_REALTIME),
-        ),
-        store=_clickhouse(settings),
-    )
-    _run_polling_worker(worker, logger)
-
-
-def run_feature_worker(settings: RuntimeSettings, logger: Any) -> None:
-    worker = FeatureWorker(
-        consumer=_consumer(
-            settings,
-            "feature-worker",
-            (MARKET_QUOTE_SNAPSHOT, MARKET_BAR_1M),
-        ),
-        publisher=_publisher(settings, "feature-worker"),
-    )
-    _run_polling_worker(worker, logger)
-
-
-def run_strategy_engine(settings: RuntimeSettings, logger: Any) -> None:
-    repository = _postgres(settings)
-    processor = StrategyEventProcessor(
-        repository=repository,
-        plan_id="",
-        strategy_version_id="",
-        strategy_version="",
-        candidates=(),
-    )
-    worker = StrategyWorker(
-        consumer=_consumer(
-            settings,
-            "strategy-engine",
-            (
-                MARKET_QUOTE_SNAPSHOT,
-                MARKET_FEATURE_REALTIME,
-                STRATEGY_PLAN_CREATED,
-            ),
-        ),
-        processor=processor,
-        plan_loader=repository.get_active_plan,
-        plans_loader=repository.list_monitor_plans,
-    )
-    _run_polling_worker(worker, logger)
-
-
-def run_outbox_relay(settings: RuntimeSettings, logger: Any) -> None:
-    relay = OutboxRelay(
-        repository=_postgres(settings),
-        publisher=_publisher(settings, "outbox-relay"),
-    )
-
-    def request_stop(_signum, _frame):
-        relay.stop()
-
-    signal.signal(signal.SIGTERM, request_stop)
-    signal.signal(signal.SIGINT, request_stop)
-    logger.info("outbox relay started")
-    try:
-        relay.run_forever()
-    finally:
-        relay.close()
-        logger.info("outbox relay stopped")
-
-
-def run_projection_worker(settings: RuntimeSettings, logger: Any) -> None:
-    worker = ProjectionWorker(
-        consumer=_consumer(
-            settings,
-            "projection-worker",
-            (
-                MARKET_QUOTE_SNAPSHOT,
-                MARKET_BAR_1M,
-                MARKET_FEATURE_REALTIME,
-                STRATEGY_DECISION,
-            ),
-        ),
-        cache=_redis(settings),
-    )
-    _run_polling_worker(worker, logger)
 
 
 def _generate_report(
@@ -1076,13 +845,7 @@ def run_api(settings: RuntimeSettings, logger: Any) -> None:
 
 
 RUNNERS = {
-    "market-collector": run_collector,
     "market-worker": run_market_worker,
-    "market-sink": run_market_sink,
-    "feature-worker": run_feature_worker,
-    "strategy-engine": run_strategy_engine,
-    "outbox-relay": run_outbox_relay,
-    "projection-worker": run_projection_worker,
     "paper-trading": run_paper_trading,
     "report-worker": run_report_worker,
     "report-scheduler": run_report_scheduler,

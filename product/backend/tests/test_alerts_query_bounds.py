@@ -67,3 +67,20 @@ def test_valid_params_still_return_all_records(tmp_path):
         resp = client.get("/api/alerts", params=params)
         assert resp.status_code == 200, resp.text
         assert len(resp.json()["alerts"]) == min(3, params["limit"])
+
+
+@pytest.mark.parametrize("path", [
+    "/api/alerts/seed",
+    "/api/monitor-rules/seed",
+    "/api/monitor-rules/test-ladder",
+    "/api/monitor-rules/trigger-ladder",
+])
+def test_retired_debug_actions_cannot_change_business_alerts(tmp_path, path):
+    from app.api.monitor_rules import router as rules_router
+
+    _seed(tmp_path, 3)
+    client = _client(tmp_path)
+    client.app.include_router(rules_router)
+    before = client.get("/api/alerts").json()
+    assert client.post(path).status_code in (404, 405)
+    assert client.get("/api/alerts").json() == before

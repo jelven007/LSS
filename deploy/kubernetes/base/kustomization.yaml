@@ -18,6 +18,10 @@ patches:
       - op: add
         path: /spec/template/spec/securityContext
         value:
+          runAsNonRoot: true
+          runAsUser: 10001
+          runAsGroup: 10001
+          fsGroup: 10001
           seccompProfile:
             type: RuntimeDefault
       - op: add
@@ -62,6 +66,10 @@ patches:
       - op: add
         path: /spec/jobTemplate/spec/template/spec/securityContext
         value:
+          runAsNonRoot: true
+          runAsUser: 10001
+          runAsGroup: 10001
+          fsGroup: 10001
           seccompProfile:
             type: RuntimeDefault
       - op: add

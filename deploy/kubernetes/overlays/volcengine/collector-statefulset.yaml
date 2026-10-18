@@ -86,11 +86,6 @@ spec:
           volumeMounts:
             - name: wal
               mountPath: /app/data/wal
-            - name: reports
-              mountPath: /app/reports
-      volumes:
-        - name: reports
-          emptyDir: {}
   volumeClaimTemplates:
     - metadata:
         name: wal

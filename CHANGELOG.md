@@ -10,6 +10,9 @@
 - TSP 与 Policy 合并为单一 Web/API 入口，Policy 改为进程内 ASGI 调用。
 - 实时行情、特征、策略和投影收敛为带 SQLite WAL 的 `market-worker`。
 - TSP 研究、实时、通知和定时任务收敛为统一 `task-worker`。
+- `tsp-task-worker` 独立部署，API 的 HPA 不再复制后台任务进程。
+- Policy `report-scheduler` 常驻消费页面刷新和历史任务，取代重复的报告 CronJob。
+- Market Worker 直接加载数据库监控计划，不依赖本地报告文件。
 - Policy 与 TSP 共享一个 PostgreSQL 集群，控制库和业务库使用独立运行角色。
 - 对象归档切换到火山引擎 TOS，生产清单不再部署 MinIO 和 Policy 报告 NAS。
 - 计算从特权 DinD 迁移到无密钥、禁止出网的独立 `tsp-compute` Pod。
@@ -20,10 +23,12 @@
 
 - VKE 生产拓扑中的 Kafka、Flink、独立 Policy API、独立 TSP PostgreSQL、SSE Gateway
   以及四个独立 TSP Worker 容器。
+- Kafka/Flink 源码、依赖、本地服务、旧 Worker 入口与无效部署补丁。
+- 品牌风格预览、开发演示页、演示数据与强制预警接口、第三方开源发布监控。
 
 ### Compatibility
 
-- Kafka/Flink 实现和本地 Compose 暂时保留，仅用于历史回归和应急回滚。
+- 本地 Compose 统一使用 Market Worker；回滚依赖 Git 历史和对应旧镜像。
 - `/api/policy/*` 前端契约保持不变。
 
 ## v0.5.0 - 2026-10-18

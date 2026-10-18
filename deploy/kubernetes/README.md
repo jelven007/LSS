@@ -10,7 +10,8 @@ TOS 和带本地 WAL 的 Market Worker，不再部署 Kafka、Flink、MinIO 或�
 
 VKE overlay 包含：
 
-- 统一 Web/API、`task-worker`、`tsp-platform` 和隔离 `tsp-compute`。
+- 统一 Web/API、独立 `tsp-task-worker`、Policy `report-scheduler`、
+  `tsp-platform` 和隔离 `tsp-compute`。
 - 带 SQLite WAL 的双副本 `market-worker`，通过 PostgreSQL 租约单活。
 - 工作日 16:20 参考数据同步、16:30/23:30 报告、16:35 涨停历史和 16:50 模拟盘任务。
 - 使用独立 RWO 云盘保存每个 `market-collector` 副本的本地 WAL。
@@ -103,6 +104,8 @@ kubectl -n banxia wait \
 kubectl -n banxia wait \
   --for=condition=complete job/banxia-catalog-bootstrap --timeout=15m
 kubectl -n banxia rollout status deployment/tsp-product --timeout=10m
+kubectl -n banxia rollout status deployment/tsp-task-worker --timeout=10m
+kubectl -n banxia rollout status deployment/report-scheduler --timeout=10m
 kubectl -n banxia rollout status deployment/tsp-compute --timeout=10m
 kubectl -n banxia rollout status statefulset/market-collector --timeout=10m
 kubectl -n banxia get pods,pvc,ingress

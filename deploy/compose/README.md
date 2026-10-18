@@ -8,14 +8,10 @@
 - ClickHouse 24.8
 - Redis 7.4
 - MinIO
-- Kafka 3.9 单节点 KRaft
-- Flink 1.20 JobManager、TaskManager 和实时特征作业
-- `market-collector`、`market-sink`、`strategy-engine`、`outbox-relay`
-- `projection-worker`、`market-reference-sync`、`report-scheduler`、FastAPI 与 Prometheus
+- `market-worker`、`market-reference-sync`、`report-scheduler`、FastAPI 与 Prometheus
 
-默认实时指标由 Flink 生成。仅在排查 Flink 故障时，使用
-`--profile python-feature-fallback` 启动确定性的 Python 降级 Worker，
-不要同时运行两套特征生产者。
+本地与生产共用 Market Worker + SQLite WAL 的行情链路，不再依赖 Kafka/Flink。
+MinIO 仅模拟本地 S3，生产使用 TOS。完整 React Web 使用 `product/` 的开发与部署入口。
 
 ## 启动
 
@@ -31,7 +27,9 @@ make infra-check
 `market-reference-sync` 首次启动时补齐主数据，之后每个交易日 16:20 更新证券目录、
 板块、行业版本和全市场每日行情快照。
 非交易日由 rustdx 交易日历校验后跳过。调度器重启后会补跑最近缺失的交易日报；
-报告任务通过 host 网络访问 rustdx 通达信节点，并通过完成标记区分完整持久化和残留文件。
+服务通过 Compose 网络访问存储，通过默认出站网络访问 rustdx 通达信节点。
+完成标记区分完整持久化和残留文件；报告暂存在 `reports` 命名卷，原宿主机报告文件不会被删除。
+`catalog-bootstrap` 完成后才启动采集与报告任务；行情候选直接取自数据库，不依赖本地旧报告。
 API 与调度器启动时会幂等预置十条受保护的初始策略；仅主策略自动提交最近一年次日计划
 与当日实盘历史生成任务，避免首次启动同时触发十份全市场回放。调度器使用 rustdx
 处理任务，相同策略和日期区间不会重复入队。
@@ -70,18 +68,14 @@ export BANXIA_STORAGE_MODE=best_effort
 | --- | --- |
 | PostgreSQL | `127.0.0.1:5432` |
 | ClickHouse HTTP | `http://127.0.0.1:8123` |
-| ClickHouse Native | `127.0.0.1:9000` |
 | Redis | `127.0.0.1:6379` |
 | MinIO API | `http://127.0.0.1:9002` |
 | MinIO Console | `http://127.0.0.1:9001` |
-| Kafka | `127.0.0.1:29092` |
-| Flink | `http://127.0.0.1:8081` |
 | Strategy API | `http://127.0.0.1:8765` |
 | Prometheus | `http://127.0.0.1:9090` |
 
-本地 `.env.example` 显式设置 `BANXIA_API_PORT=8765`。在 ECS 上未设置该变量时，
-Compose 默认将宿主机 `80` 端口映射到 API 容器的 `8765` 端口，因此可直接通过
-`http://<ECS 公网 IP>/` 访问；安全组需要放行 TCP 80。
+本地端口只绑定 `127.0.0.1`，默认 `BANXIA_API_PORT=8765`。生产使用 VKE 与 HTTPS 入口。
+`paper-trading` 和 `report-worker` 为 `jobs` profile 下的一次性任务，不随主栈反复重启。
 
 默认凭证只允许本地开发。共享环境必须修改 `.env`，生产环境必须使用密钥管理服务。
 
@@ -93,8 +87,7 @@ Compose 默认将宿主机 `80` 端口映射到 API 容器的 `8765` 端口，�
   - `market-raw`
   - `strategy-reports`
   - `strategy-audit`
-  - `flink-state`
-- `kafka-init` 创建业务 Topic 和对应 DLQ。
+- `catalog-bootstrap` 幂等初始化策略目录。
 
 初始化脚本只在空数据卷或显式初始化容器中运行。修改历史迁移后，不应直接依赖重启容器
 覆盖已有数据库；后续变更必须增加新的有序迁移文件。

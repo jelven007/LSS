@@ -19,7 +19,6 @@ import {
 import { loadStockExternalTemplate, saveStockExternalTemplate } from '@/lib/stock-external-link'
 import { useUpdateCheck } from '@/lib/updateCheck'
 import { ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, getPageZoom, setPageZoom } from '@/lib/pageZoom'
-import { OpenSourceReleaseMonitor } from '@/components/OpenSourceReleaseMonitor'
 
 export function SettingsSystemPanel() {
   const qc = useQueryClient()
@@ -496,7 +495,6 @@ export function SettingsSystemPanel() {
             </button>
           </div>
         </div>
-        <OpenSourceReleaseMonitor />
       </section>
     </div>
   )
