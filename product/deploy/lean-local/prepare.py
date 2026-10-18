@@ -7,6 +7,7 @@ import json
 import os
 import secrets
 import shutil
+import socket
 import subprocess
 from pathlib import Path
 
@@ -22,7 +23,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--public-release", type=Path, required=True)
     parser.add_argument("--state-dir", type=Path, required=True)
-    parser.add_argument("--port", type=int, default=3051)
+    parser.add_argument("--port", type=int, default=3061)
     parser.add_argument("--source-commit", help="Exact source commit when preparing from a container")
     parser.add_argument("--resume", action="store_true", help="Resume an interrupted copy before credentials exist")
     args = parser.parse_args()
@@ -30,18 +31,25 @@ def main() -> None:
     state = args.state_dir.resolve()
     if state.exists() and (not args.resume or list(state.glob("*.env"))):
         raise SystemExit("State directory already exists; reuse its compose.env.")
+    with socket.socket() as listener:
+        try:
+            listener.bind(("127.0.0.1", args.port))
+        except OSError as exc:
+            raise SystemExit(f"Web port {args.port} is unavailable; select --port.") from exc
     manifest = json.loads((source / ".public_release.json").read_text())
     release_id = manifest["id"]
     if len(release_id) != 32 or any(c not in "0123456789abcdef" for c in release_id):
         raise ValueError("Invalid public release ID")
     checksums = manifest["checksums"]
     print(f"Verifying {len(checksums)} public files", flush=True)
-    for name, expected in checksums.items():
+    for index, (name, expected) in enumerate(checksums.items()):
         path = (source / name).resolve(strict=True)
         if not path.is_relative_to(source) or path.is_symlink():
             raise ValueError("Public file escaped its release")
         if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
             raise ValueError(f"Public checksum mismatch: {name}")
+        if index % 250 == 0:
+            print(f"Verified {index + 1}/{len(checksums)} public files", flush=True)
 
     os.umask(0o077)
     state.mkdir(parents=True, exist_ok=True)
@@ -93,7 +101,8 @@ def main() -> None:
         "REDIS_PASSWORD": passwords["redis"],
         "MINIO_API_PORT": "39002",
         "MINIO_CONSOLE_PORT": "39001",
-        "MINIO_ROOT_PASSWORD": passwords["object"],
+        "MINIO_ROOT_USER": "S3RVER",
+        "MINIO_ROOT_PASSWORD": "S3RVER",
         "TSP_CONTROL_RUNTIME_PASSWORD": passwords["control"],
         "TSP_DATA_RUNTIME_PASSWORD": passwords["data"],
         "BANXIA_CODE_COMMIT": commit,
@@ -127,8 +136,8 @@ def main() -> None:
         "BANXIA_CLICKHOUSE_PASSWORD": passwords["clickhouse"],
         "BANXIA_REDIS_URL": f"redis://:{passwords['redis']}@redis:6379/0",
         "BANXIA_OBJECT_ENDPOINT": "minio:9000",
-        "BANXIA_OBJECT_ACCESS_KEY": "banxia",
-        "BANXIA_OBJECT_SECRET_KEY": passwords["object"],
+        "BANXIA_OBJECT_ACCESS_KEY": "S3RVER",
+        "BANXIA_OBJECT_SECRET_KEY": "S3RVER",
         "BANXIA_OBJECT_SECURE": "false",
         "BANXIA_OBJECT_REPORT_BUCKET": "strategy-reports",
         "BANXIA_OBJECT_MARKET_BUCKET": "market-raw",

@@ -206,3 +206,31 @@ def test_read_only_repository_does_not_create_missing_market_generation(tmp_path
         assert list(tmp_path.iterdir()) == []
     finally:
         store.db.close()
+
+
+def test_compute_worker_uses_broker_selected_release_for_links_and_repository(tmp_path, monkeypatch):
+    from app.config import settings
+    from app.multitenancy.compute_worker import execute
+
+    selected = tmp_path / "public" / "releases" / "selected"
+    selected.mkdir(parents=True)
+    (selected / "release-marker").write_text("selected")
+    (selected / "user_data").mkdir()
+    private = tmp_path / "private"
+    private.mkdir()
+    monkeypatch.setenv("DATA_DIR", str(selected))
+    monkeypatch.setattr(settings, "data_dir", private)
+    monkeypatch.setattr(
+        "app.multitenancy.monitor_compute.evaluate_snapshot",
+        lambda payload, repo, engine, root: {
+            "market": repo.store.data_dir,
+            "read_only": repo.store.read_only,
+        },
+    )
+
+    result = execute({"kind": "monitor"}, private)
+
+    assert result == {"market": selected, "read_only": True}
+    assert (private / "release-marker").resolve() == selected / "release-marker"
+    assert (private / "release-marker").read_text() == "selected"
+    assert not (private / "user_data").is_symlink()
