@@ -1,0 +1,153 @@
+/**
+ * 统一设置页面 — Tab 切换外壳。
+ *
+ * 通过 URL query param ?tab=xxx 同步 Tab 状态。
+ */
+import { Suspense, lazy, useState, type ComponentType } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { motion } from 'framer-motion'
+import { BarChart3, Database, KeyRound, Radio, SlidersHorizontal, Sparkles, Settings2, PanelLeftClose, PanelLeftOpen, Clock3, UserRound } from 'lucide-react'
+// 面板按 tab 按需加载, 避免设置页同步打包全部面板。
+const SettingsAccountPanel = lazy(() => import('./settings/Account').then(m => ({ default: m.SettingsAccountPanel })))
+const SettingsAIPanel = lazy(() => import('./settings/AI').then(m => ({ default: m.SettingsAIPanel })))
+const SettingsApiTokensPanel = lazy(() => import('./settings/ApiTokens').then(m => ({ default: m.SettingsApiTokensPanel })))
+const SettingsMonitoringPanel = lazy(() => import('./settings/Monitoring').then(m => ({ default: m.SettingsMonitoringPanel })))
+const SettingsExtPagesPanel = lazy(() => import('./settings/ExtPages').then(m => ({ default: m.SettingsExtPagesPanel })))
+const SettingsMenuSettingsPanel = lazy(() => import('./settings/MenuSettings').then(m => ({ default: m.SettingsMenuSettingsPanel })))
+const SettingsTimeoutPanel = lazy(() => import('./settings/Timeout').then(m => ({ default: m.SettingsTimeoutPanel })))
+const SettingsSystemPanel = lazy(() => import('./settings/System').then(m => ({ default: m.SettingsSystemPanel })))
+const SettingsDataSourcesPanel = lazy(() => import('./settings/DataSources').then(m => ({ default: m.SettingsDataSourcesPanel })))
+import { PageHeader } from '@/components/PageHeader'
+import { api } from '@/lib/api'
+import { cn } from '@/lib/cn'
+import { QK } from '@/lib/queryKeys'
+import { accountStorage as localStorage, hasPermission, multitenancyEnabled } from '@/lib/accountSession'
+
+// ===== Tab 定义 =====
+
+type TabDef = {
+  key: string
+  label: string
+  icon: ComponentType<{ className?: string }>
+  panel: ComponentType<{ highlight?: string }>
+  badge?: string
+}
+
+const TABS: readonly TabDef[] = [
+  { key: 'account',      label: '账户',       icon: UserRound, panel: SettingsAccountPanel },
+  { key: 'data-sources', label: '数据源',     icon: Database,  panel: SettingsDataSourcesPanel },
+  { key: 'ai',         label: 'AI 设置',    icon: Sparkles,  panel: SettingsAIPanel },
+  { key: 'monitoring', label: '实时监控',   icon: Radio,     panel: SettingsMonitoringPanel },
+  { key: 'ext-pages',  label: '扩展页面',   icon: BarChart3, panel: SettingsExtPagesPanel },
+  { key: 'timeout',    label: '网络设置',   icon: Clock3,    panel: SettingsTimeoutPanel },
+  { key: 'menus',      label: '菜单设置',   icon: SlidersHorizontal, panel: SettingsMenuSettingsPanel },
+  { key: 'api-tokens', label: '开放接口',   icon: KeyRound, panel: SettingsApiTokensPanel },
+  { key: 'system',     label: '系统设置',   icon: Settings2, panel: SettingsSystemPanel },
+]
+
+type TabKey = (typeof TABS)[number]['key']
+
+export function Settings() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { data: authStatus } = useQuery({
+    queryKey: QK.authStatus,
+    queryFn: api.authStatus,
+    staleTime: 30_000,
+  })
+  const tabParam = searchParams.get('tab') as TabKey | null
+  const tenant = multitenancyEnabled() && !hasPermission('settings:manage')
+  const availableTabs = tenant
+    ? TABS.filter(tab => tab.key === 'account')
+    : authStatus?.auth_required ? TABS : TABS.filter(tab => tab.key !== 'account')
+  const activeTab = availableTabs.find((t) => t.key === tabParam) ?? availableTabs[0]
+  const highlight = tenant ? '' : searchParams.get('highlight') ?? ''
+
+  // 设置菜单收起状态 — 持久化到 localStorage
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem('tf-settings-nav-collapsed') === '1' } catch { return false }
+  })
+  const toggleCollapsed = () => {
+    setCollapsed(prev => {
+      const next = !prev
+      try { localStorage.setItem('tf-settings-nav-collapsed', next ? '1' : '0') } catch {}
+      return next
+    })
+  }
+
+  return (
+    <>
+      <PageHeader
+        title="设置"
+        subtitle={tenant ? '查看账户信息、修改密码和退出登录。' : '管理数据刷新策略和高级功能配置。'}
+      />
+
+      <div className="px-8 py-6">
+        {tenant && ((tabParam && tabParam !== 'account') || searchParams.has('highlight')) && (
+          <p role="status" className="mb-4 text-sm text-muted">当前账户无权访问该设置。</p>
+        )}
+        <div className="flex gap-6 items-stretch">
+          {/* ===== 竖向 Tab 侧栏 ===== */}
+          <nav className={cn('shrink-0 transition-all duration-200 ease-smooth', collapsed ? 'w-10' : 'w-36')}>
+            <div className="flex flex-col gap-0.5 justify-center min-h-[60vh] sticky top-6">
+              {/* 收起/展开 按钮 */}
+              <button
+                onClick={toggleCollapsed}
+                className={cn(
+                  'flex items-center gap-2 rounded-btn text-muted hover:text-foreground hover:bg-elevated/60 transition-colors duration-150 ease-smooth mb-1',
+                  collapsed ? 'justify-center px-0 py-2' : 'px-3 py-2 text-xs',
+                )}
+                title={collapsed ? '展开菜单' : '收起菜单'}
+              >
+                {collapsed
+                  ? <PanelLeftOpen className="h-3.5 w-3.5 shrink-0" />
+                  : <PanelLeftClose className="h-3.5 w-3.5 shrink-0" />
+                }
+                {!collapsed && <span>收起菜单</span>}
+              </button>
+
+              {/* Tab 按钮列表 — 收起时只显示图标 */}
+              {availableTabs.map(({ key, label, icon: Icon, badge }) => (
+                <button
+                  key={key}
+                  onClick={() => setSearchParams({ tab: key }, { replace: true })}
+                  title={collapsed ? label : undefined}
+                  className={cn(
+                    'relative flex items-center rounded-btn text-sm transition-colors duration-150 ease-smooth',
+                    collapsed ? 'justify-center px-0 py-2' : 'items-center gap-2 px-3 py-2 text-left',
+                    activeTab.key === key
+                      ? 'bg-accent/10 text-accent font-medium'
+                      : 'text-secondary hover:text-foreground hover:bg-elevated/60',
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  {!collapsed && <span>{label}</span>}
+                  {!collapsed && badge && (
+                    <span className="ml-auto inline-flex items-center rounded-full border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-400 shrink-0">
+                      {badge}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </nav>
+
+          {/* ===== Tab 内容 ===== */}
+          <motion.div
+            key={activeTab.key}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.15 }}
+            className="min-w-0 flex-1"
+          >
+            <Suspense fallback={<div className="py-12 text-center text-xs text-muted">加载中…</div>}>
+              {activeTab.key === 'monitoring'
+                ? <SettingsMonitoringPanel highlight={highlight} />
+                : <activeTab.panel highlight={highlight} />}
+            </Suspense>
+          </motion.div>
+        </div>
+      </div>
+    </>
+  )
+}

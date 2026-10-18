@@ -1,0 +1,165 @@
+name: Integrated product
+
+on:
+  pull_request:
+    paths:
+      - "product/**"
+      - "deploy/kubernetes/**"
+      - "migrations/**"
+      - "src/**"
+      - "tests/**"
+      - "docs/**"
+      - "pyproject.toml"
+      - "CHANGELOG.md"
+      - ".github/workflows/product.yml"
+  push:
+    branches: [main]
+    paths:
+      - "product/**"
+      - "deploy/kubernetes/**"
+      - "migrations/**"
+      - "src/**"
+      - "tests/**"
+      - "docs/**"
+      - "pyproject.toml"
+      - "CHANGELOG.md"
+      - ".github/workflows/product.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e ".[test,storage]"
+      - run: python -m unittest discover -s tests -v
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: product/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: product/frontend/pnpm-lock.yaml
+      - run: corepack enable
+      - run: corepack prepare pnpm@9.10.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm build
+
+  policy-bridge:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: product/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install fastapi httpx pytest pytest-asyncio ruff
+      - run: ruff check app/custom/policy_bridge.py app/multitenancy/access.py app/multitenancy/bootstrap.py tests/test_policy_bridge.py
+      - run: PYTHONPATH=. pytest -q tests/test_policy_bridge.py
+
+  candidate-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: product
+    env:
+      TSP_FULL_IMAGE: example.invalid/tsp/runtime:test
+      TSP_COMPUTE_IMAGE: example.invalid/tsp/compute:test
+      TSP_BROKER_IMAGE: example.invalid/tsp/broker:test
+      TSP_CANDIDATE_POSTGRES_IMAGE: postgres:16
+      TSP_CANDIDATE_NGINX_IMAGE: nginx:1.27-alpine
+      TSP_FULL_ENV_FILE: ${{ github.workspace }}/product/deploy/candidate/runtime.env.example
+      TSP_PLATFORM_ENV_FILE: ${{ github.workspace }}/product/deploy/candidate/platform.env.example
+      TSP_CANDIDATE_POSTGRES_ENV_FILE: ${{ github.workspace }}/product/deploy/candidate/postgres.env.example
+      TSP_CANDIDATE_ADMIN_ENV_FILE: ${{ github.workspace }}/product/deploy/candidate/admin.env.example
+      TSP_CANDIDATE_NGINX_CONFIG: ${{ github.workspace }}/product/deploy/candidate/nginx.conf
+      TSP_CANDIDATE_PG_BOOTSTRAP: ${{ github.workspace }}/product/deploy/cell/pg/bootstrap.sh
+      TSP_PLATFORM_DATA_DIR: /tmp/tsp-candidate/platform
+      TSP_PLATFORM_CONFIG_DIR: /tmp/tsp-candidate/platform-config
+      TSP_PUBLIC_MARKET_DIR: /tmp/tsp-candidate/public
+      TSP_COMPUTE_SOCKET_DIR: /tmp/tsp-candidate/socket
+      TSP_CANDIDATE_PUBLIC_URL: https://candidate.example.com
+    steps:
+      - uses: actions/checkout@v4
+      - run: >-
+          docker compose
+          --env-file deploy/candidate/candidate.env.example
+          -p tsp-product-candidate
+          -f deploy/full/compose.yml
+          -f deploy/candidate/compose.yml
+          --profile init
+          config --quiet
+      - run: >-
+          docker run --rm
+          --add-host tsp-full-api:127.0.0.1
+          --add-host tsp-full-gateway:127.0.0.1
+          -v "$PWD/deploy/candidate/nginx.conf:/etc/nginx/nginx.conf:ro"
+          nginx:1.27-alpine nginx -t
+      - run: >-
+          docker build --check
+          -f deploy/full/Broker.Dockerfile
+          --build-arg RUNTIME_IMAGE=python:3.11-slim-bookworm
+          .
+
+  version-and-kubernetes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.33.9
+      - name: Verify version contract
+        run: |
+          python - <<'PY'
+          import json
+          import pathlib
+          import re
+          import tomllib
+
+          root = pathlib.Path(".")
+          versions = {
+              tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"],
+              tomllib.loads((root / "product/backend/pyproject.toml").read_text())["project"]["version"],
+              next(
+                  package["version"]
+                  for package in tomllib.loads((root / "product/backend/uv.lock").read_text())["package"]
+                  if package["name"] == "tsp-backend"
+              ),
+              json.loads((root / "product/frontend/package.json").read_text())["version"],
+              (root / "product/VERSION").read_text().strip().removeprefix("v"),
+              re.search(
+                  r'_FALLBACK_VERSION = "([^"]+)"',
+                  (root / "product/backend/app/__init__.py").read_text(),
+              ).group(1),
+          }
+          if len(versions) != 1:
+              raise SystemExit(f"version mismatch: {sorted(versions)}")
+          version = versions.pop()
+          if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+              raise SystemExit(f"invalid release version: {version}")
+          print(version)
+          PY
+      - name: Render VKE release
+        run: |
+          kubectl kustomize --load-restrictor LoadRestrictionsNone \
+            deploy/kubernetes/overlays/volcengine > /tmp/banxia-vke.yaml
+          test -s /tmp/banxia-vke.yaml
+          ! grep -n "REPLACE_WITH_" /tmp/banxia-vke.yaml
+          grep -q "name: tsp-product" /tmp/banxia-vke.yaml
+          grep -q "name: api" /tmp/banxia-vke.yaml

@@ -371,3 +371,33 @@ SSE 不是权威存储。客户端重连时先调用普通查询，再使用 `La
 - 刷新任务结果记录实际使用的 `strategy_version`、`strategy_revision`、`run_id` 和生成时间。
 - 研究资产下载只允许数据库索引中的文件名，拒绝路径穿越。
 - 无任何自动下单接口。
+
+## 9. TSP 同源 Policy Bridge
+
+公网 Web 不直接暴露 Policy `/api/v1`。以下同源接口由 TSP 会话认证和权限层保护，再由
+服务端转发到集群内 Policy Service。
+
+| 方法 | TSP 路径 | Policy 上游 | 权限 |
+| --- | --- | --- | --- |
+| `GET` | `/api/policy/reports?limit=N` | `/api/v1/reports` | 已登录 |
+| `GET` | `/api/policy/reports/{trade_date}` | `/api/v1/reports/{trade_date}` | 已登录 |
+| `POST` | `/api/policy/reports/{trade_date}/refresh` | `/api/v1/reports/{trade_date}/refresh` | `data:manage` |
+| `GET` | `/api/policy/report-jobs/{job_id}` | `/api/v1/report-jobs/{job_id}` | 已登录 |
+| `GET` | `/api/policy/monitor` | `/api/v1/monitor` | 已登录 |
+
+桥接只允许固定白名单。日期必须为 `YYYY-MM-DD`，任务 ID、股票代码和查询参数在转发前
+校验；请求超时由 `POLICY_SERVICE_TIMEOUT_SECONDS` 控制。
+
+### 9.1 错误语义
+
+- TSP 会话无效：返回 `401/403`，由统一账户流程处理。
+- Policy Token 无效或上游拒绝：返回 `502`，不得触发 TSP 退出登录。
+- Policy 未配置或不可达：返回 `503/502`，次日计划和当日实盘保留默认界面。
+- 只读请求使用静默错误模式，不弹全局依赖 Toast；页面内提供同步状态与重试。
+
+### 9.2 安全约束
+
+- `POLICY_SERVICE_TOKEN` 只存在于 `tsp-product-secrets`。
+- 浏览器请求、HTML、JavaScript、日志和错误正文不得包含 Token。
+- Policy Service 不再通过公网 Ingress 暴露。
+- 报告刷新必须同时满足 TSP 权限与 Policy 服务端认证。

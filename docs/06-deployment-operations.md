@@ -238,6 +238,70 @@ colima stop --profile banxia
 错误文本查采集器日志，Runbook 见上面的监控文档。
 通知联系人和接收渠道需单独配置；本地规则评估成功不等于已完成消息投递。
 
+## 13. v0.5.0 VKE 全量重建 Runbook
+
+目标集群为 `cdaus2p98m08ce3b12nn0`，命名空间为 `banxia`。全量重建只清理业务控制器
+和 Service，不删除系统命名空间、Secret、PV/PVC、StorageClass、IngressClass、
+ALBInstance 和证书。
+
+### 13.1 发布前
+
+1. `main` 已包含完整文档、测试和 VKE 清单，Git Tag 与版本文件一致。
+2. Policy、TSP Runtime、Broker、Compute 和 DinD 镜像已推送并记录 digest。
+3. 导出资源清单、两个 Secret 的加密备份和 PostgreSQL 逻辑备份。
+4. 确认所有现有 PVC 的 StorageClass 回收策略为 `Retain`。
+5. 暂停 CronJob，确认没有正在执行的报告、回填或模拟盘任务。
+
+### 13.2 Secret 创建
+
+保留 `banxia-secrets` 和 `banxia-registry`。根据
+`product/deploy/kubernetes/secrets.example.yaml` 创建：
+
+- `tsp-product-admin`
+- `tsp-product-secrets`
+
+SMTP 字段从 `BANXIA_SMTP_*` 映射到 `AUTH_SMTP_*`；Policy Token 从
+`BANXIA_API_TOKEN` 映射到 `POLICY_SERVICE_TOKEN`。数据库和内部 Token 必须独立随机
+生成，所有密码在 DSN 中使用 URL 编码值。
+
+### 13.3 清理范围
+
+```bash
+kubectl -n banxia delete deployment,statefulset,daemonset,job,cronjob,service \
+  --all --wait=true
+```
+
+执行后必须再次确认 Secret、PVC、Ingress、ALBInstance 和 StorageClass 仍存在。若任一
+PVC 丢失，立即停止，不得继续创建同名空数据服务。
+
+### 13.4 重建顺序
+
+1. 应用 StorageClass、ServiceAccount、Secret 和数据服务。
+2. 等待 Policy PostgreSQL、ClickHouse、Kafka、Redis、MinIO 和 TSP PostgreSQL Ready。
+3. 删除固定名称旧 Job 后应用完整 Kustomize 清单。
+4. 等待 `banxia-schema-migration`、`banxia-catalog-bootstrap`、
+   `tsp-product-initialize` 和 Flink 初始化完成。
+5. 等待 Policy 常驻服务、`tsp-platform`、`tsp-product` Rollout。
+6. 更新 Ingress，把 `/api/events*` 指向 Gateway，其余路径指向 TSP API。
+
+### 13.5 验收与回滚
+
+```bash
+kubectl -n banxia get pods,svc,pvc,ingress
+curl -fsS https://shanao.asia/health/ready
+```
+
+健康检查未全部通过时不得宣告发布完成。回滚时将 Ingress 根路径临时切回 Policy
+`api:80`，并恢复上一组镜像 digest；禁止删除本次创建的 TSP 数据卷，除非已完成备份并
+明确决定废弃该环境。
+
+### 13.6 DinD 安全例外
+
+Compute Broker 使用 Pod 内 `docker:27-dind`，该容器需要 `privileged`。它不挂载宿主
+Docker socket，不挂载 Kubernetes Token；Docker 数据使用临时 `emptyDir`，Compute
+容器无网络、无密钥、只读公共行情。此方案必须由 NetworkPolicy、固定镜像 digest 和
+单 Pod 边界共同约束，后续以 Kubernetes 原生 Compute Runner 替换。
+
 ## 9. 备份
 
 当前数据卷使用 `Retain` 防止 Kubernetes 资源删除时自动回收，但单副本 EBS 和 MinIO

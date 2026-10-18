@@ -1,0 +1,133 @@
+"""Core liveness, readiness, and capability routes."""
+from __future__ import annotations
+
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
+
+from app import __version__
+from app.config import settings
+from app.tickflow import client as tf_client
+from app.tickflow.policy import detect_capabilities, tier_label
+
+router = APIRouter()
+
+
+class DurationMetrics(BaseModel):
+    sum: float
+    max: float
+    average: float
+
+
+class HttpMetricAggregate(BaseModel):
+    requests: int
+    errors: int
+    status_classes: dict[str, int]
+    duration_ms: DurationMetrics
+
+
+class HttpRouteMetric(HttpMetricAggregate):
+    method: str
+    route: str
+
+
+class ProcessMetrics(BaseModel):
+    started_at: str
+    uptime_seconds: float
+
+
+class ObservabilitySnapshot(BaseModel):
+    process: ProcessMetrics
+    in_flight: int
+    totals: HttpMetricAggregate
+    routes: list[HttpRouteMetric]
+
+
+@router.get("/health")
+def health() -> dict:
+    return {
+        "status": "ok",
+        "version": __version__,
+        # 三态: none(无key/无效) / free(免费key) / api_key(付费档)
+        "mode": tf_client.current_mode(),
+    }
+
+
+@router.get("/health/live")
+async def health_live() -> dict:
+    """Process liveness only; external dependencies are intentionally excluded."""
+    return {
+        "status": "ok",
+        "version": __version__,
+    }
+
+
+async def _readiness_response(request: Request) -> JSONResponse:
+    from app.services.health import readiness
+    if settings.multitenancy_enabled and settings.service_role == "api":
+        from app.multitenancy.health import readiness
+    elif settings.multitenancy_enabled and settings.service_role == "gateway":
+        from app.multitenancy.gateway import readiness
+
+    data_dir = getattr(
+        getattr(getattr(request.app.state, "repo", None), "store", None),
+        "data_dir",
+        settings.data_dir,
+    )
+    monitor = getattr(request.app.state, "readiness_monitor", None)
+    payload = (
+        monitor.snapshot() if monitor is not None
+        else await run_in_threadpool(readiness, request.app.state, data_dir)
+    )
+    payload["version"] = __version__
+    payload["mode"] = tf_client.current_mode()
+    return JSONResponse(
+        status_code=200 if payload["ready"] else 503,
+        content=payload,
+    )
+
+
+@router.get("/health/ready")
+async def health_ready(request: Request) -> JSONResponse:
+    """Deep local readiness check for orchestrators and operators."""
+    return await _readiness_response(request)
+
+
+@router.get("/api/health")
+async def api_health(request: Request) -> JSONResponse:
+    """Authenticated-product alias kept public by the API gateway whitelist."""
+    return await _readiness_response(request)
+
+
+@router.get("/api/observability", response_model=ObservabilitySnapshot)
+def observability() -> dict:
+    """Session-authenticated process metrics for local operators."""
+    from app.services.observability import http_metrics_snapshot
+
+    return http_metrics_snapshot()
+
+
+@router.get("/api/capabilities")
+def capabilities() -> dict:
+    """前端用来决定哪些功能可用、哪些灰显。"""
+    capset = detect_capabilities()
+    return {
+        "label": tier_label(),
+        "capabilities": capset.to_dict(),
+    }
+
+
+@router.post("/api/capabilities/redetect")
+def redetect(request: Request) -> dict:
+    """用户在设置页"重新检测"按钮。"""
+    capset = detect_capabilities(force=True)
+    # 同步刷新 app.state 快照 (minute_refresh 等服务的门控读这里) 与财务调度器,
+    # 与 settings.py 各探测路径一致 — 否则重检测后服务侧仍读旧 capset 被错误门控
+    request.app.state.capabilities = capset
+    from app.api.settings import _sync_financial_scheduler_caps
+    _sync_financial_scheduler_caps(request.app.state, capset)
+    return {
+        "label": tier_label(),
+        "capabilities": capset.to_dict(),
+    }

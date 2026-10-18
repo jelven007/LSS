@@ -15,12 +15,14 @@ rustdx native -> SQLite WAL -> Kafka -> Flink / 策略状态机
        -> /api/v1 -> Web 看板
 ```
 
-2026-10-15 已将 rustdx 原生桥接发布到生产，镜像版本为 `rustdx-20261015-r1`，
-验收见 [生产发布记录](docs/releases/2026-10-15-rustdx-r1.md)。
-生产环境部署在火山引擎 VKE，通过 <https://shanao.asia> 提供服务；本地 Compose
-保留为开发和集成验证环境。当前生产采用应用多副本、数据服务单副本 StatefulSet 的
-成本优先拓扑，仍需继续完成托管高可用迁移和备份恢复演练。当前行为以本 README 的运行
-说明为准，完整文档以 [docs/README.md](docs/README.md) 为统一入口：
+当前发布版本为 `v0.5.0`。生产环境部署在火山引擎 VKE，通过
+<https://shanao.asia> 提供完整 Web 产品；本地 Compose 保留为开发和集成验证环境。
+
+[`product/`](product/) 是 TSP 产品主干，提供首页看板、自选、策略、复盘、回测、
+个股分析、设置及完整账户体系，并通过服务端受控桥接使用本项目的次日计划和当日实盘。
+Web 是唯一客户端，Android/APK 已删除。发布范围见
+[v0.5.0 生产记录](docs/releases/2026-10-18-web-v0.5.0.md)，变更历史见
+[CHANGELOG](CHANGELOG.md)，完整文档以 [docs/README.md](docs/README.md) 为统一入口：
 
 - [需求规格](docs/01-requirements.md)
 - [系统架构](docs/02-architecture.md)
@@ -36,6 +38,8 @@ rustdx native -> SQLite WAL -> Kafka -> Flink / 策略状态机
 - [迁移前非实时数据持久化设计](docs/11-mootdx-persistence.md)
 - [游资策略原型库 PRD](docs/12-yu-zi-strategy-library-prd.md)
 - [当前生产技术方案](docs/13-current-production-solution.md)
+- [TSP 产品移植与 Policy 整合](docs/35-tsp-product-integration.md)
+- [版本记录](CHANGELOG.md)
 - [OpenAPI](docs/openapi.yaml) / [AsyncAPI](docs/asyncapi.yaml)
 
 ## 本地基础设施

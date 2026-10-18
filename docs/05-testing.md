@@ -304,3 +304,51 @@ PostgreSQL、ClickHouse、Redis 和 MinIO 中的专用测试数据。
 - 策略目录的不可变和唯一激活约束通过数据库级测试。
 - 研究结果明确样本量、成本和成交代理，不将历史结果描述为收益保证。
 - 四个页面通过桌面和移动端视觉回归。
+
+## 13. v0.5.0 Web 产品测试
+
+### 13.1 前端
+
+```bash
+cd product/frontend
+pnpm install --frozen-lockfile
+pnpm exec eslint src/components/Layout.tsx src/pages/NextPlan.tsx src/pages/LiveTrading.tsx
+pnpm exec tsc -b --pretty false
+pnpm test
+pnpm build
+```
+
+发布基线为 43 个测试文件、200 项测试。新增回归覆盖九项菜单顺序、桌面导航默认展开和
+两态切换、两个 Policy 页面请求等待/失败时的默认功能，以及只读依赖失败不产生全局
+鉴权 Toast。
+
+### 13.2 Policy Bridge
+
+```bash
+cd product/backend
+python -m ruff check \
+  app/custom/policy_bridge.py app/multitenancy/access.py \
+  app/multitenancy/bootstrap.py tests/test_policy_bridge.py
+PYTHONPATH=. python -m pytest -q tests/test_policy_bridge.py
+```
+
+桥接测试共 11 项，覆盖 Token、白名单、参数校验、超时、未配置、错误转发、权限和
+Policy `401/403` 隔离。
+
+### 13.3 Kubernetes
+
+```bash
+kubectl kustomize --load-restrictor LoadRestrictionsNone \
+  deploy/kubernetes/overlays/volcengine > /tmp/banxia-vke.yaml
+! rg -n 'REPLACE_WITH_' /tmp/banxia-vke.yaml
+kubectl apply --server-side --force-conflicts --dry-run=server -f /tmp/banxia-vke.yaml
+```
+
+部署验收必须确认全部 Rollout、迁移和初始化 Job 成功；Policy、TSP 双库、平台、Broker
+和四类 Worker 健康；公网 `/health/ready`、登录、九项菜单、SMTP、Policy Bridge、SSE
+和 `390x844` 页面通过。
+
+### 13.4 版本一致性
+
+根 `pyproject.toml`、`product/VERSION`、前后端包版本、Git Tag、镜像 Tag 与
+Kustomize Digest 必须对应同一发布。CI 在 `main` 推送时执行前端、桥接和部署渲染检查。

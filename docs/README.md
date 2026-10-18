@@ -5,11 +5,11 @@
 
 ## 文档状态
 
-- 基线版本：`2.3`
-- 基线日期：`2026-10-15`
-- 当前实现：Python 多服务运行时 + Kafka + Flink + PostgreSQL + ClickHouse + Redis + MinIO
-- 部署形态：火山引擎 VKE 生产环境已上线，本地 Compose 用于开发和集成验证
-- 数据源：本地与线上均使用 `rustdx native`；生产镜像 `rustdx-20261015-r1`
+- 基线版本：`v0.5.0`
+- 基线日期：`2026-10-18`
+- 当前实现：TSP React/FastAPI 多租户产品 + Policy 多服务策略系统
+- 部署形态：火山引擎 VKE 统一生产部署，本地 Compose 用于开发和集成验证
+- 数据源：本地与线上均使用 `rustdx native`
 - 系统边界：研究、筛选、监控和报告，不连接券商，不自动下单
 
 文档中的状态标记：
@@ -28,6 +28,8 @@
 | --- | --- |
 | [rustdx 数据源迁移](30-rustdx-migration.md) | 当前原生桥接、安装与部署配置、历史兼容和实测验证 |
 | [rustdx 生产发布记录](releases/2026-10-15-rustdx-r1.md) | 镜像摘要、上线验收结果和回滚方式 |
+| [v0.5.0 Web 产品发布](releases/2026-10-18-web-v0.5.0.md) | 整合产品、镜像、VKE 重建和验收记录 |
+| [TSP 产品移植与 Policy 整合](35-tsp-product-integration.md) | 九项产品菜单、账户体系、Policy 服务桥接、数据归属和切流边界 |
 | [需求规格](01-requirements.md) | 业务目标、功能需求、非功能需求和验收标准 |
 | [系统架构](02-architecture.md) | 当前架构、目标架构、组件边界和可靠性设计 |
 | [数据与存储](03-data-storage.md) | 数据模型、多模存储、幂等、保留和归档策略 |
@@ -74,14 +76,16 @@
 
 ## 当前实现
 
-- 生产入口为 <https://shanao.asia>，由火山引擎 ALB 终止 HTTPS 并转发到 VKE API。
+- 生产入口为 <https://shanao.asia>，由火山引擎 ALB 终止 HTTPS 并转发到 TSP Web/API。
+- TSP 提供九项菜单、完整账户体系和多租户业务；Policy API 仅作为集群内桥接后端。
 - VKE 当前采用应用多副本、数据服务单副本 StatefulSet 的成本优先拓扑；EBS 保存数据和
   采集 WAL，NAS 提供共享报告目录。完整现状见
   [当前生产技术方案](13-current-production-solution.md)。
 - 行情由 `market-collector` 通过 rustdx 原生长连接采集，并经 SQLite WAL 可靠发布到 Kafka。
 - Flink 计算实时特征；`market-sink`、`strategy-engine`、`outbox-relay` 和
   `projection-worker` 分别负责行情、状态、事件和 Redis 投影。
-- FastAPI 提供 `/api/v1`、SSE、健康检查、Prometheus 指标和四个 Web 页面。
+- TSP FastAPI 提供同源 Web/API、SSE 和账户体系；Policy FastAPI 提供集群内
+  `/api/v1`、健康检查和 Prometheus 指标。
 - `market-reference-sync` 每个工作日 16:20 将证券目录、四类板块文件和行业配置先归档
   到 MinIO，再事务发布到 PostgreSQL；股票目录和板块 API 读取已发布快照。
 - PostgreSQL 保存证券和板块时点版本、可重命名且参数不可变的策略目录，以及策略运行、
@@ -141,8 +145,18 @@
 | 策略状态 | 生产 PostgreSQL Inbox/Outbox、不可逆状态 | 单实例升级为托管 Multi-AZ 并演练切换 |
 | 多策略 | 不可变配置、血缘、关联数据永久删除、唯一激活 | 大规模策略目录容量验证 |
 | 研究 | 月度回测、年度严格可买、T+1、盈利约束优化 | 新交易日样本外验证和真实成交滑点校准 |
-| Web | 四页统一组件、桌面与 390x844 响应式 | 目标浏览器矩阵和无障碍专项审计 |
+| Web | 九项产品菜单、账户体系、桌面侧栏和 390x844 响应式 | 目标浏览器矩阵和无障碍专项审计 |
 | 运维 | VKE、ALB HTTPS、EBS/NAS、Kustomize | 自动备份恢复、托管数据服务和告警闭环 |
+
+## 2026-10-18 变更覆盖
+
+| 变更 | 文档 |
+| --- | --- |
+| TSP Web 产品和完整账户体系进入生产主线 | 需求、架构、整合说明、发布记录 |
+| 次日计划和当日实盘通过服务端 Policy Bridge 保留 | 接口、架构、测试 |
+| 桌面菜单默认展开、移动端无标题遮挡、依赖失败降级 | 需求、开发、测试 |
+| VKE 清理旧业务工作负载并统一重建 `v0.5.0` | 部署、运维、资源清单 |
+| Git Tag、镜像 Tag、Digest 和版本文件统一管理 | 测试、部署、CHANGELOG |
 
 ## 发布门槛
 

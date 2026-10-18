@@ -1,0 +1,32 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-tsp-product-ingress
+  namespace: banxia
+spec:
+  podSelector:
+    matchLabels:
+      app: tsp-product
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - {protocol: TCP, port: 3018}
+        - {protocol: TCP, port: 3019}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-tsp-platform
+  namespace: banxia
+spec:
+  podSelector:
+    matchLabels:
+      app: tsp-platform
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: banxia
+      ports:
+        - {protocol: TCP, port: 3018}

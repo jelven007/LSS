@@ -1,0 +1,218 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tsp-postgres-bootstrap
+  namespace: banxia
+data:
+  10-bootstrap.sh: |
+    #!/bin/sh
+    set -eu
+    : "${POSTGRES_USER:?POSTGRES_USER required}"
+    : "${POSTGRES_DB:?POSTGRES_DB required}"
+    : "${TSP_PG_RUNTIME_PASSWORD:?TSP_PG_RUNTIME_PASSWORD required}"
+    psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+      --set=ON_ERROR_STOP=1 --set=runtime_password="$TSP_PG_RUNTIME_PASSWORD" <<'SQL'
+    CREATE ROLE tsp_runtime
+      WITH LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE INHERIT
+      PASSWORD :'runtime_password';
+    CREATE DATABASE tsp_data_production OWNER tsp_admin;
+    GRANT CONNECT ON DATABASE tsp_control TO tsp_runtime;
+    GRANT CONNECT ON DATABASE tsp_data_production TO tsp_runtime;
+    REVOKE CONNECT ON DATABASE tsp_control FROM PUBLIC;
+    REVOKE CONNECT ON DATABASE tsp_data_production FROM PUBLIC;
+    SQL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tsp-postgres
+  namespace: banxia
+  labels:
+    app: tsp-postgres
+spec:
+  selector:
+    app: tsp-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tsp-postgres
+  namespace: banxia
+  labels:
+    app: tsp-postgres
+spec:
+  serviceName: tsp-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tsp-postgres
+  template:
+    metadata:
+      labels:
+        app: tsp-postgres
+        component: datastore
+    spec:
+      terminationGracePeriodSeconds: 60
+      imagePullSecrets:
+        - name: banxia-registry
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: postgres:16.4-alpine
+          env:
+            - name: POSTGRES_USER
+              value: tsp_admin
+            - name: POSTGRES_DB
+              value: tsp_control
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tsp-product-admin
+                  key: TSP_PG_ADMIN_PASSWORD
+            - name: TSP_PG_RUNTIME_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tsp-product-admin
+                  key: TSP_PG_RUNTIME_PASSWORD
+            - name: POSTGRES_INITDB_ARGS
+              value: --auth-host=scram-sha-256
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: TZ
+              value: Asia/Shanghai
+          args:
+            - postgres
+            - -c
+            - max_connections=200
+            - -c
+            - shared_buffers=1GB
+            - -c
+            - work_mem=16MB
+          ports:
+            - name: postgres
+              containerPort: 5432
+          startupProbe:
+            exec:
+              command: [sh, -ec, "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: [sh, -ec, "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: [sh, -ec, "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            periodSeconds: 20
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: bootstrap
+              mountPath: /docker-entrypoint-initdb.d/10-bootstrap.sh
+              subPath: 10-bootstrap.sh
+              readOnly: true
+      volumes:
+        - name: bootstrap
+          configMap:
+            name: tsp-postgres-bootstrap
+            defaultMode: 0555
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: banxia-ebs-retain
+        resources:
+          requests:
+            storage: 20Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tsp-product-initialize
+  namespace: banxia
+  labels:
+    app: tsp-product-initialize
+    component: migration
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: tsp-product-initialize
+        component: migration
+    spec:
+      restartPolicy: Never
+      serviceAccountName: banxia-workload
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: banxia-registry
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: initialize
+          image: tsp-product-runtime:v0.5.0
+          command: [/bin/sh, -ec]
+          args:
+            - |
+              /app/.venv/bin/python - <<'PY'
+              import os
+              import time
+              import psycopg
+
+              dsn = os.environ["TSP_CONTROL_ADMIN_DSN"]
+              for attempt in range(120):
+                  try:
+                      with psycopg.connect(dsn, connect_timeout=3) as conn:
+                          conn.execute("SELECT 1")
+                      break
+                  except Exception:
+                      if attempt == 119:
+                          raise
+                      time.sleep(5)
+              PY
+              /app/.venv/bin/python -m app.cell.admin migrate \
+                --kind control --runtime-role tsp_runtime --target-version 6
+              /app/.venv/bin/python -m app.cell.admin migrate \
+                --kind data --runtime-role tsp_runtime --cell-id production --target-version 6
+              /app/.venv/bin/python -m app.cell.admin bootstrap-full-identity
+              /app/.venv/bin/python -m app.cell.admin register-cell \
+                --cell-id production --api-url https://shanao.asia
+              /app/.venv/bin/python -m app.cell.admin sync-strategies
+          envFrom:
+            - secretRef:
+                name: tsp-product-admin
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi

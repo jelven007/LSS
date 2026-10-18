@@ -345,3 +345,21 @@ flink-state/
 
 当前生产物理卷、容量和数据链路见
 [当前生产技术方案](13-current-production-solution.md)。
+
+## 14. TSP v0.5.0 数据边界
+
+TSP 与 Policy 共享集群但不共享业务数据库：
+
+| 存储 | 数据 | 持久卷 |
+| --- | --- | --- |
+| `tsp_control` | 用户、租户、角色、会话、Cell、Worker 健康 | `data-tsp-postgres-0` |
+| `tsp_data_production` | 自选、策略、任务、模拟盘、通知和审计 | `data-tsp-postgres-0` |
+| TSP 平台目录 | 原行情写入目录、平台配置 | `tsp-product-state` |
+| TSP 公共版本 | 无凭据、不可变的行情只读发布 | `tsp-product-state` |
+| TSP 租户产物 | 租户隔离的研究和导出产物 | `tsp-product-state` |
+
+Policy 次日计划、候选、决策和报告继续留在原 PostgreSQL、ClickHouse、Redis、MinIO 和
+NAS。TSP 只保存引用、会话和用户侧业务，不复制 Policy 权威决策。
+
+两套 PostgreSQL 使用不同 owner/runtime 角色。TSP API 和 Worker 只获得 runtime DSN；
+owner DSN 仅提供给初始化 Job。所有新卷使用 `Retain`，删除工作负载不得删除 PVC。

@@ -5,6 +5,12 @@
 [生产发布记录](releases/2026-10-15-rustdx-r1.md)，代码和接口映射见
 [rustdx 数据源迁移](30-rustdx-migration.md)。
 
+2026-10-18 `v0.5.0` 更新：公网入口切换为整合后的 TSP Web。下文 Policy 数据链路和
+服务职责继续有效，但 Policy `api` 仅作为集群内桥接后端。新增 TSP PostgreSQL、
+平台、Web/API、Gateway、四类 Worker 和 Compute Broker，详见
+[TSP 产品整合](35-tsp-product-integration.md) 与
+[v0.5.0 发布记录](releases/2026-10-18-web-v0.5.0.md)。
+
 ## 1. 文档范围
 
 本文描述截至 `2026-10-04` 的生产技术方案。事实口径分为两层：
@@ -28,6 +34,18 @@ Fusion L7 写成当前生产能力。
 当前采用火山引擎 VKE 托管 Kubernetes 集群。应用服务以 Deployment 或 StatefulSet
 运行，数据服务以单副本 StatefulSet 运行在同一集群，使用 EBS 云盘持久化；报告目录使用
 NAS RWX 卷。公网流量由 ALB 终止 HTTPS 后转发到 FastAPI。
+
+`v0.5.0` 新增以下生产工作负载：
+
+| 名称 | 类型 | 责任 |
+| --- | --- | --- |
+| `tsp-postgres` | StatefulSet | TSP 控制库与租户业务库 |
+| `tsp-product-initialize` | Job | 双库迁移、管理员与 Cell 初始化 |
+| `tsp-platform` | Deployment | 行情平台与公共不可变版本发布 |
+| `tsp-product` | Deployment | Web/API、Gateway、四类 Worker、Broker 与 DinD |
+
+Ingress 的 `/api/events*` 指向 `tsp-product:81`，其余路径指向
+`tsp-product:80`。Policy `api:80` 不再直接挂载公网 Ingress。
 
 ```mermaid
 flowchart LR

@@ -2,7 +2,9 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
+  - ../../../../product/deploy/kubernetes
   - storage.yaml
+  - tsp-storage.yaml
   - data-services.yaml
   - ingress.yaml
   - migration-job.yaml
@@ -31,8 +33,19 @@ patches:
 images:
   - name: banxia-strategy
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
-    newTag: rustdx-20261015-r1
-    digest: sha256:9c167efeadef501f69ec6d520042de6a6972ebb8f460e818517a8dddde67da4b
+    newTag: v0.5.0
+  - name: tsp-product-runtime
+    newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
+    newTag: web-v0.5.0
+  - name: tsp-product-broker
+    newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
+    newTag: broker-v0.5.0
+  - name: tsp-product-compute
+    newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
+    newTag: compute-v0.5.0
+  - name: docker
+    newName: xm1001-cn-shanghai.cr.volces.com/banxia/docker
+    newTag: 27-dind
   - name: banxia-flink
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-flink
     newTag: 59f59a6

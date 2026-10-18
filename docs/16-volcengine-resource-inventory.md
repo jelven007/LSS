@@ -4,6 +4,10 @@
 
 本文记录 `2026-10-02` 当前生产系统在火山引擎上直接使用或由 VKE 自动创建的资源。
 
+`2026-10-18 / v0.5.0` 增量：保留原集群、ALB、Secret 和全部 `Retain` 数据卷，清理并
+重建业务工作负载；新增 TSP Web 产品资源。最终运行状态和镜像 digest 见
+[v0.5.0 发布记录](releases/2026-10-18-web-v0.5.0.md)。
+
 归属判断依据：
 
 - VKE 集群 ID、VKE 自动标签和资源挂载关系。
@@ -40,6 +44,22 @@
 | ECS 生产节点 | 3 台，共 12 vCPU、48 GiB |
 | VCI 实例 | 13 个，共申请 23.5 Core、58 GiB |
 | VKE EBS 云盘 | 13 块，共 740 GiB |
+
+### 2.1 v0.5.0 新增资源
+
+| 资源 | 数量/容量 | 用途 |
+| --- | --- | --- |
+| `tsp-postgres` StatefulSet | 1 副本 | TSP 控制库和业务库 |
+| `data-tsp-postgres-0` EBS PVC | 20 GiB | TSP PostgreSQL |
+| `tsp-product-state` NAS PVC | 100 GiB 申请值 | 平台、公共版本和租户产物 |
+| `tsp-platform` Deployment | 1 副本 | TSP 行情平台 |
+| `tsp-product` Deployment | 1 Pod / 8 容器 | API、Gateway、Worker、Broker、DinD |
+| `tsp-product-admin` Secret | 1 | 数据库 owner 凭据 |
+| `tsp-product-secrets` Secret | 1 | 运行时、SMTP、Policy Bridge 凭据 |
+
+新增资源继续位于 `banxia` 命名空间。TSP PostgreSQL 使用
+`banxia-ebs-retain`；TSP 状态卷使用独立 `tsp-nas-rwx` StorageClass 和
+`/banxia/tsp-product` NAS 子目录。
 | NAS 文件系统 | 1 个 |
 | NAT 网关 | 1 个 |
 | 系统关联 EIP | 3 个 |

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "banxia-strategy"
-version = "0.1.0"
+version = "0.5.0"
 description = "A-share daily first-board to second-board research screener"
 readme = "README.md"
 requires-python = ">=3.9"

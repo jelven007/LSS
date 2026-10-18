@@ -57,6 +57,62 @@ flowchart LR
 - FastAPI `/api/v1`、SSE、Prometheus 和策略管理/次日计划/当日实盘/回测优化页面。
 - VKE、EBS/NAS、ALB HTTPS、Kustomize 发布、Migration/Bootstrap Job 和 NetworkPolicy。
 
+## 15. v0.5.0 整合 Web 架构
+
+`v0.5.0` 将公网产品入口从 Policy API 页面切换为 TSP Web，Policy 保留为策略与实盘
+权威服务。两者位于同一 `banxia` 命名空间，但数据库和写入责任保持隔离。
+
+```mermaid
+flowchart LR
+    U[浏览器] --> ALB[Volcengine ALB / TLS]
+    ALB -->|/api/events*| GW[TSP Gateway]
+    ALB -->|其他路径| WEB[TSP API + React]
+    WEB --> TPG[(TSP PostgreSQL)]
+    WEB --> PLATFORM[TSP Platform]
+    WEB --> BROKER[Compute Broker]
+    BROKER --> DIND[Pod 内 DinD]
+    DIND --> COMPUTE[临时 Compute 容器]
+    WEB -->|/api/policy/*| POLICY[Policy API]
+    POLICY --> PG[(Policy PostgreSQL)]
+    POLICY --> CH[(ClickHouse)]
+    POLICY --> REDIS[(Redis)]
+    POLICY --> KAFKA[(Kafka)]
+```
+
+### 15.1 TSP 运行单元
+
+- `tsp-postgres`：控制库 `tsp_control` 与业务库 `tsp_data_production`。
+- `tsp-platform`：独立行情原始目录、公共不可变版本和平台配置。
+- `tsp-product`：API、Gateway、research/realtime/notifications/scheduled Worker、
+  Compute Broker 和 Pod 内 DinD。
+- `tsp-product-state`：NAS RWX，保存平台数据、公共版本、平台配置和租户产物。
+
+API 与 Worker 只持有 Unix Socket，不持有 Docker API。Broker 连接 Pod 内 DinD，
+Compute 容器使用固定镜像、无网络、只读公共行情、无业务 Secret。DinD 的
+`privileged` 是当前过渡期例外，不挂载宿主机 Docker socket。
+
+### 15.2 Policy Bridge
+
+浏览器只调用同源 `/api/policy/*`。TSP 后端校验会话、租户和权限后，使用
+`POLICY_SERVICE_URL=http://api.banxia.svc.cluster.local` 与服务端 Token 访问 Policy。
+Policy 上游 `401/403` 映射为 `502`，不会被前端误判为 TSP 登录失效。
+
+### 15.3 入口路由
+
+| 路径 | 后端 |
+| --- | --- |
+| `/api/events`、`/api/events/ticket` | `tsp-product:81` Gateway |
+| 其他 `/api/*`、静态资源和前端路由 | `tsp-product:80` API |
+| Policy `/api/v1/*` | 仅集群内 `api:80` |
+
+### 15.4 数据与恢复边界
+
+- Policy 原有 PostgreSQL、ClickHouse、Kafka、Redis、MinIO、报告和 Collector WAL
+  继续使用原 `Retain` 卷。
+- TSP 新建独立 PostgreSQL EBS 和 NAS 状态卷。
+- 删除业务工作负载不等于删除数据；PVC、PV、Secret、ALB 和 StorageClass 必须显式保留。
+- 生产镜像按 `v0.5.0` Tag 发布，并在 Kustomize 中固定 Registry Digest。
+
 当前限制：
 
 - PostgreSQL、Kafka、ClickHouse、Redis、MinIO 和 Flink JobManager 当前均为单副本，

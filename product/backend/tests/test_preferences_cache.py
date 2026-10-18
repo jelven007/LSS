@@ -1,0 +1,272 @@
+"""preferences mtime 缓存测试 — 读盘去重, 且外部修改/自身写入后立即可见。"""
+from __future__ import annotations
+
+import json
+import os
+
+import pytest
+
+from app.services import preferences
+
+
+@pytest.fixture(autouse=True)
+def _isolated(tmp_path, monkeypatch):
+    path = tmp_path / "preferences.json"
+    monkeypatch.setattr(preferences, "_path", lambda: path)
+    preferences._invalidate_cache()
+    yield path
+    preferences._invalidate_cache()
+
+
+def _patched_loads(monkeypatch, counter: dict):
+    real_loads = json.loads
+
+    def _counting(text):
+        counter["loads"] += 1
+        return real_loads(text)
+
+    monkeypatch.setattr(preferences.json, "loads", _counting)
+
+
+def test_second_load_hits_cache_without_disk_parse(_isolated, monkeypatch):
+    _isolated.write_text(json.dumps({"realtime_quotes_enabled": True}), encoding="utf-8")
+    counter = {"loads": 0}
+    _patched_loads(monkeypatch, counter)
+
+    assert preferences.load()["realtime_quotes_enabled"] is True
+    assert preferences.load()["realtime_quotes_enabled"] is True
+    assert counter["loads"] == 1, "签名未变时第二次 load 不得重复读盘+parse"
+
+
+def test_external_file_change_invalidates_cache(_isolated, monkeypatch):
+    _isolated.write_text(json.dumps({"realtime_quote_interval": 6.0}), encoding="utf-8")
+    assert preferences.load()["realtime_quote_interval"] == 6.0
+
+    _isolated.write_text(json.dumps({"realtime_quote_interval": 3.0}), encoding="utf-8")
+    # 同尺寸修改且 mtime 粒度可能不变时, 显式推进 mtime 模拟真实场景
+    st = _isolated.stat()
+    os.utime(_isolated, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000))
+
+    assert preferences.load()["realtime_quote_interval"] == 3.0
+
+
+def test_save_then_load_sees_merged_values(_isolated):
+    _isolated.write_text(json.dumps({"a": 1}), encoding="utf-8")
+    out = preferences.save({"b": 2})
+    assert out == {"a": 1, "b": 2}
+    assert preferences.load() == {"a": 1, "b": 2}
+
+
+def test_interval_setter_invalidates_cache(_isolated):
+    preferences.set_realtime_quote_interval(2.0)
+    assert preferences.load()["realtime_quote_interval"] == 2.0
+
+
+def test_realtime_quotes_default_to_enabled(_isolated):
+    assert preferences.get_realtime_quotes_enabled() is True
+
+
+def test_realtime_quote_interval_defaults_to_one_second(_isolated):
+    assert preferences.get_realtime_quote_interval() == 1.0
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_data_initial_defaults_match_configured_baseline(_isolated, existing):
+    if existing:
+        preferences.save({"theme": "dark"})
+
+    assert preferences.get_minute_sync_enabled() is True
+    assert preferences.get_minute_sync_days() == 5
+    assert preferences.get_minute_sync_segment_days() == 20
+    assert preferences.get_minute_refresh_enabled() is True
+    assert preferences.get_minute_refresh_interval() == 1
+    assert preferences.get_pipeline_pull_a_share() is True
+    assert preferences.get_pipeline_pull_index() is True
+    assert preferences.get_pipeline_pull_etf() is False
+    assert preferences.get_instruments_schedule() == {"hour": 9, "minute": 10}
+    assert preferences.get_pipeline_schedule() == {"hour": 15, "minute": 35}
+    assert preferences.get_pipeline_regime_enabled() is True
+    assert preferences.get_regime_batch_days() == 120
+    assert preferences.get_regime_warmup_days() == 40
+    assert preferences.get_enriched_batch_size() == 1000
+    assert preferences.get_index_daily_batch_size() == 100
+    # 读取缺省值不写入运行时文件, 已有无关设置也不受影响。
+    assert preferences.load() == ({"theme": "dark"} if existing else {})
+
+
+def test_data_initial_defaults_preserve_saved_overrides_after_reload(_isolated):
+    preferences.save({
+        "minute_sync_enabled": False,
+        "minute_sync_days": 10,
+        "minute_sync_segment_days": 15,
+        "pipeline_regime_enabled": False,
+        "regime_batch_days": 60,
+        "regime_warmup_days": 45,
+    })
+    preferences._invalidate_cache()
+
+    assert preferences.get_minute_sync_enabled() is False
+    assert preferences.get_minute_sync_days() == 10
+    assert preferences.get_minute_sync_segment_days() == 15
+    assert preferences.get_pipeline_regime_enabled() is False
+    assert preferences.get_regime_batch_days() == 60
+    assert preferences.get_regime_warmup_days() == 45
+
+
+@pytest.mark.parametrize("invalid", [None, "invalid", {}])
+def test_invalid_regime_batch_uses_initial_default(_isolated, invalid):
+    preferences.save({"regime_batch_days": invalid})
+    assert preferences.get_regime_batch_days() == 120
+
+
+def test_load_returns_copy_not_cached_object(_isolated):
+    _isolated.write_text(json.dumps({"k": [1, 2]}), encoding="utf-8")
+    first = preferences.load()
+    first["k"].append(3)
+    first["extra"] = True
+    again = preferences.load()
+    assert again == {"k": [1, 2]}
+
+
+@pytest.mark.parametrize(
+    ("field", "getter"),
+    [
+        ("daily_data_provider", preferences.get_daily_data_provider),
+        ("adj_factor_provider", preferences.get_adj_factor_provider),
+        ("minute_data_provider", preferences.get_minute_data_provider),
+        ("full_minute_data_provider", preferences.get_full_minute_data_provider),
+        ("depth5_data_provider", preferences.get_depth5_data_provider),
+        ("realtime_data_provider", preferences.get_realtime_data_provider),
+        ("financial_data_provider", preferences.get_financial_provider),
+    ],
+)
+def test_data_provider_defaults_to_rustdx_but_preserves_explicit_choice(
+    _isolated,
+    field,
+    getter,
+):
+    assert getter() == "rustdx"
+
+    preferences.save({field: "tickflow"})
+
+    assert getter() == "tickflow"
+
+
+def test_retired_route_values_fall_back_to_rustdx_via_getter(_isolated):
+    # 退役/未知来源 (如已下线的 mootdx) 不在白名单内: load() 原样返回历史值,
+    # 但 getter 统一回退默认源 rustdx。无需在读盘时就地改写历史文件。
+    stored = dict.fromkeys(preferences._DATA_PROVIDER_FIELDS, "mootdx")
+    stored["financial_data_provider"] = "tickflow"
+    stored["theme"] = "dark"
+    _isolated.write_text(json.dumps(stored), encoding="utf-8")
+    original = _isolated.read_bytes()
+
+    assert preferences.get_daily_data_provider() == "rustdx"
+    assert preferences.get_adj_factor_provider() == "rustdx"
+    assert preferences.get_minute_data_provider() == "rustdx"
+    assert preferences.get_full_minute_data_provider() == "rustdx"
+    assert preferences.get_depth5_data_provider() == "rustdx"
+    assert preferences.get_realtime_data_provider() == "rustdx"
+    assert preferences.get_financial_provider() == "tickflow"
+    # 读取不改写历史文件
+    assert _isolated.read_bytes() == original
+
+
+def test_removing_source_resets_all_its_routes_and_preserves_alternatives(_isolated):
+    preferences.save({
+        **dict.fromkeys(preferences._DATA_PROVIDER_FIELDS, "custom_source"),
+        "financial_data_provider": "fuyao",
+        "theme": "dark",
+    })
+
+    preferences.reset_data_provider("custom_source")
+
+    loaded = preferences.load()
+    assert loaded["financial_data_provider"] == "fuyao"
+    assert loaded["theme"] == "dark"
+    assert all(
+        loaded[field] == "rustdx"
+        for field in preferences._DATA_PROVIDER_FIELDS
+        if field != "financial_data_provider"
+    )
+
+
+def test_mining_schedule_defaults_are_disabled(_isolated):
+    assert preferences.get_mining_schedule() == {
+        "mining_schedule_enabled": False,
+        "mining_schedule_weekday": 4,
+        "mining_budget_profile": "balanced",
+    }
+
+
+def test_mining_schedule_invalid_stored_values_fail_closed(_isolated):
+    _isolated.write_text(
+        json.dumps(
+            {
+                "mining_schedule_enabled": "false",
+                "mining_schedule_weekday": True,
+                "mining_budget_profile": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert preferences.get_mining_schedule() == {
+        "mining_schedule_enabled": False,
+        "mining_schedule_weekday": 4,
+        "mining_budget_profile": "balanced",
+    }
+
+
+def test_mining_schedule_setter_saves_group_once(monkeypatch):
+    calls = []
+    monkeypatch.setattr(preferences, "save", lambda updates: calls.append(updates) or updates)
+
+    result = preferences.set_mining_schedule(True, 2, "strict")
+
+    assert result == {
+        "mining_schedule_enabled": True,
+        "mining_schedule_weekday": 2,
+        "mining_budget_profile": "strict",
+    }
+    assert calls == [result]
+
+
+@pytest.mark.parametrize("weekday", [-1, 5, True])
+def test_mining_schedule_setter_rejects_invalid_weekday(weekday):
+    with pytest.raises(ValueError, match="weekday"):
+        preferences.set_mining_schedule(True, weekday, "balanced")
+
+
+def test_mining_schedule_setter_rejects_invalid_profile():
+    with pytest.raises(ValueError, match="profile"):
+        preferences.set_mining_schedule(True, 4, "exploratory")
+
+
+def test_external_push_channel_whitelists_include_custom_and_email(_isolated):
+    assert preferences.set_webhook_default_channels([
+        "custom", "email", "custom", "unsupported",
+    ]) == ["custom", "email"]
+    assert preferences.set_review_push_channels([
+        "email", "wecom", "unsupported",
+    ]) == ["email", "wecom"]
+
+
+def test_email_smtp_config_falls_back_from_malformed_stored_values(_isolated):
+    preferences.save({
+        "email_smtp_config": {
+            "host": " smtp.example.com ",
+            "port": "invalid",
+            "security": "invalid",
+            "to_addresses": "alerts@example.com",
+        },
+    })
+
+    assert preferences.get_email_smtp_config() == {
+        "host": "smtp.example.com",
+        "port": 465,
+        "security": "ssl",
+        "username": "",
+        "from_address": "",
+        "to_addresses": [],
+    }

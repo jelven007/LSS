@@ -5,22 +5,22 @@ VKE（ECS Worker 节点）生产部署。当前生产 overlay 采用经济型自
 方案：PostgreSQL、Kafka、ClickHouse、Redis 和 MinIO 以单副本
 StatefulSet 运行，并使用独立 EBS 云盘持久化。
 
-截至 `2026-10-01`，该 overlay 已部署到集群 `cdaus2p98m08ce3b12nn0`，生产入口为
-<https://shanao.asia>。架构和数据链路说明见
-[当前生产技术方案](../../docs/13-current-production-solution.md)，最新数据源实现见
-[rustdx 数据源迁移](../../docs/30-rustdx-migration.md)。2026-10-15 已将原生桥接镜像
-`rustdx-20261015-r1` 发布到生产，应用镜像按摘要固定；
-更新范围和验收见 [生产发布记录](../../docs/releases/2026-10-15-rustdx-r1.md)。
+该 overlay 部署到集群 `cdaus2p98m08ce3b12nn0`，生产入口为
+<https://shanao.asia>。`v0.5.0` 起同时渲染 Policy 与 TSP Web 产品，应用镜像均按摘要
+固定。架构见 [当前生产技术方案](../../docs/13-current-production-solution.md)，发布记录见
+[v0.5.0 Web 产品发布](../../docs/releases/2026-10-18-web-v0.5.0.md)。
 
 VKE overlay 包含：
 
 - API、业务 Worker、工作日报 CronJob 和 Flink 工作负载。
+- TSP PostgreSQL、平台、Web/API、Gateway、四类 Worker 和隔离 Compute Broker。
 - 工作日 16:20 参考数据同步、16:30/23:30 报告、16:35 涨停历史和 16:50 模拟盘任务。
 - 使用 NAS CSI 的 RWX 报告目录。
 - 使用独立 RWO 云盘保存每个 `market-collector` 副本的本地 WAL。
 - 使用 `Retain` 回收策略的 EBS 云盘保存五个数据服务的数据。
 - PostgreSQL/ClickHouse 迁移 Job、Kafka topic、MinIO bucket 和策略目录初始化 Job。
 - 创建公网 ALB 的 HTTPS Ingress，并将 HTTP 重定向到 HTTPS。
+- ALB 将 `/api/events*` 转发到 TSP Gateway，其余路径转发到 TSP API。
 - PDB、HPA、跨可用区/节点软分散和默认拒绝入站的 NetworkPolicy。
 - 可选的 ServiceMonitor/PodMonitor。
 
@@ -88,8 +88,8 @@ kubectl kustomize \
   > /tmp/banxia-vke.yaml
 
 ! rg -n 'REPLACE_WITH_' /tmp/banxia-vke.yaml
-kubectl apply --server-side --dry-run=server -f /tmp/banxia-vke.yaml
-kubectl apply --server-side -f /tmp/banxia-vke.yaml
+kubectl apply --server-side --force-conflicts --dry-run=server -f /tmp/banxia-vke.yaml
+kubectl apply --server-side --force-conflicts -f /tmp/banxia-vke.yaml
 ```
 
 首次部署先创建 Secret、StorageClass 和数据服务，完成生产数据恢复后
@@ -113,15 +113,15 @@ kubectl -n banxia delete job \
   banxia-schema-migration banxia-kafka-bootstrap \
   banxia-minio-bootstrap banxia-catalog-bootstrap \
   flink-feature-job-v1 --ignore-not-found
-kubectl apply --server-side -f /tmp/banxia-vke.yaml
+kubectl apply --server-side --force-conflicts -f /tmp/banxia-vke.yaml
 ```
 
 PostgreSQL Job 使用 `banxia.schema_migration` 记录已完成脚本；ClickHouse
 脚本使用 `IF NOT EXISTS`，可重复执行。
 
-当前 overlay 的 PostgreSQL migration ConfigMap 包含 `001` 至 `020`。仓库中的 `021`、
-`022` 属于 Fusion L7 模拟盘待发布迁移；在它们加入 Kustomize、更新应用镜像并完成生产验证
-前，不得将对应能力视为已上线。
+当前 overlay 的 Policy PostgreSQL migration ConfigMap 包含 `001` 至 `025` 和 `028`；
+`026/027` 仍仅用于开发与隔离测试，不升级生产运行策略。TSP 双库迁移由
+`tsp-product-initialize` 执行到 schema `v6`。
 
 ## DNS 与入口
 
@@ -132,8 +132,16 @@ kubectl -n banxia get albinstance banxia-alb
 kubectl -n banxia get ingress banxia-api
 ```
 
-入口由 ALB 终止 TLS，后端 Service 使用 HTTP `80 -> 8765`。域名只应解析到
-当前 ALB 公网地址。
+入口由 ALB 终止 TLS。TSP Web 使用 `tsp-product:80`，事件流使用
+`tsp-product:81`；Policy `api:80` 仅供集群内 Bridge 使用。域名只应解析到当前 ALB
+公网地址。
+
+## 全量重建
+
+全量重建保留 `banxia-secrets`、`banxia-registry`、所有 PVC/PV、StorageClass、
+IngressClass 和 ALBInstance，只删除业务 Deployment、StatefulSet、Job、CronJob 和
+Service。完整顺序、备份和回滚见
+[部署与运维](../../docs/06-deployment-operations.md#13-v050-vke-全量重建-runbook)。
 
 ## 可选监控
 

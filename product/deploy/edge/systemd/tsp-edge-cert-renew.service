@@ -1,0 +1,10 @@
+[Unit]
+Description=Renew TSP edge TLS certificate
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/opt/tick-stock-panel/edge/.edge.env
+UMask=0077
+ExecStart=/opt/tick-stock-panel/edge/renew-cert.sh

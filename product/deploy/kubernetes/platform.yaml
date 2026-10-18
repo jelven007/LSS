@@ -1,0 +1,177 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tsp-product-state
+  namespace: banxia
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: tsp-nas-rwx
+  resources:
+    requests:
+      storage: 100Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tsp-platform
+  namespace: banxia
+  labels:
+    app: tsp-platform
+spec:
+  selector:
+    app: tsp-platform
+  ports:
+    - name: http
+      port: 3018
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tsp-platform
+  namespace: banxia
+  labels:
+    app: tsp-platform
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: tsp-platform
+  template:
+    metadata:
+      labels:
+        app: tsp-platform
+        component: platform
+    spec:
+      serviceAccountName: banxia-workload
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      imagePullSecrets:
+        - name: banxia-registry
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: prepare-state
+          image: tsp-product-runtime:v0.5.0
+          command: [/bin/sh, -ec]
+          args:
+            - |
+              mkdir -p \
+                /state/platform-data \
+                /state/platform-config \
+                /state/public \
+                /state/tenant-artifacts
+          volumeMounts:
+            - name: state
+              mountPath: /state
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+      containers:
+        - name: platform
+          image: tsp-product-runtime:v0.5.0
+          command:
+            - /app/.venv/bin/python
+            - -m
+            - uvicorn
+            - app.main:app
+            - --host
+            - 0.0.0.0
+            - --port
+            - "3018"
+            - --workers
+            - "1"
+            - --proxy-headers
+            - --forwarded-allow-ips
+            - "*"
+          env:
+            - name: SERVICE_ROLE
+              value: platform
+            - name: MULTITENANCY_ENABLED
+              value: "false"
+            - name: DATA_DIR
+              value: /state/platform-data
+            - name: PLATFORM_CONFIG_DIR
+              value: /state/platform-config
+            - name: TSP_PUBLIC_MARKET_DIR
+              value: /state/public
+            - name: TICKFLOW_ENV_FILE
+              value: /dev/null
+            - name: TSP_PLATFORM_MARKET_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tsp-product-secrets
+                  key: TSP_PLATFORM_MARKET_TOKEN
+            - name: TSP_PLATFORM_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tsp-product-secrets
+                  key: TSP_PLATFORM_ADMIN_TOKEN
+            - name: POLARS_MAX_THREADS
+              value: "4"
+            - name: OPENBLAS_NUM_THREADS
+              value: "1"
+            - name: NUMBA_CACHE_DIR
+              value: /tmp/numba
+            - name: TZ
+              value: Asia/Shanghai
+          ports:
+            - name: http
+              containerPort: 3018
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 20
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: state
+              mountPath: /state
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: tsp-product-state
+        - name: tmp
+          emptyDir:
+            sizeLimit: 2Gi

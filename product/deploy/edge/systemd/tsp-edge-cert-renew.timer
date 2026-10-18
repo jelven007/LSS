@@ -1,0 +1,11 @@
+[Unit]
+Description=Check TSP local TLS certificate daily
+
+[Timer]
+OnBootSec=15min
+OnCalendar=*-*-* 03:15:00
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
