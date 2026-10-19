@@ -11,7 +11,9 @@ ARG CODEX_CLI_VERSION=0.144.3
 ARG UV_VERSION=0.12.17
 
 # === Stage 1: 前端构建 ===
-FROM ${BASE_IMAGE_REGISTRY}/library/node:20-alpine AS frontend-builder
+# Frontend output is architecture-independent; build it on the native host
+# platform so cross-platform release builds do not emulate Node.js.
+FROM --platform=$BUILDPLATFORM ${BASE_IMAGE_REGISTRY}/library/node:20-alpine AS frontend-builder
 ARG USE_CN_MIRROR=1
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 WORKDIR /build
