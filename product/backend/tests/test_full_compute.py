@@ -75,6 +75,23 @@ def test_process_broker_is_container_native_and_has_no_docker_dependency(socket_
     assert not any("docker" in part or "DSN" in part for part in command)
 
 
+def test_compute_worker_uses_configured_public_release_before_private_root(tmp_path, monkeypatch):
+    from app.config import settings
+    from app.multitenancy.compute_worker import execute
+
+    public = tmp_path / "mounted-public-release"
+    public.mkdir()
+    (public / "public-marker").write_text("market data")
+    private = tmp_path / "private"
+    private.mkdir()
+    monkeypatch.setattr(settings, "data_dir", public)
+    result = execute({"kind": "describe", "strategy_id": "n_day_low_reversal"}, private)
+    assert result["definition"]["meta"]["id"] == "n_day_low_reversal"
+    assert (private / "public-marker").is_symlink()
+    assert (private / "public-marker").read_text() == "market data"
+    assert not (public / "strategies").exists()
+
+
 def test_process_broker_cleanup_terminates_the_complete_process_group(monkeypatch):
     signals = []
 

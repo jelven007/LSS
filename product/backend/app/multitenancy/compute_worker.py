@@ -48,8 +48,9 @@ def execute(payload: dict, private_root: Path) -> dict:
     from app.strategy.engine import StrategyEngine
     from app.tickflow.repository import DataStore, KlineRepository
 
+    market_root = settings.data_dir.resolve()
     settings.data_dir = private_root
-    for path in Path("/market").iterdir():
+    for path in market_root.iterdir():
         if path.name not in {"research", "strategies", "user_data"}:
             (private_root / path.name).symlink_to(path, target_is_directory=path.is_dir())
     directories = [Path(__file__).resolve().parents[1] / "strategy" / "builtin"]
@@ -82,7 +83,7 @@ def execute(payload: dict, private_root: Path) -> dict:
             payload["strategy_ids"], params_map=payload.get("params_map"),
             overrides_map=payload.get("overrides_map"),
         )}
-    store = DataStore(Path("/market"), read_only=True)
+    store = DataStore(market_root, read_only=True)
     try:
         repo = KlineRepository(store)
         if kind == "monitor":

@@ -225,3 +225,7 @@ Git 提交和旧镜像；不能替代 Market Worker、共享 PostgreSQL、TOS �
   JavaScript、CSS 和图标都存在；公网必须实际请求这些资源，首页 HTTP 200 不够。
 - 数据初始化 Job 在非 root 环境中使用 `/tmp` HOME 与 Numba 缓存，确认内置策略
   目录初始化数量；不能只按 Job Complete 判断策略目录已正确创建。
+- `test_full_identity.py` 使用真实隔离 PostgreSQL 验证管理员工作空间幂等初始化和
+  向导跨 API 实例持久化；`onboarding-api.test.ts` 验证平台设置合并账户标记。
+- 公网用新浏览器会话完成向导后刷新九项页面，在桌面与 390px 窄屏确认真实业务标题，
+  不将向导标题当作页面通过。SSE 验证真实租户授权、200 与首帧。
