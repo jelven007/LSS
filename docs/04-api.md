@@ -400,3 +400,10 @@ Facade 只允许固定白名单。日期必须为 `YYYY-MM-DD`，任务 ID、股
 - 浏览器请求、HTML、JavaScript、日志和错误正文不得包含数据服务凭据。
 - Policy 不创建独立 Service 或公网 Ingress。
 - 报告刷新必须通过 TSP `data:manage` 权限校验。
+
+## 10. 账户启动状态
+
+`GET /api/business/settings` 返回账户向导状态；管理员标记来自控制库
+`user_preferences`，租户直接进入业务页。`POST /api/business/onboarding/complete`
+要求 `business:write` 和同源 CSRF，只合并当前账户标记，不转发到平台文件。
+管理员前端合并 `/api/settings` 平台配置与账户状态，其他账户读取 business 接口。
