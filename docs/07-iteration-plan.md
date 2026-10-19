@@ -8,7 +8,7 @@
 - Market Worker 取代 Kafka/Flink 常驻链路，保留 SQLite WAL、Inbox/Outbox 和幂等语义。
 - API、Task Worker、报告调度和 Compute 分离。
 - PostgreSQL 三库隔离，ClickHouse 保存行情，Redis 保存投影，TOS 保存对象归档。
-- Kafka、Flink、独立 Policy API、SSE Gateway、独立 TSP PostgreSQL、自建 MinIO
+- Kafka、Flink、独立 Policy API、SSE Gateway、独立 LSS PostgreSQL、自建 MinIO
   和 Pod 内 DinD 已退出当前源码及生产清单。
 
 历史建设阶段不再作为当前待办维护；对应事实通过 Git 历史和发布记录追溯。

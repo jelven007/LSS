@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: tsp-task-worker
+  name: lss-task-worker
   namespace: banxia
   labels:
-    app: tsp-task-worker
+    app: lss-task-worker
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: tsp-task-worker
+      app: lss-task-worker
   template:
     metadata:
       labels:
-        app: tsp-task-worker
+        app: lss-task-worker
         component: worker
     spec:
       serviceAccountName: banxia-workload
@@ -33,7 +33,7 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: wait-for-platform-and-schema
-          image: tsp-product-runtime:v0.5.1
+          image: lss-product-runtime:v0.5.1
           command: [/app/.venv/bin/python, -c]
           args:
             - |
@@ -46,7 +46,7 @@ spec:
                   try:
                       # API readiness depends on worker heartbeats. Check the
                       # durable prerequisites directly to avoid a startup cycle.
-                      with psycopg.connect(os.environ["TSP_CELL_CONTROL_DSN"], connect_timeout=3) as conn:
+                      with psycopg.connect(os.environ["LSS_CELL_CONTROL_DSN"], connect_timeout=3) as conn:
                           ready = conn.execute("SELECT to_regclass('control.users') IS NOT NULL").fetchone()[0]
                           if ready and marker.is_file():
                               break
@@ -57,9 +57,9 @@ spec:
                   time.sleep(5)
           envFrom: &runtimeEnv
             - configMapRef:
-                name: tsp-product-runtime
+                name: lss-product-runtime
             - secretRef:
-                name: tsp-product-secrets
+                name: lss-product-secrets
           volumeMounts:
             - name: state
               mountPath: /state
@@ -73,12 +73,12 @@ spec:
             limits: {cpu: 250m, memory: 256Mi}
       containers:
         - name: task-worker
-          image: tsp-product-runtime:v0.5.1
+          image: lss-product-runtime:v0.5.1
           command: [/app/.venv/bin/python, -m, app.multitenancy.task_worker]
           env:
             - name: SERVICE_ROLE
               value: api
-            - name: TSP_CELL_WORKER_CONCURRENCY
+            - name: LSS_CELL_WORKER_CONCURRENCY
               value: "4"
           envFrom: *runtimeEnv
           resources:
@@ -94,7 +94,7 @@ spec:
       volumes:
         - name: state
           persistentVolumeClaim:
-            claimName: tsp-product-state
+            claimName: lss-product-state
         - name: tmp
           emptyDir:
             sizeLimit: 2Gi

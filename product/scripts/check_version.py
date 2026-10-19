@@ -16,8 +16,8 @@ DOCUMENT_VERSION_PATTERNS = {
     "docs/README.md": (r"应用语义版本为 `([0-9.]+)`",),
     "docs/version-baseline.md": (r"\| 应用语义版本 \| `([0-9.]+)` \|",),
     "docs/requirements.md": (
-        r"(?m)^# TSP v([0-9.]+) 需求基线",
-        r"本文档定义 TSP `([0-9.]+)` 的产品目标",
+        r"(?m)^# LSS v([0-9.]+) 需求基线",
+        r"本文档定义 LSS `([0-9.]+)` 的产品目标",
     ),
     "操作说明书.md": (r"适用版本：([0-9.]+)（",),
 }
@@ -69,7 +69,7 @@ def _check_source_versions(root: Path, expected: str) -> None:
             re.MULTILINE,
         ).group(1),
         "backend/uv.lock": re.search(
-            r'\[\[package\]\]\nname = "tsp-backend"\nversion = "([^"]+)"',
+            r'\[\[package\]\]\nname = "lss-backend"\nversion = "([^"]+)"',
             (root / "backend/uv.lock").read_text(encoding="utf-8"),
         ).group(1),
         "backend/app/__init__.py": re.search(

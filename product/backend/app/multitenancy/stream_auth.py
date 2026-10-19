@@ -16,7 +16,7 @@ from app.cell.context import AccessError, Role, TenantContext
 
 logger = logging.getLogger(__name__)
 TICKET_PREFIX = "tss_"
-ACCESS_CHANNEL = "tsp_access_revoked"
+ACCESS_CHANNEL = "lss_access_revoked"
 
 
 def _encode(value: bytes) -> str:
@@ -67,7 +67,7 @@ class StreamTicketCodec:
         self,
         secret: SecretStr | str,
         *,
-        audience: str = "tsp-tenant-events",
+        audience: str = "lss-tenant-events",
         ttl_seconds: int = 60,
         max_consumed: int = 20_000,
     ):

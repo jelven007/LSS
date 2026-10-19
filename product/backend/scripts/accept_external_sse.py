@@ -1,7 +1,7 @@
 """Accept the candidate SSE gateway through an isolated external Nginx boundary.
 
 The script creates and removes its own Docker network, PostgreSQL server,
-platform-marker fixture, candidate gateway, and Nginx proxy. Existing TSP
+platform-marker fixture, candidate gateway, and Nginx proxy. Existing LSS
 services, databases, containers, and ports are never reused.
 
 Run from backend:
@@ -29,7 +29,7 @@ from psycopg.conninfo import make_conninfo
 from app.multitenancy.events import append_event
 from scripts.accept_phase2_step1 import _cluster, _login, _seed
 
-DEFAULT_IMAGE = "tsp-p2-api:final"
+DEFAULT_IMAGE = "lss-p2-api:final"
 DEFAULT_NGINX_IMAGE = "public.ecr.aws/docker/library/nginx:alpine"
 DEFAULT_POSTGRES_IMAGE = "postgres:16"
 POSTGRES_PASSWORD = "external-sse-disposable-password"
@@ -651,11 +651,11 @@ def run(
             f"1 and {MAX_CONCURRENT_CLIENTS}"
         )
     suffix = uuid.uuid4().hex[:10]
-    network = f"tsp-sse-{suffix}"
-    postgres = f"tsp-sse-postgres-{suffix}"
-    market = f"tsp-sse-market-{suffix}"
-    gateway = f"tsp-sse-gateway-{suffix}"
-    nginx = f"tsp-sse-nginx-{suffix}"
+    network = f"lss-sse-{suffix}"
+    postgres = f"lss-sse-postgres-{suffix}"
+    market = f"lss-sse-market-{suffix}"
+    gateway = f"lss-sse-gateway-{suffix}"
+    nginx = f"lss-sse-nginx-{suffix}"
     stream_secret = "external-sse-" + uuid.uuid4().hex + uuid.uuid4().hex
     started = time.time()
     report: dict[str, Any] = {
@@ -684,7 +684,7 @@ def run(
         },
     }
     try:
-        with tempfile.TemporaryDirectory(prefix="tsp-external-sse-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="lss-external-sse-") as temporary:
             temp = Path(temporary)
             fixture_path = temp / "market_fixture.py"
             nginx_path = temp / "nginx.conf"
@@ -720,7 +720,7 @@ def run(
                 with _cluster(
                     root_dsn,
                     8,
-                    name_prefix="tsp_sse_",
+                    name_prefix="lss_sse_",
                     base_url="http://localhost",
                 ) as cluster:
                     principal = _login(cluster, _seed(cluster, 1)).pop("principals")[0]
@@ -755,14 +755,14 @@ def run(
                         environment = {
                             "SERVICE_ROLE": "gateway",
                             "MULTITENANCY_ENABLED": "true",
-                            "TSP_CELL_ID": "full",
-                            "TSP_CELL_SCHEMA_VERSION": "6",
-                            "TSP_CELL_POOL_SIZE": "8",
-                            "TSP_CELL_CONTROL_DSN": control_dsn,
-                            "TSP_CELL_DATA_DSN": data_dsn,
-                            "TSP_CELL_MARKET_URL": f"http://{market}:8000",
-                            "TSP_CELL_MARKET_TOKEN": MARKET_TOKEN,
-                            "TSP_CELL_STREAM_TICKET_SECRET": stream_secret,
+                            "LSS_CELL_ID": "full",
+                            "LSS_CELL_SCHEMA_VERSION": "6",
+                            "LSS_CELL_POOL_SIZE": "8",
+                            "LSS_CELL_CONTROL_DSN": control_dsn,
+                            "LSS_CELL_DATA_DSN": data_dsn,
+                            "LSS_CELL_MARKET_URL": f"http://{market}:8000",
+                            "LSS_CELL_MARKET_TOKEN": MARKET_TOKEN,
+                            "LSS_CELL_STREAM_TICKET_SECRET": stream_secret,
                             "TICKFLOW_ENV_FILE": "/dev/null",
                             "NUMBA_CACHE_DIR": "/tmp/numba",
                             "PYTHONDONTWRITEBYTECODE": "1",

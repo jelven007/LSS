@@ -17,15 +17,15 @@ REPLACEMENTS = {
     "frontend/package.json": (r'(?m)^(\s*"version": ")[^"]+(")',),
     "backend/pyproject.toml": (r'(?m)^(version = ")[^"]+(")',),
     "backend/uv.lock": (
-        r'(\[\[package\]\]\nname = "tsp-backend"\nversion = ")[^"]+(")',
+        r'(\[\[package\]\]\nname = "lss-backend"\nversion = ")[^"]+(")',
     ),
     "backend/app/__init__.py": (r'(_FALLBACK_VERSION = ")[^"]+(")',),
     "README.md": (r"(应用语义版本为 `)[0-9.]+(`)",),
     "docs/README.md": (r"(应用语义版本为 `)[0-9.]+(`)",),
     "docs/version-baseline.md": (r"(\| 应用语义版本 \| `)[0-9.]+(` \|)",),
     "docs/requirements.md": (
-        r"(?m)^(# TSP v)[0-9.]+( 需求基线)",
-        r"(本文档定义 TSP `)[0-9.]+(` 的产品目标)",
+        r"(?m)^(# LSS v)[0-9.]+( 需求基线)",
+        r"(本文档定义 LSS `)[0-9.]+(` 的产品目标)",
     ),
     "操作说明书.md": (r"(适用版本：)[0-9.]+(（)",),
 }
@@ -68,7 +68,7 @@ def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
 def _validate_version_commit(root: Path, revision: str) -> str:
     """Recognize a version commit by its exact changes, not a copied trailer."""
     message = _git(root, "show", "-s", "--format=%B", revision).stdout
-    sources = re.findall(r"(?m)^TSP-Version-Source: ([0-9a-f]{40})$", message)
+    sources = re.findall(r"(?m)^LSS-Version-Source: ([0-9a-f]{40})$", message)
     parents = _git(root, "show", "-s", "--format=%P", revision).stdout.split()
     if len(sources) != 1 or len(parents) != 1:
         raise ValueError(f"invalid automatic version commit: {revision}")
@@ -116,7 +116,7 @@ def advance_main(root: Path, source: str, *, attempts: int = 5) -> str:
             raise ValueError(f"{source} is not integrated into origin/main")
 
         message = _git(root, "show", "-s", "--format=%B", source).stdout
-        if re.search(r"(?m)^TSP-Version-Source:", message):
+        if re.search(r"(?m)^LSS-Version-Source:", message):
             _validate_version_commit(root, source)
             return source
 
@@ -124,7 +124,7 @@ def advance_main(root: Path, source: str, *, attempts: int = 5) -> str:
         # handling the same push. Search only the mainline's own commits.
         existing = _git(
             root, "log", "--first-parent", "-1", "--format=%H",
-            f"--grep=^TSP-Version-Source: {source}$", base,
+            f"--grep=^LSS-Version-Source: {source}$", base,
         ).stdout.strip()
         if existing:
             _validate_version_commit(root, existing)
@@ -132,7 +132,7 @@ def advance_main(root: Path, source: str, *, attempts: int = 5) -> str:
 
         last_version = _git(
             root, "log", "--first-parent", "-1", "--format=%H",
-            "--grep=^TSP-Version-Source:", base,
+            "--grep=^LSS-Version-Source:", base,
         ).stdout.strip()
         if last_version:
             _validate_version_commit(root, last_version)
@@ -153,7 +153,7 @@ def advance_main(root: Path, source: str, *, attempts: int = 5) -> str:
             "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com",
             "-c", "commit.gpgsign=false",
             "commit", "-m", f"chore: advance application version to {version}",
-            "-m", f"TSP-Version-Source: {source}",
+            "-m", f"LSS-Version-Source: {source}",
         )
         revision = _git(root, "rev-parse", "HEAD").stdout.strip()
         pushed = _git(root, "push", "origin", "HEAD:refs/heads/main", check=False)

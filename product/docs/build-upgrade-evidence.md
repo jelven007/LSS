@@ -30,8 +30,8 @@ dirty 或与 workflow SHA 不同的源码。散列不是数字签名，清单应
 python3 scripts/build_manifest.py create --root . --profile source \
   --version-file VERSION --git-root . --output .dbg/source-manifest.json
 
-docker build --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" -t tsp:candidate .
-docker run --rm --network none --entrypoint python tsp:candidate \
+docker build --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" -t lss:candidate .
+docker run --rm --network none --entrypoint python lss:candidate \
   /app/build_manifest.py verify --root /app --manifest /app/build-manifest.json
 ```
 
@@ -44,7 +44,7 @@ Policy、产品后端和前端静态产物；前端 pnpm 下载使用缓存并�
 缓存不免除最终 Manifest 核验、镜像 digest 固定和源码提交身份记录。
 
 `create` 不覆盖已有输出。源码配置只索引构建输入；额外部署文件可通过显式
-`--include <相对路径>` 创建清单。桌面外置运行清单的根是包含 `TSP/` 或 `TSP.app/`
+`--include <相对路径>` 创建清单。桌面外置运行清单的根是包含 `LSS/` 或 `LSS.app/`
 的目录；在该目录核验，不能以 `.app` 内部子目录为根。
 
 `verify` 返回 `changed`、`missing`、`added`：无差异退出 0，有差异退出 2，

@@ -1,5 +1,5 @@
 [project]
-name = "tsp-backend"
+name = "lss-backend"
 version = "0.5.1"
 description = "A 股选股 + 监控 + 回测面板 — TickFlow 适配"
 requires-python = ">=3.11"
@@ -34,7 +34,7 @@ dependencies = [
     # TickFlow 官方 SDK
     "tickflow[all]>=0.1.23",
     # 默认 rustdx 路由必需的本地 PyO3 桥接，普通 uv sync 即构建安装。
-    "tsp-rustdx-native",
+    "lss-rustdx-native",
     # Scheduling
     "apscheduler>=3.10",
     # Config
@@ -52,7 +52,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-tsp-rustdx-native = { path = "native/rustdx_native" }
+lss-rustdx-native = { path = "native/rustdx_native" }
 
 [project.optional-dependencies]
 # 保留旧 --extra rustdx 命令兼容；原生桥接已经是默认依赖。

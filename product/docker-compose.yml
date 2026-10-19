@@ -9,7 +9,7 @@ services:
         BASE_IMAGE_REGISTRY: ${BASE_IMAGE_REGISTRY:-docker.io}
         BACKEND_EXTRAS: ${BACKEND_EXTRAS:-}
         CODEX_CLI_VERSION: ${CODEX_CLI_VERSION:-0.144.3}
-    container_name: TSP
+    container_name: LSS
     ports:
       - "${HOST:-0.0.0.0}:${PORT:-3018}:3018"
     extra_hosts:

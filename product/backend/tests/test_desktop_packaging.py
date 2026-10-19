@@ -33,7 +33,7 @@ class _FakeWindow:
         return {
             "readyState": "complete",
             "location": "http://127.0.0.1:3018/",
-            "title": "TSP",
+            "title": "LSS",
             "bodyTextLength": 42,
             "htmlLength": 512,
         }

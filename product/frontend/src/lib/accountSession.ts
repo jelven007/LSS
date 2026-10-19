@@ -5,8 +5,8 @@ let confirmed = false
 
 export function identityScope(account: AuthUser | null): string {
   return account
-    ? `tsp-v1:${account.id}:${account.default_tenant_id || 'market'}:${account.auth_version ?? 0}`
-    : 'tsp-v1:signed-out'
+    ? `lss-v1:${account.id}:${account.default_tenant_id || 'market'}:${account.auth_version ?? 0}`
+    : 'lss-v1:signed-out'
 }
 
 export function accountScope(): string {
@@ -40,10 +40,10 @@ export async function accountFetch(path: string, init?: RequestInit): Promise<Re
   const startedScope = accountScope()
   const headers = new Headers(init?.headers)
   if (multitenancyEnabled() && path.startsWith('/api/') && !path.startsWith('/api/auth/')) {
-    headers.set('X-TSP-Account-Scope', startedScope)
+    headers.set('X-LSS-Account-Scope', startedScope)
   }
   const response = await globalThis.fetch(path, { ...init, headers })
-  if (startedScope !== accountScope() || !verifyResponseScope(response.headers.get('X-TSP-Account-Scope'))) {
+  if (startedScope !== accountScope() || !verifyResponseScope(response.headers.get('X-LSS-Account-Scope'))) {
     throw new DOMException('账户已切换', 'AbortError')
   }
   return response

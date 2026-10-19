@@ -67,7 +67,7 @@ def test_cli_branch_check_is_enforced_on_actual_pr_head(repository):
 
 def test_invalid_version_trailer_cannot_skip_allocation(main_event):
     root, source = main_event
-    git(root, "commit", "--allow-empty", "-m", f"TSP-Version-Source: {source}")
+    git(root, "commit", "--allow-empty", "-m", f"LSS-Version-Source: {source}")
     git(root, "push", "origin", "main")
     with pytest.raises(ValueError, match="invalid automatic version commit"):
         advance_version.advance_main(root, source)

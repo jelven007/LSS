@@ -56,7 +56,7 @@ rustdx 全市场分钟逐股取数，有效轮次间隔至少 60 秒，保留原
 Cargo 使用精确版本 `=1.12.2`，锁文件保存发布包校验和，构建无需 GitHub 私有仓库凭据。
 发布来源提交为 `9dfc024c9662fa5091099c1f17610569ee2eca8b`；
 原固定提交 `904b33e514d4e368e633622c96a9e63af8a53d37` 仅追加发布文档，
-两者的 Rust 源码和构建声明一致。`tsp-rustdx-native` 已纳入后端默认依赖，
+两者的 Rust 源码和构建声明一致。`lss-rustdx-native` 已纳入后端默认依赖，
 普通 `uv sync --frozen` 会自动构建安装，后续同步也不会因遗漏 extra 移除桥接。
 旧命令中的 `--extra rustdx` 保留兼容，但不再是安装前提。源码环境需要 Rust toolchain：
 
@@ -79,7 +79,7 @@ Rust。开发启动脚本每次同步后端依赖；脚本启动、Docker 构建
 缺失或不匹配时停止启动或构建，避免生成缺少默认源的产物。
 
 源码环境遇到旧桥接时，在 `backend` 目录执行
-`uv sync --frozen --reinstall-package tsp-rustdx-native`，然后重新运行上面的检查。
+`uv sync --frozen --reinstall-package lss-rustdx-native`，然后重新运行上面的检查。
 
 ## 首次启动初始化
 
@@ -152,7 +152,7 @@ RUSTDX_TIMEOUT=8
 后续窗口。失败轮不提交部分分钟数据，不增加成功轮数、不更新最后成功时间；
 错误保留在服务状态中，健康立即变为 false，后续完整成功轮恢复。成功无数据
 仍按空轮处理，连续失败或空轮触发全天修复。
-本次桥接包为 `tsp-rustdx-native 0.1.1`、接口为 `POOL_API_VERSION=2`；
+本次桥接包为 `lss-rustdx-native 0.1.1`、接口为 `POOL_API_VERSION=2`；
 源码升级后依赖同步会重建原生扩展，旧接口明确显示不可用。
 
 ## 日历与研究复现
@@ -267,8 +267,8 @@ crate 版本为 `1.12.0`。Cargo 依赖和锁文件均固定完整提交号，�
 
 - 上游库测试：排除会遍历全部公网节点的慢速网络测试后，`140 passed`；该慢速测试
   运行超过 60 秒后主动停止。
-- TSP rustdx、原生连接池、同步、财务、竞价和路由专项：`112 passed`。
-- TSP 后端全量回归：`2792 passed, 7 skipped`。
+- LSS rustdx、原生连接池、同步、财务、竞价和路由专项：`112 passed`。
+- LSS 后端全量回归：`2792 passed, 7 skipped`。
 - `cargo fmt --check`、`cargo check --release --locked`、Ruff 和
   `git diff --check` 通过。
 - 本机 CPython 3.12 release 扩展构建安装成功；真实读取股票行情、日线、分钟线、

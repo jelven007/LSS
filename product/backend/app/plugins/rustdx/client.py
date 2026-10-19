@@ -54,7 +54,7 @@ def _native_client():
     global _NATIVE_CLIENT
     with _NATIVE_LOCK:
         if _NATIVE_CLIENT is None:
-            module = importlib.import_module("tsp_rustdx_native")
+            module = importlib.import_module("lss_rustdx_native")
             if getattr(module, "POOL_API_VERSION", 0) != 2:
                 raise RustdxError("rustdx 原生桥接需要重新构建: 连接池接口版本不一致")
             server = os.getenv("RUSTDX_SERVER", _DEFAULT_SERVER).strip() or _DEFAULT_SERVER
@@ -78,7 +78,7 @@ def _native_client():
 def availability() -> tuple[bool, str]:
     """Plugin check used by the loader without opening a network connection."""
     try:
-        module = importlib.import_module("tsp_rustdx_native")
+        module = importlib.import_module("lss_rustdx_native")
         maximum = int(module.MAX_CONNECTIONS)
         version = str(module.__version__)
         rustdx_version = str(module.RUSTDX_VERSION)
@@ -331,7 +331,7 @@ def main() -> int:
         print(
             f"{detail}\n"
             "源码环境安装 Rust 编译工具后, 在 backend 目录执行 "
-            "uv sync --frozen --reinstall-package tsp-rustdx-native; "
+            "uv sync --frozen --reinstall-package lss-rustdx-native; "
             "Docker 或桌面包请重新构建包含原生桥接的产物。",
             file=sys.stderr,
         )

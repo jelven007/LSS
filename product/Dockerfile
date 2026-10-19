@@ -71,7 +71,7 @@ RUN if [ "$USE_CN_MIRROR" = "1" ]; then \
            'registry = "sparse+https://rsproxy.cn/index/"' \
            > "$CARGO_HOME/config.toml"; \
        fi
-WORKDIR /build/tsp-rustdx-native
+WORKDIR /build/lss-rustdx-native
 COPY product/backend/native/rustdx_native ./
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     /maturin/bin/maturin build --locked --release \
@@ -126,7 +126,7 @@ COPY product/backend/native ./native
 ARG PYPI_LOCK_MIRROR=https://repo.huaweicloud.com/repository/pypi/simple
 RUN if [ "$USE_CN_MIRROR" = "1" ]; then \
       export UV_DEFAULT_INDEX="$PYPI_INDEX" UV_EXTRA_INDEX_URL="$PYPI_FALLBACK"; \
-      set -- --no-dev --no-emit-package tsp-rustdx-native --no-emit-project; \
+      set -- --no-dev --no-emit-package lss-rustdx-native --no-emit-project; \
       for extra in $BACKEND_EXTRAS; do \
         set -- "$@" --extra "$extra"; \
       done; \
@@ -138,7 +138,7 @@ RUN if [ "$USE_CN_MIRROR" = "1" ]; then \
       && rm /tmp/runtime-locked.txt \
       || exit 1; \
     fi; \
-    set -- --no-dev --no-install-package tsp-rustdx-native; \
+    set -- --no-dev --no-install-package lss-rustdx-native; \
     for extra in $BACKEND_EXTRAS; do \
       set -- "$@" --extra "$extra"; \
     done; \

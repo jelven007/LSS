@@ -4,12 +4,12 @@
 > [`../kubernetes/README.md`](../kubernetes/README.md)。本目录仅保留独立主机回滚与
 > 隔离验证能力，不再代表生产拓扑。
 
-该目录把完整 TSP 产品部署到一台独立云主机，作为 `candidate.shanao.asia` 的验收环境。
+该目录把完整 LSS 产品部署到一台独立云主机，作为 `candidate.shanao.asia` 的验收环境。
 它不会修改现有 `shanao.asia`、Policy VKE 工作负载或生产数据库。
 
 完整产品的 Compute Broker 需要在宿主机创建无网络、无凭据的临时计算容器。VKE 节点
 使用 containerd，不能挂载 Docker socket；本独立主机兼容方案仍使用受限宿主 Broker。
-生产 VKE 使用 [`../kubernetes`](../kubernetes/README.md) 定义的独立 `tsp-compute`
+生产 VKE 使用 [`../kubernetes`](../kubernetes/README.md) 定义的独立 `lss-compute`
 Pod，无业务密钥、禁止出网，不使用 Broker 或 DinD。
 
 ## 资源与边界
@@ -18,7 +18,7 @@ Pod，无业务密钥、禁止出网，不使用 Broker 或 DinD。
 - Docker Engine 27+、Compose 2.24+；主机只开放 SSH 和候选入口端口。
 - PostgreSQL、行情目录、公共版本、平台配置和 Broker socket 均使用候选专属路径。
 - ALB 终止公网 TLS，只把候选域名转发到候选主机端口。
-- Policy 继续由现有 VKE 提供，通过 TSP 服务端白名单桥接；Token 不下发到浏览器。
+- Policy 继续由现有 VKE 提供，通过 LSS 服务端白名单桥接；Token 不下发到浏览器。
 - `candidate.shanao.asia` 当前没有 DNS 记录，创建记录前不能进行公网 Web 验收。
 
 ## 构建镜像
@@ -26,9 +26,9 @@ Pod，无业务密钥、禁止出网，不使用 Broker 或 DinD。
 从仓库根目录构建三个同源镜像，并推送到私有镜像仓库：
 
 ```bash
-RUNTIME=registry.example.com/tsp/runtime:candidate
-COMPUTE=registry.example.com/tsp/compute:candidate
-BROKER=registry.example.com/tsp/broker:candidate
+RUNTIME=registry.example.com/lss/runtime:candidate
+COMPUTE=registry.example.com/lss/compute:candidate
+BROKER=registry.example.com/lss/broker:candidate
 
 docker build -f product/Dockerfile \
   --build-arg BACKEND_EXTRAS=cell \
@@ -48,7 +48,7 @@ docker build -f product/deploy/full/Broker.Dockerfile \
 
 ## 私密配置
 
-1. 将本目录四个 `*.env.example` 复制到 `/etc/tsp-candidate/`，移除 `.example`。
+1. 将本目录四个 `*.env.example` 复制到 `/etc/lss-candidate/`，移除 `.example`。
 2. 使用 `openssl rand -hex 32` 分别生成数据库密码、市场 Token、平台管理 Token、
    流票据密钥和 Policy Token；各用途不得复用。
 3. `runtime.env` 与 `platform.env` 中两个内部 Token 必须逐项一致。
@@ -62,13 +62,13 @@ docker build -f product/deploy/full/Broker.Dockerfile \
 
 ```bash
 install -d -m 0750 -o 10001 -g 10001 \
-  /var/lib/tsp-candidate/platform \
-  /var/lib/tsp-candidate/platform-config \
-  /var/lib/tsp-candidate/public \
-  /run/tsp-candidate
+  /var/lib/lss-candidate/platform \
+  /var/lib/lss-candidate/platform-config \
+  /var/lib/lss-candidate/public \
+  /run/lss-candidate
 
-COMPOSE="docker compose --env-file /etc/tsp-candidate/candidate.env \
-  -p tsp-product-candidate \
+COMPOSE="docker compose --env-file /etc/lss-candidate/candidate.env \
+  -p lss-product-candidate \
   -f product/deploy/full/compose.yml \
   -f product/deploy/candidate/compose.yml"
 
@@ -78,7 +78,7 @@ $COMPOSE --profile init run --rm initialize
 $COMPOSE up -d platform broker
 ```
 
-等待 `platform` 生成首个完整 `/var/lib/tsp-candidate/public/current` 后再启动其余角色：
+等待 `platform` 生成首个完整 `/var/lib/lss-candidate/public/current` 后再启动其余角色：
 
 ```bash
 $COMPOSE up -d gateway research realtime notifications scheduled api edge
@@ -88,7 +88,7 @@ curl -fsS http://127.0.0.1:38080/health/ready
 
 初始化只在空库创建 `admin/Admin123`。入口保持回环绑定，通过 SSH 隧道首次登录，立即
 修改管理员密码，并在设置中配置独立注册口令。确认 SMTP、注册和找回密码后，才把
-`TSP_CANDIDATE_BIND_ADDRESS` 改为 ALB 私网可达地址；安全组只允许 ALB 访问该端口。
+`LSS_CANDIDATE_BIND_ADDRESS` 改为 ALB 私网可达地址；安全组只允许 ALB 访问该端口。
 
 ## 验收门槛
 

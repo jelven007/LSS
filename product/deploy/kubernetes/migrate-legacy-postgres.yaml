@@ -1,10 +1,10 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: tsp-legacy-postgres-migration
+  name: lss-legacy-postgres-migration
   namespace: banxia
   labels:
-    app: tsp-legacy-postgres-migration
+    app: lss-legacy-postgres-migration
     component: migration
 spec:
   backoffLimit: 1
@@ -12,7 +12,7 @@ spec:
   template:
     metadata:
       labels:
-        app: tsp-legacy-postgres-migration
+        app: lss-legacy-postgres-migration
         component: migration
     spec:
       restartPolicy: Never
@@ -32,21 +32,21 @@ spec:
           args:
             - |
               umask 077
-              pg_dump --dbname="$TSP_LEGACY_CONTROL_ADMIN_DSN" \
+              pg_dump --dbname="$LSS_LEGACY_CONTROL_ADMIN_DSN" \
                 --format=custom --no-owner --no-privileges \
                 --file=/tmp/control.dump
-              pg_restore --dbname="$TSP_CONTROL_ADMIN_DSN" \
+              pg_restore --dbname="$LSS_CONTROL_ADMIN_DSN" \
                 --clean --if-exists --no-owner --no-privileges \
                 /tmp/control.dump
-              pg_dump --dbname="$TSP_LEGACY_DATA_ADMIN_DSN" \
+              pg_dump --dbname="$LSS_LEGACY_DATA_ADMIN_DSN" \
                 --format=custom --no-owner --no-privileges \
                 --file=/tmp/data.dump
-              pg_restore --dbname="$TSP_DATA_ADMIN_DSN" \
+              pg_restore --dbname="$LSS_DATA_ADMIN_DSN" \
                 --clean --if-exists --no-owner --no-privileges \
                 /tmp/data.dump
           envFrom:
             - secretRef:
-                name: tsp-product-admin
+                name: lss-product-admin
           securityContext:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false

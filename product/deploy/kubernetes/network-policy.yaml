@@ -1,12 +1,12 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-tsp-product-ingress
+  name: allow-lss-product-ingress
   namespace: banxia
 spec:
   podSelector:
     matchLabels:
-      app: tsp-product
+      app: lss-product
   policyTypes: [Ingress]
   ingress:
     - ports:
@@ -15,12 +15,12 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-tsp-platform
+  name: allow-lss-platform
   namespace: banxia
 spec:
   podSelector:
     matchLabels:
-      app: tsp-platform
+      app: lss-platform
   policyTypes: [Ingress]
   ingress:
     - from:

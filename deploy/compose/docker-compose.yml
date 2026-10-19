@@ -1,6 +1,6 @@
 name: banxia-strategy
 
-# Policy backend development stack. The production Web/API is embedded in TSP.
+# Policy backend development stack. The production Web/API is embedded in LSS.
 x-app-common: &app-common
   build:
     context: ../..

@@ -169,7 +169,7 @@ def test_release_seal_requires_matching_clean_source_and_checks_runtime(tmp_path
     root = tree(tmp_path)
     payload = baseline(root)
     payload["source_dirty"] = False
-    artifact = root / "TSP.tar.gz"
+    artifact = root / "LSS.tar.gz"
     artifact.write_bytes(b"installer")
     sealed = manifest.seal(root, payload, artifact, "a" * 40)
     assert sealed["artifact"]["name"] == artifact.name

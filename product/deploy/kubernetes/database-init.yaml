@@ -1,10 +1,10 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: tsp-database-bootstrap
+  name: lss-database-bootstrap
   namespace: banxia
   labels:
-    app: tsp-database-bootstrap
+    app: lss-database-bootstrap
     component: migration
 spec:
   backoffLimit: 6
@@ -12,7 +12,7 @@ spec:
   template:
     metadata:
       labels:
-        app: tsp-database-bootstrap
+        app: lss-database-bootstrap
         component: migration
     spec:
       restartPolicy: Never
@@ -37,32 +37,32 @@ spec:
               done
               psql -h postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
                 --set=ON_ERROR_STOP=1 \
-                --set=control_password="$TSP_CONTROL_RUNTIME_PASSWORD" \
-                --set=data_password="$TSP_DATA_RUNTIME_PASSWORD" <<'SQL'
+                --set=control_password="$LSS_CONTROL_RUNTIME_PASSWORD" \
+                --set=data_password="$LSS_DATA_RUNTIME_PASSWORD" <<'SQL'
               SELECT format(
-                'CREATE ROLE tsp_control_runtime WITH LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD %L',
+                'CREATE ROLE lss_control_runtime WITH LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD %L',
                 :'control_password'
               ) WHERE NOT EXISTS (
-                SELECT 1 FROM pg_roles WHERE rolname = 'tsp_control_runtime'
+                SELECT 1 FROM pg_roles WHERE rolname = 'lss_control_runtime'
               )\gexec
-              ALTER ROLE tsp_control_runtime PASSWORD :'control_password';
+              ALTER ROLE lss_control_runtime PASSWORD :'control_password';
               SELECT format(
-                'CREATE ROLE tsp_data_runtime WITH LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD %L',
+                'CREATE ROLE lss_data_runtime WITH LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD %L',
                 :'data_password'
               ) WHERE NOT EXISTS (
-                SELECT 1 FROM pg_roles WHERE rolname = 'tsp_data_runtime'
+                SELECT 1 FROM pg_roles WHERE rolname = 'lss_data_runtime'
               )\gexec
-              ALTER ROLE tsp_data_runtime PASSWORD :'data_password';
-              SELECT 'CREATE DATABASE tsp_control' WHERE NOT EXISTS (
-                SELECT 1 FROM pg_database WHERE datname = 'tsp_control'
+              ALTER ROLE lss_data_runtime PASSWORD :'data_password';
+              SELECT 'CREATE DATABASE lss_control' WHERE NOT EXISTS (
+                SELECT 1 FROM pg_database WHERE datname = 'lss_control'
               )\gexec
-              SELECT 'CREATE DATABASE tsp_data_production' WHERE NOT EXISTS (
-                SELECT 1 FROM pg_database WHERE datname = 'tsp_data_production'
+              SELECT 'CREATE DATABASE lss_data_production' WHERE NOT EXISTS (
+                SELECT 1 FROM pg_database WHERE datname = 'lss_data_production'
               )\gexec
-              GRANT CONNECT ON DATABASE tsp_control TO tsp_control_runtime;
-              GRANT CONNECT ON DATABASE tsp_data_production TO tsp_data_runtime;
-              REVOKE CONNECT ON DATABASE tsp_control FROM PUBLIC;
-              REVOKE CONNECT ON DATABASE tsp_data_production FROM PUBLIC;
+              GRANT CONNECT ON DATABASE lss_control TO lss_control_runtime;
+              GRANT CONNECT ON DATABASE lss_data_production TO lss_data_runtime;
+              REVOKE CONNECT ON DATABASE lss_control FROM PUBLIC;
+              REVOKE CONNECT ON DATABASE lss_data_production FROM PUBLIC;
               SQL
           env:
             - name: POSTGRES_DB
@@ -80,16 +80,16 @@ spec:
                 secretKeyRef:
                   name: banxia-secrets
                   key: POSTGRES_PASSWORD
-            - name: TSP_CONTROL_RUNTIME_PASSWORD
+            - name: LSS_CONTROL_RUNTIME_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: tsp-product-admin
-                  key: TSP_CONTROL_RUNTIME_PASSWORD
-            - name: TSP_DATA_RUNTIME_PASSWORD
+                  name: lss-product-admin
+                  key: LSS_CONTROL_RUNTIME_PASSWORD
+            - name: LSS_DATA_RUNTIME_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: tsp-product-admin
-                  key: TSP_DATA_RUNTIME_PASSWORD
+                  name: lss-product-admin
+                  key: LSS_DATA_RUNTIME_PASSWORD
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -105,10 +105,10 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: tsp-product-initialize
+  name: lss-product-initialize
   namespace: banxia
   labels:
-    app: tsp-product-initialize
+    app: lss-product-initialize
     component: migration
 spec:
   backoffLimit: 12
@@ -116,7 +116,7 @@ spec:
   template:
     metadata:
       labels:
-        app: tsp-product-initialize
+        app: lss-product-initialize
         component: migration
     spec:
       restartPolicy: Never
@@ -132,7 +132,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: initialize
-          image: tsp-product-runtime:v0.5.1
+          image: lss-product-runtime:v0.5.1
           command: [/bin/sh, -ec]
           args:
             - |
@@ -141,7 +141,7 @@ spec:
               import time
               import psycopg
 
-              dsn = os.environ["TSP_CONTROL_ADMIN_DSN"]
+              dsn = os.environ["LSS_CONTROL_ADMIN_DSN"]
               for attempt in range(120):
                   try:
                       with psycopg.connect(dsn, connect_timeout=3) as conn:
@@ -153,9 +153,9 @@ spec:
                       time.sleep(5)
               PY
               /app/.venv/bin/python -m app.cell.admin migrate \
-                --kind control --runtime-role tsp_control_runtime --target-version 6
+                --kind control --runtime-role lss_control_runtime --target-version 6
               /app/.venv/bin/python -m app.cell.admin migrate \
-                --kind data --runtime-role tsp_data_runtime --cell-id production --target-version 6
+                --kind data --runtime-role lss_data_runtime --cell-id production --target-version 6
               /app/.venv/bin/python -m app.cell.admin bootstrap-full-identity
               /app/.venv/bin/python -m app.cell.admin register-cell \
                 --cell-id production --api-url https://shanao.asia
@@ -171,7 +171,7 @@ spec:
               value: "1"
           envFrom:
             - secretRef:
-                name: tsp-product-admin
+                name: lss-product-admin
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

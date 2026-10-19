@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class CellSettings(BaseSettings):
     # Never inherit the legacy .env, DATA_DIR or desktop authentication bypass.
-    model_config = SettingsConfigDict(env_prefix="TSP_CELL_", extra="ignore", frozen=True)
+    model_config = SettingsConfigDict(env_prefix="LSS_CELL_", extra="ignore", frozen=True)
 
     id: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
     control_dsn: SecretStr

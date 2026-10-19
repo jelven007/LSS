@@ -95,7 +95,7 @@ def _cluster(
     root_dsn: str,
     pool_size: int,
     *,
-    name_prefix="tsp_p2s1_",
+    name_prefix="lss_p2s1_",
     base_url=BASE_URL,
 ):
     prefix = name_prefix + uuid.uuid4().hex[:10]
@@ -495,8 +495,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--dsn",
-        default=os.environ.get("TSP_TEST_POSTGRES_DSN"),
-        help="Disposable PostgreSQL root DSN; defaults to TSP_TEST_POSTGRES_DSN",
+        default=os.environ.get("LSS_TEST_POSTGRES_DSN"),
+        help="Disposable PostgreSQL root DSN; defaults to LSS_TEST_POSTGRES_DSN",
     )
     parser.add_argument("--users", type=int, default=100)
     parser.add_argument("--rounds", type=int, default=5)
@@ -508,7 +508,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     if not args.dsn:
-        parser.error("--dsn or TSP_TEST_POSTGRES_DSN is required")
+        parser.error("--dsn or LSS_TEST_POSTGRES_DSN is required")
     if not 1 <= args.users <= 1000:
         parser.error("--users must be in [1, 1000]")
     if not 1 <= args.rounds <= 100:

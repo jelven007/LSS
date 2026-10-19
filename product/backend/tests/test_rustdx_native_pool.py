@@ -100,7 +100,7 @@ class _Server:
 
 
 def test_native_pool_reuses_35_sockets_and_preserves_response_identity():
-    module = pytest.importorskip("tsp_rustdx_native")
+    module = pytest.importorskip("lss_rustdx_native")
     server = _Server()
     client = module.RustdxClient(100, server.address, 2)
     securities = [(0, f"{index:06d}") for index in range(2_100)]
@@ -134,7 +134,7 @@ def test_native_pool_reuses_35_sockets_and_preserves_response_identity():
 
 
 def test_native_empty_batch_fails_after_bounded_retries():
-    module = pytest.importorskip("tsp_rustdx_native")
+    module = pytest.importorskip("lss_rustdx_native")
     server = _Server(incomplete=True)
     client = module.RustdxClient(1, server.address, 2)
     try:
@@ -148,7 +148,7 @@ def test_native_empty_batch_fails_after_bounded_retries():
 
 
 def test_financial_server_switch_uses_existing_slots():
-    module = pytest.importorskip("tsp_rustdx_native")
+    module = pytest.importorskip("lss_rustdx_native")
     quotes = _Server()
     reports = _Server()
     client = module.RustdxClient(1, quotes.address, 2)
@@ -168,7 +168,7 @@ def test_financial_server_switch_uses_existing_slots():
 
 
 def test_native_fails_over_to_configured_server_without_extra_sockets():
-    module = pytest.importorskip("tsp_rustdx_native")
+    module = pytest.importorskip("lss_rustdx_native")
     broken = _Server(incomplete=True)
     healthy = _Server()
     client = module.RustdxClient(1, broken.address, 2, fallback_servers=[healthy.address])
@@ -189,7 +189,7 @@ def test_native_fails_over_to_configured_server_without_extra_sockets():
 
 
 def test_background_budget_and_counted_minute_requests():
-    module = pytest.importorskip("tsp_rustdx_native")
+    module = pytest.importorskip("lss_rustdx_native")
     server = _Server()
     client = module.RustdxClient(4, server.address, 2, background_connections=1)
     try:

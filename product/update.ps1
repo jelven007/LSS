@@ -1,4 +1,4 @@
-# TSP - pull latest code and restart backend + frontend (Windows / PowerShell)
+# LSS - pull latest code and restart backend + frontend (Windows / PowerShell)
 #
 # Usage:
 #   .\update.ps1

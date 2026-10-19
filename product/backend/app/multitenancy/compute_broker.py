@@ -157,7 +157,7 @@ class Handler(socketserver.StreamRequestHandler):
     def handle(self):
         broker = self.server
         tenant = None
-        name = "tsp-compute-" + uuid.uuid4().hex
+        name = "lss-compute-" + uuid.uuid4().hex
         process = None
         acquired = False
         terminal_message = None

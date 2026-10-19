@@ -104,7 +104,7 @@ def test_explicit_progression_check_requires_increment(tmp_path, current, expect
         f'version = "{current}"\n', encoding="utf-8"
     )
     (tmp_path / "backend" / "uv.lock").write_text(
-        f'[[package]]\nname = "tsp-backend"\nversion = "{current}"\n',
+        f'[[package]]\nname = "lss-backend"\nversion = "{current}"\n',
         encoding="utf-8",
     )
     (tmp_path / "backend" / "app" / "__init__.py").write_text(

@@ -69,7 +69,7 @@ def main():
     if sys.platform != "win32":
         import resource
 
-        cpu = int(os.environ.get("TSP_COMPUTE_CPU_SECONDS", "60"))
+        cpu = int(os.environ.get("LSS_COMPUTE_CPU_SECONDS", "60"))
         resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu))
         resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
         if sys.platform == "linux":

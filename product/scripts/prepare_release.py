@@ -15,11 +15,11 @@ from tag_version import _remote_target
 from versioning import format_version, parse_version
 
 PLATFORMS = {
-    "windows": {"os": "windows-latest", "artifact": "TSP-Setup-x64-{version}.exe"},
+    "windows": {"os": "windows-latest", "artifact": "LSS-Setup-x64-{version}.exe"},
     "macos": {
-        "os": "macos-26", "artifact": "TSP-macos-arm64-{version}.dmg", "arch": "arm64",
+        "os": "macos-26", "artifact": "LSS-macos-arm64-{version}.dmg", "arch": "arm64",
     },
-    "linux": {"os": "ubuntu-latest", "artifact": "TSP-linux-x64-{version}.tar.gz"},
+    "linux": {"os": "ubuntu-latest", "artifact": "LSS-linux-x64-{version}.tar.gz"},
 }
 
 

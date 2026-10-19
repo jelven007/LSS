@@ -11,7 +11,7 @@
 | 范围 | 结果 |
 | --- | --- |
 | Policy | 394 项：369 通过、25 项按环境跳过 |
-| TSP 精简架构 | Policy Facade、Task Worker、Compute、扩展和健康定向 46 项通过 |
+| LSS 精简架构 | Policy Facade、Task Worker、Compute、扩展和健康定向 46 项通过 |
 | 身份与工作空间 | 真实隔离 PostgreSQL 23 项通过 |
 | Compute | 9 项通过，生产 Pod 实际策略描述成功 |
 | 前端 | 42 个测试文件、180 项通过 |
@@ -49,7 +49,7 @@ python -m pip install -e ".[test,storage]"
 PYTHONPATH=src python -m unittest discover -s tests -v
 ```
 
-TSP 后端：
+LSS 后端：
 
 ```bash
 cd product/backend

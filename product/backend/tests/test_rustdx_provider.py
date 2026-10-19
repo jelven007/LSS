@@ -163,7 +163,7 @@ def test_provider_caps_full_market_workers_at_35(monkeypatch):
 
 
 def test_native_bridge_clamps_direct_constructor_to_35():
-    native_module = pytest.importorskip("tsp_rustdx_native")
+    native_module = pytest.importorskip("lss_rustdx_native")
     assert native_module.RUSTDX_VERSION == "1.12.2"
     assert (
         native_module.RUSTDX_SOURCE_REV
@@ -181,7 +181,7 @@ def test_missing_native_bridge_is_isolated(monkeypatch):
     real_import = rustdx_client.importlib.import_module
 
     def missing(name):
-        if name == "tsp_rustdx_native":
+        if name == "lss_rustdx_native":
             raise ImportError("not installed")
         return real_import(name)
 

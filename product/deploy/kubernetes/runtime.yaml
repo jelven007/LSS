@@ -1,17 +1,17 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: tsp-product-runtime
+  name: lss-product-runtime
   namespace: banxia
 data:
   TZ: Asia/Shanghai
   MULTITENANCY_ENABLED: "true"
-  TSP_CELL_ID: production
-  TSP_CELL_SCHEMA_VERSION: "6"
-  TSP_CELL_POOL_SIZE: "8"
-  TSP_CELL_MARKET_URL: http://tsp-platform:3018
-  TSP_CELL_WEBHOOK_ORIGINS: '["https://shanao.asia"]'
-  TSP_COMPUTE_ADDRESS: tsp-compute:7000
+  LSS_CELL_ID: production
+  LSS_CELL_SCHEMA_VERSION: "6"
+  LSS_CELL_POOL_SIZE: "8"
+  LSS_CELL_MARKET_URL: http://lss-platform:3018
+  LSS_CELL_WEBHOOK_ORIGINS: '["https://shanao.asia"]'
+  LSS_COMPUTE_ADDRESS: lss-compute:7000
   DATA_DIR: /state/public/current
   PLATFORM_CONFIG_DIR: /state/platform-config
   TENANT_ARTIFACTS_DIR: /state/tenant-artifacts
@@ -28,13 +28,13 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: tsp-product
+  name: lss-product
   namespace: banxia
   labels:
-    app: tsp-product
+    app: lss-product
 spec:
   selector:
-    app: tsp-product
+    app: lss-product
   ports:
     - name: http
       port: 80
@@ -43,10 +43,10 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: tsp-product
+  name: lss-product
   namespace: banxia
   labels:
-    app: tsp-product
+    app: lss-product
 spec:
   replicas: 2
   strategy:
@@ -56,11 +56,11 @@ spec:
       maxSurge: 1
   selector:
     matchLabels:
-      app: tsp-product
+      app: lss-product
   template:
     metadata:
       labels:
-        app: tsp-product
+        app: lss-product
         component: web
     spec:
       serviceAccountName: banxia-workload
@@ -75,7 +75,7 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: wait-for-platform-and-schema
-          image: tsp-product-runtime:v0.5.1
+          image: lss-product-runtime:v0.5.1
           command: [/bin/sh, -ec]
           args:
             - |
@@ -86,7 +86,7 @@ spec:
 
               import psycopg
 
-              dsn = os.environ["TSP_CELL_CONTROL_DSN"]
+              dsn = os.environ["LSS_CELL_CONTROL_DSN"]
               marker = Path("/state/public/current/.public_release.json")
               for attempt in range(180):
                   schema_ready = False
@@ -102,14 +102,14 @@ spec:
                   if schema_ready and marker.is_file():
                       raise SystemExit(0)
                   if attempt == 179:
-                      raise RuntimeError("TSP platform or database schema did not become ready")
+                      raise RuntimeError("LSS platform or database schema did not become ready")
                   time.sleep(5)
               PY
           envFrom:
             - configMapRef:
-                name: tsp-product-runtime
+                name: lss-product-runtime
             - secretRef:
-                name: tsp-product-secrets
+                name: lss-product-secrets
           volumeMounts:
             - name: state
               mountPath: /state
@@ -130,7 +130,7 @@ spec:
               memory: 256Mi
       containers:
         - name: api
-          image: tsp-product-runtime:v0.5.1
+          image: lss-product-runtime:v0.5.1
           command:
             - /app/.venv/bin/python
             - -m
@@ -180,9 +180,9 @@ spec:
                   key: BANXIA_CODE_COMMIT
           envFrom:
             - configMapRef:
-                name: tsp-product-runtime
+                name: lss-product-runtime
             - secretRef:
-                name: tsp-product-secrets
+                name: lss-product-secrets
             - configMapRef:
                 name: banxia-runtime
           ports:
@@ -230,7 +230,7 @@ spec:
       volumes:
         - name: state
           persistentVolumeClaim:
-            claimName: tsp-product-state
+            claimName: lss-product-state
         - name: tmp
           emptyDir:
             sizeLimit: 2Gi
@@ -238,24 +238,24 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: tsp-product
+  name: lss-product
   namespace: banxia
 spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app: tsp-product
+      app: lss-product
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: tsp-product
+  name: lss-product
   namespace: banxia
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: tsp-product
+    name: lss-product
   minReplicas: 2
   maxReplicas: 4
   metrics:

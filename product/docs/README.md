@@ -1,18 +1,18 @@
 # LSS 产品文档中心
 
-当前应用版本为 `0.5.1`。源码、远程主线、候选标签和生产部署的准确状态统一见
+应用语义版本为 `0.5.1`。源码、远程主线、候选标签和生产部署的准确状态统一见
 [版本基线](./version-baseline.md)。代码、测试和运行清单是最终事实来源。
 
 生产环境使用 `deploy/kubernetes/` 与仓库根目录 VKE overlay：
 
-- `tsp-product` 提供 React、FastAPI、SSE、RBAC 和内嵌 Policy。
-- `tsp-task-worker` 负责研究、监控、模拟盘、通知和计划任务。
+- `lss-product` 提供 React、FastAPI、SSE、RBAC 和内嵌 Policy。
+- `lss-task-worker` 负责研究、监控、模拟盘、通知和计划任务。
 - `report-scheduler` 处理 Policy 报告队列与定时报告。
 - `market-collector` 通过 rustdx 采集，并以 SQLite WAL 保证可恢复处理。
-- `tsp-compute` 是无业务密钥、禁止出网的独立计算 Pod。
+- `lss-compute` 是无业务密钥、禁止出网的独立计算 Pod。
 - PostgreSQL 三库隔离，ClickHouse 保存行情，Redis 保存实时投影，TOS 保存归档和报告。
 
-Kafka、Flink、自建 MinIO、独立 Policy API、独立 SSE Gateway、独立 TSP PostgreSQL
+Kafka、Flink、自建 MinIO、独立 Policy API、独立 SSE Gateway、独立 LSS PostgreSQL
 和 Pod 内 DinD 已退出当前生产。完整单机 Compose 与历史多租户方案只用于兼容、
 隔离验证或回溯，不代表 `shanao.asia` 当前拓扑。
 

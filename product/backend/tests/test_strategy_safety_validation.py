@@ -120,18 +120,18 @@ def test_all_shipped_builtin_strategies_pass():
 
 
 @pytest.mark.parametrize("code", [
-    "import polars as pl\nhandle = pl._tsp_probe_module",
-    "from polars import _tsp_probe_module as handle",
+    "import polars as pl\nhandle = pl._lss_probe_module",
+    "from polars import _lss_probe_module as handle",
 ])
 def test_module_handles_follow_loaded_library_namespace(monkeypatch, code):
-    monkeypatch.setattr(pl, "_tsp_probe_module", ModuleType("probe"), raising=False)
+    monkeypatch.setattr(pl, "_lss_probe_module", ModuleType("probe"), raising=False)
     monkeypatch.setattr(ai_generator, "_MODULE_ATTR_CACHE", {}, raising=False)
     with pytest.raises(ValueError, match="模块对象"):
         AIStrategyGenerator._validate_safety(code)
 
 
 def test_dependency_probe_does_not_import_user_named_module(monkeypatch):
-    module_name = "_tsp_unloaded_strategy_helper"
+    module_name = "_lss_unloaded_strategy_helper"
     assert module_name not in sys.modules
     import_module = Mock(side_effect=AssertionError("校验不得执行用户模块"))
     monkeypatch.setattr(ai_generator, "importlib", SimpleNamespace(import_module=import_module),
@@ -226,7 +226,7 @@ def test_engine_fails_closed_on_validation_errors(tmp_path, monkeypatch, target,
 
 
 def test_safe_typed_dependency_still_loads_and_filters(tmp_path):
-    (tmp_path / "_tsp_safe_helper.py").write_text(
+    (tmp_path / "_lss_safe_helper.py").write_text(
         "from collections.abc import Mapping\n"
         "from types import SimpleNamespace\n"
         "from typing import Any\n"
@@ -236,7 +236,7 @@ def test_safe_typed_dependency_still_loads_and_filters(tmp_path):
     )
     path = tmp_path / "custom_safe.py"
     path.write_text(
-        _code("from _tsp_safe_helper import threshold\n")
+        _code("from _lss_safe_helper import threshold\n")
         .replace("return pl.lit(True)", 'return pl.col("close") > threshold(params)'),
         encoding="utf-8",
     )
@@ -245,7 +245,7 @@ def test_safe_typed_dependency_still_loads_and_filters(tmp_path):
         df = pl.DataFrame({"close": [1.0, 3.0]})
         assert df.filter(strategy.filter_fn(df, {"min": 2}))["close"].to_list() == [3.0]
     finally:
-        sys.modules.pop("_tsp_safe_helper", None)
+        sys.modules.pop("_lss_safe_helper", None)
         sys.modules.pop("custom_safe", None)
 
 

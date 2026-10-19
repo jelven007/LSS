@@ -2,7 +2,7 @@
 
 ## 1. 范围与状态
 
-公网只暴露统一 TSP FastAPI。浏览器业务接口使用 `/api/*`，Policy 领域通过固定白名单
+公网只暴露统一 LSS FastAPI。浏览器业务接口使用 `/api/*`，Policy 领域通过固定白名单
 `/api/policy/*` 访问同进程的 `/api/v1/*`，后者不是独立公网服务。运行时完整契约由
 `/api/openapi.json` 生成；仓库 [OpenAPI](openapi.yaml) 保存 Policy 核心接口快照。
 Kafka AsyncAPI 已随生产消息总线退役删除。
@@ -351,7 +351,7 @@ SSE 不是权威存储。客户端重连时先调用普通查询，再使用 `La
 
 ## 8. 统一 Policy Facade
 
-公网 Web 不直接暴露 Policy `/api/v1`。以下同源接口由统一 TSP 会话和权限层保护，
+公网 Web 不直接暴露 Policy `/api/v1`。以下同源接口由统一 LSS 会话和权限层保护，
 再通过 ASGI Transport 调用同进程 Policy 模块。
 
 | 方法 | 统一路径 | 内嵌 Policy 路径 | 权限 |
@@ -367,8 +367,8 @@ Facade 只允许固定白名单。日期必须为 `YYYY-MM-DD`，任务 ID、股
 
 ### 8.1 错误语义
 
-- TSP 会话无效：返回 `401/403`，由统一账户流程处理。
-- 内嵌 Policy 初始化失败：返回 `503`，不得触发 TSP 退出登录。
+- LSS 会话无效：返回 `401/403`，由统一账户流程处理。
+- 内嵌 Policy 初始化失败：返回 `503`，不得触发 LSS 退出登录。
 - Policy 数据依赖不可达：返回对应 `5xx`，次日计划和当日实盘保留默认界面。
 - 只读请求使用静默错误模式，不弹全局依赖 Toast；页面内提供同步状态与重试。
 
@@ -376,7 +376,7 @@ Facade 只允许固定白名单。日期必须为 `YYYY-MM-DD`，任务 ID、股
 
 - 浏览器请求、HTML、JavaScript、日志和错误正文不得包含数据服务凭据。
 - Policy 不创建独立 Service 或公网 Ingress。
-- 报告刷新必须通过 TSP `data:manage` 权限校验。
+- 报告刷新必须通过 LSS `data:manage` 权限校验。
 
 ## 9. 账户启动状态
 

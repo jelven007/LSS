@@ -12,7 +12,7 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react'
 import { useVersion } from '@/lib/useSharedQueries'
 
 // 检查更新的目标仓库 (Release 清单来源)。
-const UPDATE_REPO = 'jelven007/TSP'
+const UPDATE_REPO = 'jelven007/LSS'
 const CACHE_KEY = 'update_check_cache'
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000
 

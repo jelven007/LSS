@@ -4,7 +4,7 @@
 [精简生产架构](../../docs/36-lean-architecture-v0.5.1.md)，实际部署状态见
 [版本基线](./version-baseline.md)。
 
-历史 Gateway、四个独立 TSP Worker、独立 TSP PostgreSQL、Policy HTTP Bridge 和
+历史 Gateway、四个独立 LSS Worker、独立 LSS PostgreSQL、Policy HTTP Bridge 和
 Pod 内 DinD 已退出生产。完整单机 Compose 和相关阶段报告只用于兼容与历史回溯。
 
 ## 1. 总体拓扑
@@ -12,14 +12,14 @@ Pod 内 DinD 已退出生产。完整单机 Compose 和相关阶段报告只用�
 ```text
 浏览器
   -> ALB / HTTPS
-  -> tsp-product：React + FastAPI + SSE + RBAC
+  -> lss-product：React + FastAPI + SSE + RBAC
        -> 内嵌 Policy ASGI
        -> PostgreSQL / ClickHouse / Redis
 
 rustdx -> market-collector -> SQLite WAL
                            -> ClickHouse / PostgreSQL / Redis
 
-PostgreSQL -> tsp-task-worker -> tsp-compute
+PostgreSQL -> lss-task-worker -> lss-compute
 PostgreSQL -> report-scheduler -> TOS
 ClickHouse -> market-archive   -> TOS
 ```
@@ -38,11 +38,11 @@ ClickHouse -> market-archive   -> TOS
 
 | 工作负载 | 副本 | 职责 |
 | --- | ---: | --- |
-| `tsp-product` | HPA 2～4 | React、统一 API、账户、租户、SSE 和 Policy 门面 |
-| `tsp-task-worker` | 1 | 研究、监控、模拟盘、通知和计划任务 |
+| `lss-product` | HPA 2～4 | React、统一 API、账户、租户、SSE 和 Policy 门面 |
+| `lss-task-worker` | 1 | 研究、监控、模拟盘、通知和计划任务 |
 | `report-scheduler` | 1 | Policy 报告队列、历史生成、定时报告和补跑 |
-| `tsp-platform` | 1 | 公共行情版本、平台配置和只读行情服务 |
-| `tsp-compute` | 1 | 回测、优化和研究计算 |
+| `lss-platform` | 1 | 公共行情版本、平台配置和只读行情服务 |
+| `lss-compute` | 1 | 回测、优化和研究计算 |
 | `market-collector` | 2，租约单活 | rustdx 采集、WAL、特征、决策和投影 |
 | `market-reference-sync` | 1 | 证券、板块、行业和交易日参考数据 |
 | `intraday-monitor` | 1 | 盘中状态、规则评估和告警指标 |
@@ -56,8 +56,8 @@ ClickHouse -> market-archive   -> TOS
 | 数据域 | 权威存储 |
 | --- | --- |
 | Policy 策略、计划、任务、审计 | PostgreSQL `banxia` |
-| 身份、租户、角色、会话 | PostgreSQL `tsp_control` |
-| 自选、TSP 策略、回测、复盘、设置 | PostgreSQL `tsp_data_production` |
+| 身份、租户、角色、会话 | PostgreSQL `lss_control` |
+| 自选、LSS 策略、回测、复盘、设置 | PostgreSQL `lss_data_production` |
 | 盘口、分钟线、特征、历史行情 | ClickHouse |
 | 最新行情、决策和 SSE 投影 | Redis |
 | 报告、研究资产、原始归档 | 火山引擎 TOS |
@@ -69,7 +69,7 @@ ClickHouse -> market-archive   -> TOS
 
 ## 4. 请求与任务
 
-- `/api/*` 由 `tsp-product` 统一完成 Cookie 认证、RBAC、限流和响应。
+- `/api/*` 由 `lss-product` 统一完成 Cookie 认证、RBAC、限流和响应。
 - `/api/policy/*` 在统一权限层校验后转入同进程 Policy `/api/v1/*`。
 - SSE 使用短期票据；私有事件先持久化，再通过通知和游标补扫恢复。
 - API 只登记持久任务，Task Worker 与 Report Scheduler 负责领取、租约和终态。

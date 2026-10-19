@@ -7,15 +7,15 @@
 
 ### Changed
 
-- TSP 与 Policy 合并为单一 Web/API 入口，Policy 改为进程内 ASGI 调用。
+- LSS 与 Policy 合并为单一 Web/API 入口，Policy 改为进程内 ASGI 调用。
 - 实时行情、特征、策略和投影收敛为带 SQLite WAL 的 `market-worker`。
-- TSP 研究、实时、通知和定时任务收敛为统一 `task-worker`。
-- `tsp-task-worker` 独立部署，API 的 HPA 不再复制后台任务进程。
+- LSS 研究、实时、通知和定时任务收敛为统一 `task-worker`。
+- `lss-task-worker` 独立部署，API 的 HPA 不再复制后台任务进程。
 - Policy `report-scheduler` 常驻消费页面刷新和历史任务，取代重复的报告 CronJob。
 - Market Worker 直接加载数据库监控计划，不依赖本地报告文件。
-- Policy 与 TSP 共享一个 PostgreSQL 集群，控制库和业务库使用独立运行角色。
+- Policy 与 LSS 共享一个 PostgreSQL 集群，控制库和业务库使用独立运行角色。
 - 对象归档切换到火山引擎 TOS，生产清单不再部署 MinIO 和 Policy 报告 NAS。
-- 计算从特权 DinD 迁移到无密钥、禁止出网的独立 `tsp-compute` Pod。
+- 计算从特权 DinD 迁移到无密钥、禁止出网的独立 `lss-compute` Pod。
 - Policy 原生桥接统一使用 crates.io 固定版 `jelven-rustdx-complete 1.12.2`，镜像构建
   不再依赖 GitHub 读取凭据。
 
@@ -30,8 +30,8 @@
 
 ### Removed
 
-- VKE 生产拓扑中的 Kafka、Flink、独立 Policy API、独立 TSP PostgreSQL、SSE Gateway
-  以及四个独立 TSP Worker 容器。
+- VKE 生产拓扑中的 Kafka、Flink、独立 Policy API、独立 LSS PostgreSQL、SSE Gateway
+  以及四个独立 LSS Worker 容器。
 - Kafka/Flink 源码、依赖、本地服务、旧 Worker 入口与无效部署补丁。
 - 品牌风格预览、开发演示页、演示数据与强制预警接口、第三方开源发布监控。
 
@@ -46,17 +46,17 @@
 
 ### Added
 
-- 导入 TSP `0.4.8` Web 产品主干，形成完整 React/FastAPI 多租户产品。
+- 导入 LSS `0.4.8` Web 产品主干，形成完整 React/FastAPI 多租户产品。
 - 新增首页、自选、策略、次日计划、当日实盘、复盘、回测、个股分析、设置九项菜单。
 - 新增服务端 Policy Bridge，浏览器不接触 Policy Token。
 - 新增注册、登录、找回密码、RBAC、租户隔离和预置管理员初始化。
-- 新增火山引擎 VKE 的 TSP PostgreSQL、平台、API、Gateway、Worker 和隔离计算部署。
+- 新增火山引擎 VKE 的 LSS PostgreSQL、平台、API、Gateway、Worker 和隔离计算部署。
 
 ### Changed
 
 - 桌面侧栏默认展开并支持图标栏收缩；移动端抽屉不遮挡页面标题。
 - 次日计划和当日实盘先展示默认功能，依赖失败降级为页面内状态，不阻断路由。
-- `shanao.asia` 入口切换到 TSP Web，Policy API 转为集群内桥接服务。
+- `shanao.asia` 入口切换到 LSS Web，Policy API 转为集群内桥接服务。
 - Policy 全部业务工作负载使用同一 `v0.5.0` 主线镜像重建。
 
 ### Removed
@@ -67,6 +67,6 @@
 ### Verification
 
 - Policy Python 测试、基础设施渲染测试。
-- TSP 前端 200 项测试、TypeScript、ESLint 和生产构建。
+- LSS 前端 200 项测试、TypeScript、ESLint 和生产构建。
 - Policy Bridge 11 项后端测试。
 - VKE Kustomize 渲染、服务端 dry-run、滚动部署和公网健康验收。

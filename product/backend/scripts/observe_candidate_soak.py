@@ -36,7 +36,7 @@ DEFAULT_ENDPOINTS = (
     "platform=http://127.0.0.1:3028/health/ready",
     "gateway=http://127.0.0.1:3031/health/ready",
 )
-DEFAULT_CONTAINERS = ("tsp-local-api", "tsp-local-broker", "tsp-pg")
+DEFAULT_CONTAINERS = ("lss-local-api", "lss-local-broker", "lss-pg")
 DOCKER_SOCKET = Path("/var/run/docker.sock")
 
 

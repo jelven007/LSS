@@ -29,11 +29,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_APP_NAME = "TSP"
+_APP_NAME = "LSS"
 _BASE_PORT = 3018
 _PORT_PROBE_RANGE = 50  # 从 3018 起最多试 50 个端口
-_SMOKE_TEST_ENV = "TSP_DESKTOP_SMOKE_TEST"
-_GUI_SMOKE_TEST_ENV = "TSP_DESKTOP_GUI_SMOKE_TEST"
+_SMOKE_TEST_ENV = "LSS_DESKTOP_SMOKE_TEST"
+_GUI_SMOKE_TEST_ENV = "LSS_DESKTOP_GUI_SMOKE_TEST"
 _GUI_SMOKE_TIMEOUT_SECONDS = 90.0
 _GUI_SMOKE_RENDER_TIMEOUT_SECONDS = 30.0
 _GUI_SMOKE_POLL_INTERVAL_SECONDS = 0.5
@@ -74,14 +74,14 @@ def _report_debug_event(
     data: dict[str, Any] | None = None,
 ) -> None:
     """Temporary network-only instrumentation for windows10-white-screen."""
-    debug_url = os.getenv("TSP_DEBUG_SERVER_URL", "").strip()
+    debug_url = os.getenv("LSS_DEBUG_SERVER_URL", "").strip()
     if not debug_url:
         return
 
     payload = json.dumps(
         {
             "sessionId": "windows10-white-screen",
-            "runId": os.getenv("TSP_DEBUG_RUN_ID", "pre-fix"),
+            "runId": os.getenv("LSS_DEBUG_RUN_ID", "pre-fix"),
             "hypothesisId": hypothesis_id,
             "location": location,
             "msg": f"[DEBUG] {message}",
@@ -766,7 +766,7 @@ def main() -> int:
         # 必须排在 KeyboardInterrupt 之后 —— Exception 是基类, 在前会遮蔽它。
         logger.exception("桌面客户端启动失败")
         if not automated_test:
-            _show_crash("TSP 启动失败", traceback.format_exc())
+            _show_crash("LSS 启动失败", traceback.format_exc())
         return 1
     finally:
         if server_thread is not None:

@@ -41,10 +41,10 @@ PASSWORD = "full-tenant-password"
 
 @pytest.fixture(scope="module")
 def full_cluster():
-    dsn = os.environ.get("TSP_TEST_POSTGRES_DSN")
+    dsn = os.environ.get("LSS_TEST_POSTGRES_DSN")
     if not dsn:
         pytest.skip("requires a disposable PostgreSQL server")
-    prefix = "tsp_full_" + uuid.uuid4().hex[:12]
+    prefix = "lss_full_" + uuid.uuid4().hex[:12]
     dbnames = [prefix + "_control", prefix + "_data"]
     role_names = [prefix + "_identity", prefix + "_business"]
     with psycopg.connect(dsn, autocommit=True, row_factory=dict_row) as root:
@@ -632,10 +632,10 @@ def test_original_watchlist_api_is_tenant_scoped_without_using_global_files(env,
         response = client.post("/api/watchlist", json={"symbol": "000001.SZ", "group_id": group["id"]})
         assert response.status_code == 200, response.text
         assert response.json()["symbols"][0]["name"] == "平安银行"
-        scope = client.get("/api/watchlist").headers["x-tsp-account-scope"]
-        assert scope.startswith("tsp-v1:")
+        scope = client.get("/api/watchlist").headers["x-lss-account-scope"]
+        assert scope.startswith("lss-v1:")
         client.cookies.set("tf_session", other_token)
-        assert client.get("/api/watchlist", headers={"X-TSP-Account-Scope": scope}).status_code == 401
+        assert client.get("/api/watchlist", headers={"X-LSS-Account-Scope": scope}).status_code == 401
         assert client.get("/api/watchlist", params={"account_scope": scope}).status_code == 401
         assert client.get("/api/watchlist").json() == {"symbols": []}
         assert client.get("/api/watchlist/groups").json() == {"groups": []}

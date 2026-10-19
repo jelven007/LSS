@@ -1,14 +1,14 @@
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: tsp-nas-rwx
+  name: lss-nas-rwx
 provisioner: nas.csi.volcengine.com
 parameters:
   fsId: enas-cnsha08273a84410dd
   server: cnsha08273a84410dd.vpc-1pm13zlt8zq4g643rfzcpm2z8.nas.ivolces.com
   fsType: nfs
   volumeAs: subpath
-  subPath: /banxia/tsp-product
+  subPath: /banxia/lss-product
   archiveOnDelete: "true"
 mountOptions:
   - nolock

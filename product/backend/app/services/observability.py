@@ -32,7 +32,7 @@ def current_request_id() -> str:
 def install_log_record_factory() -> None:
     """Inject ``request_id`` into every log record without changing call sites."""
     previous_factory = logging.getLogRecordFactory()
-    if getattr(previous_factory, "_tsp_request_id_factory", False):
+    if getattr(previous_factory, "_lss_request_id_factory", False):
         return
 
     def record_factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
@@ -40,7 +40,7 @@ def install_log_record_factory() -> None:
         record.request_id = current_request_id()
         return record
 
-    record_factory._tsp_request_id_factory = True  # type: ignore[attr-defined]
+    record_factory._lss_request_id_factory = True  # type: ignore[attr-defined]
     logging.setLogRecordFactory(record_factory)
 
 

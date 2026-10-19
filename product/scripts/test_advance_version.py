@@ -104,7 +104,7 @@ def test_updates_all_current_sources_without_rewriting_history(repository):
     assert history.read_text() == f"Verified {previous}\n"
     assert f"应用语义版本为 `{expected}`" in after["README.md"].decode()
     assert f"适用版本：{expected}" in after["操作说明书.md"].decode()
-    assert f"# TSP v{expected} 需求基线" in after["docs/requirements.md"].decode()
+    assert f"# LSS v{expected} 需求基线" in after["docs/requirements.md"].decode()
 
 
 @pytest.mark.parametrize(

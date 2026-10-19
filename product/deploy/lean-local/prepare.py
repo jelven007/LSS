@@ -81,8 +81,8 @@ def main() -> None:
         "LEAN_STATE_DIR": str(state),
         "LEAN_WEB_PORT": str(args.port),
         "POLICY_IMAGE": "banxia-strategy:lean-cleanup",
-        "TSP_RUNTIME_IMAGE": "tsp-product-runtime:lean-cleanup",
-        "TSP_COMPUTE_IMAGE": "tsp-product-compute:lean-cleanup",
+        "LSS_RUNTIME_IMAGE": "lss-product-runtime:lean-cleanup",
+        "LSS_COMPUTE_IMAGE": "lss-product-compute:lean-cleanup",
         "POSTGRES_USER": "banxia",
         "POSTGRES_DB": "banxia",
         "POSTGRES_PASSWORD": passwords["postgres"],
@@ -94,26 +94,26 @@ def main() -> None:
         "MINIO_API_PORT": "39002",
         "MINIO_CONSOLE_PORT": "39001",
         "MINIO_ROOT_PASSWORD": passwords["object"],
-        "TSP_CONTROL_RUNTIME_PASSWORD": passwords["control"],
-        "TSP_DATA_RUNTIME_PASSWORD": passwords["data"],
+        "LSS_CONTROL_RUNTIME_PASSWORD": passwords["control"],
+        "LSS_DATA_RUNTIME_PASSWORD": passwords["data"],
         "BANXIA_CODE_COMMIT": commit,
     }
     write_env(state / "compose.env", compose)
     write_env(state / "admin.env", {
-        "TSP_CONTROL_ADMIN_DSN": f"postgresql://banxia:{passwords['postgres']}@postgres/tsp_control",
-        "TSP_DATA_ADMIN_DSN": f"postgresql://banxia:{passwords['postgres']}@postgres/tsp_data_local",
+        "LSS_CONTROL_ADMIN_DSN": f"postgresql://banxia:{passwords['postgres']}@postgres/lss_control",
+        "LSS_DATA_ADMIN_DSN": f"postgresql://banxia:{passwords['postgres']}@postgres/lss_data_local",
     })
     platform = {
-        "TSP_PLATFORM_MARKET_TOKEN": passwords["platform_market"],
-        "TSP_PLATFORM_ADMIN_TOKEN": passwords["platform_admin"],
+        "LSS_PLATFORM_MARKET_TOKEN": passwords["platform_market"],
+        "LSS_PLATFORM_ADMIN_TOKEN": passwords["platform_admin"],
     }
     write_env(state / "platform.env", platform)
     write_env(state / "runtime.env", {
         **platform,
-        "TSP_CELL_CONTROL_DSN": f"postgresql://tsp_control_runtime:{passwords['control']}@postgres/tsp_control",
-        "TSP_CELL_DATA_DSN": f"postgresql://tsp_data_runtime:{passwords['data']}@postgres/tsp_data_local",
-        "TSP_CELL_MARKET_TOKEN": passwords["platform_market"],
-        "TSP_CELL_STREAM_TICKET_SECRET": passwords["stream"],
+        "LSS_CELL_CONTROL_DSN": f"postgresql://lss_control_runtime:{passwords['control']}@postgres/lss_control",
+        "LSS_CELL_DATA_DSN": f"postgresql://lss_data_runtime:{passwords['data']}@postgres/lss_data_local",
+        "LSS_CELL_MARKET_TOKEN": passwords["platform_market"],
+        "LSS_CELL_STREAM_TICKET_SECRET": passwords["stream"],
     })
     write_env(state / "policy.env", {
         "BANXIA_ENVIRONMENT": "local-lean-test",

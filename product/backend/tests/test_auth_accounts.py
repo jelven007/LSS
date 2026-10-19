@@ -353,7 +353,7 @@ def test_password_recovery_requires_secret_and_code_and_revokes_sessions(
     )
     assert sent.status_code == 200
     assert sent.json()["cooldown_seconds"] == 60
-    assert deliveries == [("owner@example.com", "TSP 密码找回验证码")]
+    assert deliveries == [("owner@example.com", "LSS 密码找回验证码")]
 
     rejected_reset = client.post(
         "/api/auth/recovery/reset",

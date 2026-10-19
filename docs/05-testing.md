@@ -19,10 +19,10 @@
 | 范围 | 结果 |
 | --- | --- |
 | Policy | 394 项：369 通过、25 项按环境跳过 |
-| TSP 精简架构定向 | Policy Facade、Task Worker、Compute、扩展与健康 46 项通过 |
-| TSP 身份与工作空间 | 真实隔离 PostgreSQL 23 项通过 |
+| LSS 精简架构定向 | Policy Facade、Task Worker、Compute、扩展与健康 46 项通过 |
+| LSS 身份与工作空间 | 真实隔离 PostgreSQL 23 项通过 |
 | Compute | 9 项通过，实际 Pod 策略描述成功 |
-| TSP 前端 | 42 个测试文件、180 项通过 |
+| LSS 前端 | 42 个测试文件、180 项通过 |
 | 静态制品 | TypeScript、ESLint、Vite 构建和首页引用资源检查通过 |
 | TOS/SMTP 新增源码 | 归档 8 项、配置安全 5 项、相关存储/邮件回归通过 |
 | Kustomize | 可渲染、server dry-run 通过，无特权容器和已退出组件 |
@@ -43,7 +43,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 ruff check src tests
 ```
 
-TSP 后端定向门禁：
+LSS 后端定向门禁：
 
 ```bash
 cd product/backend
@@ -130,10 +130,10 @@ kubectl kustomize --load-restrictor LoadRestrictionsNone \
 ### PostgreSQL
 
 - 三个数据库可从空集群初始化。
-- TSP 两个运行角色不能跨库越权或执行 DDL。
+- LSS 两个运行角色不能跨库越权或执行 DDL。
 - Schema 迁移幂等，失败不会留下半完成版本。
 - Inbox、状态、事件和 Outbox 原子提交。
-- 旧 TSP 双库迁移前后表数、行数和关键记录一致。
+- 旧 LSS 双库迁移前后表数、行数和关键记录一致。
 
 ### ClickHouse
 
@@ -211,9 +211,9 @@ kubectl kustomize --load-restrictor LoadRestrictionsNone \
 
 渲染结果必须满足：
 
-- 仅有统一 `tsp-product` 公网入口。
-- 存在 `market-worker`、`task-worker` 和 `tsp-compute`。
-- 不包含 Kafka、Flink、MinIO、独立 Policy API、独立 Gateway 或旧 TSP PostgreSQL。
+- 仅有统一 `lss-product` 公网入口。
+- 存在 `market-worker`、`task-worker` 和 `lss-compute`。
+- 不包含 Kafka、Flink、MinIO、独立 Policy API、独立 Gateway 或旧 LSS PostgreSQL。
 - 不包含 `privileged: true` 或宿主机 Docker Socket。
 - Compute 无 Secret、禁止出网、只读根文件系统。
 - 所有镜像无占位符并固定 Registry Digest。

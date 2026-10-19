@@ -14,7 +14,7 @@ GitHub `main` 与候选标签已同步，未完成业务项仍不算通过。
 - 同步需求、方案、开发、测试、运维与版本规则。
 - 线上作为新环境安装，删除旧业务数据和应用凭据，不恢复旧用户、策略或报告。
   VKE 系统、镜像拉取认证和域名入口基础设施继续作为安装通道。
-- TSP 从共享 PostgreSQL 创建三库、双运行角色和 schema v6，首次创建管理员。
+- LSS 从共享 PostgreSQL 创建三库、双运行角色和 schema v6，首次创建管理员。
 
 ## 制品
 
@@ -34,17 +34,17 @@ Policy 制品复用本轮已构建且未变更的源码。部署使用 Digest，
 ## 已核验状态
 
 - 本轮开始时：功能分支为 `844f4ef`，远程 `main` 为 `d9fb82f`。
-- 本轮开始时线上是旧 v0.5.0 拓扑，TSP 数据库 CrashLoop，公网返回 503。
+- 本轮开始时线上是旧 v0.5.0 拓扑，LSS 数据库 CrashLoop，公网返回 503。
 - 中间部署提交曾为 `fe1d4ae9122b54e11a096149e334c55a7b076125`；本次最终主线已推进
   到 `132db778c03b5e4d724afd510c63d269c7764211`，并在文末核对远程仓库。
 - 旧应用工作负载、应用 Secret 和 10 个 PVC 已删除；EBS PV 改为 Delete 回收。
   新 PostgreSQL、ClickHouse、Redis 及三个 EBS 卷已创建并 Ready。
-- 新应用凭据已生成，Policy Schema 与 TSP 双库角色初始化 Job 均 Complete。
-- 新 `tsp-product-state` PVC 已绑定；清空 Job Complete，
+- 新应用凭据已生成，Policy Schema 与 LSS 双库角色初始化 Job 均 Complete。
+- 新 `lss-product-state` PVC 已绑定；清空 Job Complete，
   `Fresh NAS state verified empty` 检查通过。
 - 三个镜像已按 amd64 构建和推送；最终 API 两副本、Platform、Task Worker 和
   Compute 均完成滚动并 Ready。Web 初版快照阻塞、静态资源缺失已修复。
-- TSP schema v6、管理员与 22 项内置策略初始化成功；初始化 Job 的 HOME 和 Numba
+- LSS schema v6、管理员与 22 项内置策略初始化成功；初始化 Job 的 HOME 和 Numba
   缓存统一使用可写 `/tmp`，避免非 root 加载策略模块失败。
 - 集群没有 `BANXIA_OBJECT_ACCESS_KEY/SECRET_KEY`，TOS 授权待配置。
 - SMTP 未配置；邮件注册验证码和找回密码未验收。
@@ -57,7 +57,7 @@ Policy 制品复用本轮已构建且未变更的源码。部署使用 Digest，
 ## 验证
 
 - Policy：394 项，369 通过、25 项按环境跳过。
-- TSP：Policy Facade、Task Worker、Compute、扩展与健康定向 46 项通过。
+- LSS：Policy Facade、Task Worker、Compute、扩展与健康定向 46 项通过。
 - 版本检查：`valid application version: 0.5.1`。
 - 前端生产构建通过，2,870 个模块；TypeScript `tsc -b` 通过。
   本机 Node 使用锁定版本的 Darwin 原生依赖完成构建。此前助手状态测试超时，

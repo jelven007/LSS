@@ -1,4 +1,4 @@
-# TSP Web 产品 VKE 部署
+# LSS Web 产品 VKE 部署
 
 本目录定义 `v0.5.1` 精简产品在火山引擎 VKE 的生产资源，并由根目录
 `deploy/kubernetes/overlays/volcengine/` 统一渲染。公网入口继续使用
@@ -7,20 +7,20 @@
 
 ## 拓扑
 
-- `postgres`：Policy、TSP 控制库和 TSP 业务库共享的 PostgreSQL 集群。
-- `tsp-platform`：行情平台与公共只读版本发布，使用独立 NAS RWX 状态卷。
-- `tsp-product`：统一 Web/API，HPA 2～4 副本滚动发布。
-- `tsp-task-worker`：独立后台任务，1 副本 Recreate；API 扩容不复制任务进程。
+- `postgres`：Policy、LSS 控制库和 LSS 业务库共享的 PostgreSQL 集群。
+- `lss-platform`：行情平台与公共只读版本发布，使用独立 NAS RWX 状态卷。
+- `lss-product`：统一 Web/API，HPA 2～4 副本滚动发布。
+- `lss-task-worker`：独立后台任务，1 副本 Recreate；API 扩容不复制任务进程。
 - `report-scheduler`：根部署中的常驻 Policy 调度，处理刷新队列、历史生成和定时报告。
-- `tsp-compute`：独立计算服务，无业务 Secret、禁止出网、只读公共行情。
+- `lss-compute`：独立计算服务，无业务 Secret、禁止出网、只读公共行情。
 
 ## Secret
 
 真实密钥不得提交仓库。以 [`secrets.example.yaml`](secrets.example.yaml) 为字段契约，
 在集群中创建：
 
-- `tsp-product-admin`：TSP 双库运行密码和共享 PostgreSQL 管理员 DSN。
-- `tsp-product-secrets`：运行时双库 DSN、平台 Token、流票据密钥和 SMTP。
+- `lss-product-admin`：LSS 双库运行密码和共享 PostgreSQL 管理员 DSN。
+- `lss-product-secrets`：运行时双库 DSN、平台 Token、流票据密钥和 SMTP。
 - `banxia-registry`：火山引擎 CR 拉取凭据。
 
 全新安装重新生成应用凭据，不继承旧 SMTP。配置邮件服务时，端口 `465` 使用 `ssl`，
@@ -55,21 +55,21 @@ kubectl apply --server-side --force-conflicts --dry-run=server -f /tmp/banxia-vk
 ```
 
 本次生产按全新环境安装：停止旧应用、清空授权范围内的业务卷和 NAS 目录、
-重建应用 Secret，再应用新资源。从空 PostgreSQL 创建三库和两个 TSP 运行角色，
+重建应用 Secret，再应用新资源。从空 PostgreSQL 创建三库和两个 LSS 运行角色，
 随后执行 schema v6 与管理员初始化；不运行旧数据库迁移 Job。
 详见[全新安装流程](../../../docs/06-deployment-operations.md#4-本次全新安装)。
 
 需要保留数据的后续升级，先从完整渲染结果中只应用数据库 Bootstrap：
 
 ```bash
-kubectl apply -f /tmp/banxia-vke.yaml -l app=tsp-database-bootstrap
+kubectl apply -f /tmp/banxia-vke.yaml -l app=lss-database-bootstrap
 kubectl -n banxia wait \
-  --for=condition=complete job/tsp-database-bootstrap --timeout=15m
+  --for=condition=complete job/lss-database-bootstrap --timeout=15m
 ```
 
-再按 [`migrate-legacy-postgres.yaml`](migrate-legacy-postgres.yaml) 迁移旧 TSP 双库，
+再按 [`migrate-legacy-postgres.yaml`](migrate-legacy-postgres.yaml) 迁移旧 LSS 双库，
 完成数据核对后才能整包应用新清单。验证账户、租户和业务表后才能删除旧
-`tsp-postgres` StatefulSet；旧 PVC 必须继续保留。
+`lss-postgres` StatefulSet；旧 PVC 必须继续保留。
 先暂停旧 `report-worker-1630/2330` 并等待存量任务结束，再启用报告调度。
 清单删除不会自动删除集群旧对象，退役列表与回滚边界见
 [精简记录](../../../docs/37-production-simplification.md)。
@@ -78,12 +78,12 @@ kubectl -n banxia wait \
 
 ```bash
 kubectl -n banxia wait --for=condition=complete \
-  job/banxia-schema-migration job/tsp-database-bootstrap \
-  job/tsp-product-initialize --timeout=20m
-kubectl -n banxia rollout status deployment/tsp-platform --timeout=20m
-kubectl -n banxia rollout status deployment/tsp-compute --timeout=20m
-kubectl -n banxia rollout status deployment/tsp-product --timeout=30m
-kubectl -n banxia rollout status deployment/tsp-task-worker --timeout=20m
+  job/banxia-schema-migration job/lss-database-bootstrap \
+  job/lss-product-initialize --timeout=20m
+kubectl -n banxia rollout status deployment/lss-platform --timeout=20m
+kubectl -n banxia rollout status deployment/lss-compute --timeout=20m
+kubectl -n banxia rollout status deployment/lss-product --timeout=30m
+kubectl -n banxia rollout status deployment/lss-task-worker --timeout=20m
 kubectl -n banxia rollout status deployment/report-scheduler --timeout=20m
 kubectl -n banxia rollout status statefulset/market-collector --timeout=20m
 curl -fsS https://shanao.asia/health/ready

@@ -71,7 +71,7 @@ it('exchanges the browser session for a tenant event ticket', async () => {
   const [path, init] = fetch.mock.calls[0]
   expect(path).toBe('/api/events/ticket')
   expect(init?.method).toBe('POST')
-  expect(new Headers(init?.headers).get('X-TSP-Account-Scope')).toContain('tsp-v1:first:')
+  expect(new Headers(init?.headers).get('X-LSS-Account-Scope')).toContain('lss-v1:first:')
 })
 
 it('rejects external, login and forbidden redirects while retaining business links', async () => {

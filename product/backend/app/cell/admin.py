@@ -30,7 +30,7 @@ def migrate(
     if not role or role["rolsuper"] or role["rolbypassrls"]:
         raise ValueError("runtime role must already exist without superuser/BYPASSRLS")
     with conn.transaction():
-        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"tsp-migrate-{schema}",))
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"lss-migrate-{schema}",))
         exists = conn.execute("SELECT to_regclass(%s) AS relation", (f"{schema}.schema_version",)).fetchone()
         if not exists["relation"]:
             # Hash the same bytes the guard below re-reads. Decoding to text first
@@ -116,7 +116,7 @@ def bootstrap_full_identity(control) -> bool:
     """Offline, idempotent administrator initialization. Never reset a password."""
     salt, digest = hash_password("Admin123")
     with control.transaction():
-        control.execute("SELECT pg_advisory_xact_lock(hashtext('tsp-system-admin-bootstrap'))")
+        control.execute("SELECT pg_advisory_xact_lock(hashtext('lss-system-admin-bootstrap'))")
         existing = control.execute(
             "SELECT id FROM control.users WHERE username='admin' FOR UPDATE"
         ).fetchone()
@@ -228,7 +228,7 @@ def register_cell(conn, cell_id: str, api_url: str) -> None:
 def provision_tenant(control, data, tenant_id: str, name: str, cell_id: str, owner_id: str, realtime_units: int = 0) -> None:
     """Persist stable placement; leave failed provisioning in moving state for retry."""
     with control.transaction():
-        control.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"tsp-tenant-{tenant_id}",))
+        control.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"lss-tenant-{tenant_id}",))
         cell = control.execute(
             "SELECT tenant_limit,realtime_limit FROM control.cells WHERE id = %s AND status = 'active' FOR UPDATE", (cell_id,)
         ).fetchone()
@@ -583,22 +583,22 @@ def main() -> None:
     args = parser.parse_args()
     try:
         if args.command == "migrate":
-            variable = "TSP_CONTROL_ADMIN_DSN" if args.kind == "control" else "TSP_DATA_ADMIN_DSN"
+            variable = "LSS_CONTROL_ADMIN_DSN" if args.kind == "control" else "LSS_DATA_ADMIN_DSN"
             with connect_admin(variable) as conn:
                 migrate(
                     conn, args.kind, args.runtime_role, args.cell_id,
                     target_version=args.target_version,
                 )
         else:
-            with connect_admin("TSP_CONTROL_ADMIN_DSN") as control:
+            with connect_admin("LSS_CONTROL_ADMIN_DSN") as control:
                 if args.command == "bootstrap-full-identity":
                     print(json.dumps({"created": bootstrap_full_identity(control)}))
                 elif args.command == "bootstrap-full-workspace":
-                    with connect_admin("TSP_DATA_ADMIN_DSN") as data:
+                    with connect_admin("LSS_DATA_ADMIN_DSN") as data:
                         tenant_id = bootstrap_full_workspace(control, data, args.cell_id)
                         print(json.dumps({"tenant_id": tenant_id}))
                 elif args.command == "create-user":
-                    password = os.environ.get("TSP_BOOTSTRAP_PASSWORD") or getpass("Password: ")
+                    password = os.environ.get("LSS_BOOTSTRAP_PASSWORD") or getpass("Password: ")
                     print(json.dumps({"user_id": add_user(control, args.email, password)}))
                 elif args.command == "register-cell":
                     register_cell(control, args.cell_id, args.api_url)
@@ -613,7 +613,7 @@ def main() -> None:
                     from app.multitenancy.executor import ComputeExecutor
                     from app.multitenancy.legacy_import import import_full_product, verify_import
 
-                    with connect_admin("TSP_DATA_ADMIN_DSN") as data:
+                    with connect_admin("LSS_DATA_ADMIN_DSN") as data:
                         if args.command == "import-full-product":
                             result = import_full_product(
                                 control, data, args.directory, args.tenant_id, args.owner_id,
@@ -637,14 +637,14 @@ def main() -> None:
                     args.output.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
                     print(json.dumps({"tenants": len(result["assignments"]), "output": str(args.output)}))
                 elif args.command == "cell-load":
-                    with connect_admin("TSP_DATA_ADMIN_DSN") as data:
+                    with connect_admin("LSS_DATA_ADMIN_DSN") as data:
                         result = data.execute(
                             "SELECT tenant_id,units AS realtime_units FROM scheduler.tenant_load ORDER BY units DESC,tenant_id"
                         ).fetchall()
                         args.output.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
                         print(json.dumps({"tenants": len(result), "output": str(args.output)}))
                 elif args.command == "sync-cell-load":
-                    with connect_admin("TSP_DATA_ADMIN_DSN") as data:
+                    with connect_admin("LSS_DATA_ADMIN_DSN") as data:
                         if data.execute("SELECT cell_id FROM business.cell_identity").fetchone()["cell_id"] != args.cell_id:
                             raise ValueError("wrong Cell database")
                         snapshot = data.execute("SELECT tenant_id,units FROM scheduler.tenant_load").fetchall()
@@ -659,7 +659,7 @@ def main() -> None:
                 elif args.command == "cell-capacity":
                     if min(args.max_tenants, args.realtime_units, args.max_tenant_units) < 1:
                         raise ValueError("capacity must be positive")
-                    with connect_admin("TSP_DATA_ADMIN_DSN") as data:
+                    with connect_admin("LSS_DATA_ADMIN_DSN") as data:
                         if data.execute("SELECT cell_id FROM business.cell_identity").fetchone()["cell_id"] != args.cell_id:
                             raise ValueError("wrong Cell database")
                         # Independent commits; use while provisioning is paused.
@@ -675,7 +675,7 @@ def main() -> None:
                             ).rowcount:
                                 raise ValueError("Cell not found")
                 else:
-                    with connect_admin("TSP_DATA_ADMIN_DSN") as data:
+                    with connect_admin("LSS_DATA_ADMIN_DSN") as data:
                         if args.command == "provision-tenant":
                             provision_tenant(control, data, args.tenant_id, args.name, args.cell_id, args.owner_id, args.realtime_units)
                         else:

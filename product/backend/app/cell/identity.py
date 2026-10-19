@@ -15,7 +15,7 @@ class Identity:
     def login(self, email: str, password: str) -> dict:
         email = normalize_email(email)
         email_digest = token_hash(email)
-        credential = "tsp_cs_" + secrets.token_urlsafe(32)
+        credential = "lss_cs_" + secrets.token_urlsafe(32)
         denied = False
         with self.db.control.connection() as conn, conn.transaction():
             conn.execute("SELECT set_config('statement_timeout', '10000', true)")
@@ -59,7 +59,7 @@ class Identity:
 
     @staticmethod
     def _session(conn, credential: str, *, exclusive: bool = False) -> dict:
-        if not credential.startswith("tsp_cs_"):
+        if not credential.startswith("lss_cs_"):
             raise AccessError(401, "session_required")
         row = conn.execute(
             f"""SELECT s.user_id, u.email FROM control.sessions s
@@ -102,9 +102,9 @@ class Identity:
                     FOR {lock} OF t FOR SHARE OF c""", (tenant_id,),
             ).fetchone()
             api_token = None
-            if credential.startswith("tsp_cs_"):
+            if credential.startswith("lss_cs_"):
                 user = self._session(conn, credential)
-            elif credential.startswith("tsp_ct_"):
+            elif credential.startswith("lss_ct_"):
                 api_token = conn.execute(
                     """SELECT a.*, u.email FROM control.api_tokens a
                        JOIN control.users u ON u.id = a.user_id
@@ -256,7 +256,7 @@ class Identity:
         requested = frozenset(permissions)
         if not requested or not requested <= TOKEN_PERMISSIONS or not requested <= context.permissions:
             raise AccessError(403, "invalid_token_permissions")
-        value = "tsp_ct_" + secrets.token_urlsafe(32)
+        value = "lss_ct_" + secrets.token_urlsafe(32)
         token_id = uuid.uuid4().hex
         expires = datetime.now(UTC) + timedelta(days=days)
         conn.execute(

@@ -19,16 +19,16 @@ BACKEND = Path(__file__).resolve().parents[1]
 def test_default_install_requires_native_bridge_without_extra() -> None:
     project = tomllib.loads((BACKEND / "pyproject.toml").read_text(encoding="utf-8"))
     lock = tomllib.loads((BACKEND / "uv.lock").read_text(encoding="utf-8"))
-    backend = next(package for package in lock["package"] if package["name"] == "tsp-backend")
+    backend = next(package for package in lock["package"] if package["name"] == "lss-backend")
 
-    assert "tsp-rustdx-native" in project["project"]["dependencies"]
+    assert "lss-rustdx-native" in project["project"]["dependencies"]
     assert "psycopg[binary,pool]>=3.2,<4" in project["project"]["dependencies"]
-    assert {"name": "tsp-rustdx-native"} in backend["dependencies"]
+    assert {"name": "lss-rustdx-native"} in backend["dependencies"]
     assert {"name": "psycopg", "extra": ["binary", "pool"]} in backend["dependencies"]
     native = next(
         dependency
         for dependency in backend["metadata"]["requires-dist"]
-        if dependency["name"] == "tsp-rustdx-native"
+        if dependency["name"] == "lss-rustdx-native"
     )
     assert "marker" not in native
     assert native["directory"] == "native/rustdx_native"
@@ -85,12 +85,12 @@ def test_installation_check_rejects_incompatible_bridge(monkeypatch, capsys, ove
     output = capsys.readouterr()
     assert output.out == ""
     assert "rustdx 原生桥接" in output.err
-    assert "uv sync --frozen --reinstall-package tsp-rustdx-native" in output.err
+    assert "uv sync --frozen --reinstall-package lss-rustdx-native" in output.err
 
 
 def test_installation_check_rejects_missing_bridge(monkeypatch, capsys) -> None:
     def missing(_name):
-        raise ModuleNotFoundError("No module named 'tsp_rustdx_native'")
+        raise ModuleNotFoundError("No module named 'lss_rustdx_native'")
 
     monkeypatch.setattr(client.importlib, "import_module", missing)
 

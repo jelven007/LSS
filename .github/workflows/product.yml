@@ -79,36 +79,36 @@ jobs:
       run:
         working-directory: product
     env:
-      TSP_FULL_IMAGE: example.invalid/tsp/runtime:test
-      TSP_COMPUTE_IMAGE: example.invalid/tsp/compute:test
-      TSP_BROKER_IMAGE: example.invalid/tsp/broker:test
-      TSP_CANDIDATE_POSTGRES_IMAGE: postgres:16
-      TSP_CANDIDATE_NGINX_IMAGE: nginx:1.27-alpine
-      TSP_FULL_ENV_FILE: ${{ github.workspace }}/product/deploy/candidate/runtime.env.example
-      TSP_PLATFORM_ENV_FILE: ${{ github.workspace }}/product/deploy/candidate/platform.env.example
-      TSP_CANDIDATE_POSTGRES_ENV_FILE: ${{ github.workspace }}/product/deploy/candidate/postgres.env.example
-      TSP_CANDIDATE_ADMIN_ENV_FILE: ${{ github.workspace }}/product/deploy/candidate/admin.env.example
-      TSP_CANDIDATE_NGINX_CONFIG: ${{ github.workspace }}/product/deploy/candidate/nginx.conf
-      TSP_CANDIDATE_PG_BOOTSTRAP: ${{ github.workspace }}/product/deploy/cell/pg/bootstrap.sh
-      TSP_PLATFORM_DATA_DIR: /tmp/tsp-candidate/platform
-      TSP_PLATFORM_CONFIG_DIR: /tmp/tsp-candidate/platform-config
-      TSP_PUBLIC_MARKET_DIR: /tmp/tsp-candidate/public
-      TSP_COMPUTE_SOCKET_DIR: /tmp/tsp-candidate/socket
-      TSP_CANDIDATE_PUBLIC_URL: https://candidate.example.com
+      LSS_FULL_IMAGE: example.invalid/lss/runtime:test
+      LSS_COMPUTE_IMAGE: example.invalid/lss/compute:test
+      LSS_BROKER_IMAGE: example.invalid/lss/broker:test
+      LSS_CANDIDATE_POSTGRES_IMAGE: postgres:16
+      LSS_CANDIDATE_NGINX_IMAGE: nginx:1.27-alpine
+      LSS_FULL_ENV_FILE: ${{ github.workspace }}/product/deploy/candidate/runtime.env.example
+      LSS_PLATFORM_ENV_FILE: ${{ github.workspace }}/product/deploy/candidate/platform.env.example
+      LSS_CANDIDATE_POSTGRES_ENV_FILE: ${{ github.workspace }}/product/deploy/candidate/postgres.env.example
+      LSS_CANDIDATE_ADMIN_ENV_FILE: ${{ github.workspace }}/product/deploy/candidate/admin.env.example
+      LSS_CANDIDATE_NGINX_CONFIG: ${{ github.workspace }}/product/deploy/candidate/nginx.conf
+      LSS_CANDIDATE_PG_BOOTSTRAP: ${{ github.workspace }}/product/deploy/cell/pg/bootstrap.sh
+      LSS_PLATFORM_DATA_DIR: /tmp/lss-candidate/platform
+      LSS_PLATFORM_CONFIG_DIR: /tmp/lss-candidate/platform-config
+      LSS_PUBLIC_MARKET_DIR: /tmp/lss-candidate/public
+      LSS_COMPUTE_SOCKET_DIR: /tmp/lss-candidate/socket
+      LSS_CANDIDATE_PUBLIC_URL: https://candidate.example.com
     steps:
       - uses: actions/checkout@v4
       - run: >-
           docker compose
           --env-file deploy/candidate/candidate.env.example
-          -p tsp-product-candidate
+          -p lss-product-candidate
           -f deploy/full/compose.yml
           -f deploy/candidate/compose.yml
           --profile init
           config --quiet
       - run: >-
           docker run --rm
-          --add-host tsp-full-api:127.0.0.1
-          --add-host tsp-full-gateway:127.0.0.1
+          --add-host lss-full-api:127.0.0.1
+          --add-host lss-full-gateway:127.0.0.1
           -v "$PWD/deploy/candidate/nginx.conf:/etc/nginx/nginx.conf:ro"
           nginx:1.27-alpine nginx -t
       - run: >-
@@ -149,7 +149,7 @@ jobs:
               next(
                   package["version"]
                   for package in tomllib.loads((root / "product/backend/uv.lock").read_text())["package"]
-                  if package["name"] == "tsp-backend"
+                  if package["name"] == "lss-backend"
               ),
               json.loads((root / "product/frontend/package.json").read_text())["version"],
               (root / "product/VERSION").read_text().strip().removeprefix("v"),
@@ -171,10 +171,10 @@ jobs:
             deploy/kubernetes/overlays/volcengine > /tmp/banxia-vke.yaml
           test -s /tmp/banxia-vke.yaml
           ! grep -n "REPLACE_WITH_" /tmp/banxia-vke.yaml
-          grep -q "name: tsp-product" /tmp/banxia-vke.yaml
-          grep -q "name: tsp-task-worker" /tmp/banxia-vke.yaml
+          grep -q "name: lss-product" /tmp/banxia-vke.yaml
+          grep -q "name: lss-task-worker" /tmp/banxia-vke.yaml
           grep -q "name: report-scheduler" /tmp/banxia-vke.yaml
-          grep -q "name: tsp-compute" /tmp/banxia-vke.yaml
+          grep -q "name: lss-compute" /tmp/banxia-vke.yaml
           grep -q "market-worker" /tmp/banxia-vke.yaml
           ! grep -q "privileged: true" /tmp/banxia-vke.yaml
           ! grep -q "name: kafka" /tmp/banxia-vke.yaml

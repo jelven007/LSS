@@ -11,7 +11,7 @@ import { QK } from '@/lib/queryKeys'
 // raw 价算指标 (pipeline 契约), 后续发生除权事件已有数据需重新校准。
 // 该降级无任何运行期提示, 故在同步入口处前置拦截告知一次。
 
-const NO_REMIND_KEY = 'tsp_adj_factor_no_remind'
+const NO_REMIND_KEY = 'lss_adj_factor_no_remind'
 
 /**
  * 同步入口的除权因子门控。

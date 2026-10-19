@@ -2911,7 +2911,7 @@ wheels = [
 ]
 
 [[package]]
-name = "tsp-backend"
+name = "lss-backend"
 version = "0.5.1"
 source = { editable = "." }
 dependencies = [
@@ -2944,7 +2944,7 @@ dependencies = [
     { name = "redis" },
     { name = "sse-starlette" },
     { name = "tickflow", extra = ["all"] },
-    { name = "tsp-rustdx-native" },
+    { name = "lss-rustdx-native" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "winotify", marker = "sys_platform == 'win32'" },
 ]
@@ -3003,7 +3003,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
     { name = "sse-starlette", specifier = ">=2.0" },
     { name = "tickflow", extras = ["all"], specifier = ">=0.1.23" },
-    { name = "tsp-rustdx-native", directory = "native/rustdx_native" },
+    { name = "lss-rustdx-native", directory = "native/rustdx_native" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
     { name = "vectorbt", marker = "extra == 'backtest'", specifier = ">=0.26" },
     { name = "winotify", marker = "sys_platform == 'win32'", specifier = ">=1.1" },
@@ -3011,7 +3011,7 @@ requires-dist = [
 provides-extras = ["rustdx", "legacy-cpu", "backtest", "desktop", "dev", "cell"]
 
 [[package]]
-name = "tsp-rustdx-native"
+name = "lss-rustdx-native"
 version = "0.1.1"
 source = { directory = "native/rustdx_native" }
 

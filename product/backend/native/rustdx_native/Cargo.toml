@@ -1,11 +1,11 @@
 [package]
-name = "tsp-rustdx-native"
+name = "lss-rustdx-native"
 version = "0.1.1"
 edition = "2024"
 license = "MIT"
 
 [lib]
-name = "tsp_rustdx_native"
+name = "lss_rustdx_native"
 crate-type = ["cdylib"]
 
 [dependencies]

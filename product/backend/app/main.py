@@ -102,7 +102,7 @@ if not getattr(sys, "frozen", False) and settings.service_role not in {"api", "g
 @asynccontextmanager
 async def _application_lifespan(app: FastAPI):
     logger.info(
-        "TSP v%s starting (mode=%s)",
+        "LSS v%s starting (mode=%s)",
         __version__, tf_client.current_mode(),
     )
 
@@ -471,7 +471,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="TSP",
+    title="LSS",
     version=__version__,
     description="A 股选股 + 回测面板 — TickFlow 适配",
     lifespan=lifespan,
@@ -520,7 +520,7 @@ async def auth_middleware(request: Request, call_next):
             from app.multitenancy.read_cache import cached_read
             return await cached_read(request, call_next)
         if platform_access(request):
-            request.state.account = {"role": "admin", "email": request.headers.get("x-tsp-admin-email")}
+            request.state.account = {"role": "admin", "email": request.headers.get("x-lss-admin-email")}
             return await call_next(request)
         if (request.url.path in {"/health", "/health/live", "/health/ready"}
                 or request.url.path.startswith("/internal/cell-market/")):

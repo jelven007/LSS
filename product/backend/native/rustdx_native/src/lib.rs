@@ -553,7 +553,7 @@ impl RustdxClient {
 }
 
 #[pymodule]
-fn tsp_rustdx_native(module: &Bound<'_, PyModule>) -> PyResult<()> {
+fn lss_rustdx_native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<RustdxClient>()?;
     module.add("__version__", env!("CARGO_PKG_VERSION"))?;
     module.add("RUSTDX_VERSION", RUSTDX_VERSION)?;

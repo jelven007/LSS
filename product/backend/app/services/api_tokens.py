@@ -2,7 +2,7 @@
 
 设计 (docs/open-platform-plan.md §4.1):
   - 存储: data/user_data/api_tokens.json (0600), 只存 SHA-256 哈希;
-    明文 Token (tsp_ + 32B hex) 仅在创建响应中出现一次。
+    明文 Token (lss_ + 32B hex) 仅在创建响应中出现一次。
   - scope: 固定六档, 见 SCOPES; 管理接口无对应 scope, Token 永远进不去。
   - last_used_at 节流落盘 (≥60s 才写一次), 避免热路径每请求写文件。
 进程内写互斥沿用域模块惯例 (PAPER_LOCK 模式); 读取无锁 (json 小文件)。
@@ -34,7 +34,7 @@ SCOPES = (
     "paper:trade",
 )
 
-TOKEN_PREFIX = "tsp_"
+TOKEN_PREFIX = "lss_"
 
 _LOCK = threading.Lock()
 # last_used_at 落盘节流: (token_id, 上次落盘时间); 内存即可, 重启丢失无害

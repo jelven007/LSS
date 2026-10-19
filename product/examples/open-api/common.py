@@ -3,8 +3,8 @@
 使用前:
   1. 面板 → 设置 → 开放接口 → 新建 Token (按需勾选 scope)
   2. 设置环境变量:
-       TSP_TOKEN=tsp_xxx            (必填)
-       TSP_BASE=http://127.0.0.1:3018  (默认本机开发端口, 按实际改)
+       LSS_TOKEN=lss_xxx            (必填)
+       LSS_BASE=http://127.0.0.1:3018  (默认本机开发端口, 按实际改)
   3. 逐个运行: python 01_pull_market.py
 """
 from __future__ import annotations
@@ -14,14 +14,14 @@ import os
 import urllib.error
 import urllib.request
 
-BASE = os.environ.get("TSP_BASE", "http://127.0.0.1:3018").rstrip("/")
-TOKEN = os.environ.get("TSP_TOKEN", "")
+BASE = os.environ.get("LSS_BASE", "http://127.0.0.1:3018").rstrip("/")
+TOKEN = os.environ.get("LSS_TOKEN", "")
 
 
 def call(method: str, path: str, body: dict | None = None, headers: dict[str, str] | None = None):
     """调开放接口; 非 2xx 抛 RuntimeError 并带出服务端 detail。"""
     if not TOKEN:
-        raise SystemExit("请先设置环境变量 TSP_TOKEN (设置 → 开放接口 → 新建 Token)")
+        raise SystemExit("请先设置环境变量 LSS_TOKEN (设置 → 开放接口 → 新建 Token)")
     req = urllib.request.Request(
         BASE + path,
         data=json.dumps(body).encode() if body is not None else None,

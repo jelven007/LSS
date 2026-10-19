@@ -44,7 +44,7 @@ def append_event(conn, tenant_id, kind, payload):
         """DELETE FROM business.full_events WHERE created_at<now()-interval '1 day'
            OR sequence IN (SELECT sequence FROM business.full_events ORDER BY sequence DESC OFFSET 5000)""",
     )
-    conn.execute("SELECT pg_notify('tsp_full_events',%s)", (tenant_id,))
+    conn.execute("SELECT pg_notify('lss_full_events',%s)", (tenant_id,))
     return row["sequence"]
 
 
@@ -185,7 +185,7 @@ class EventHub:
                     autocommit=True,
                     connect_timeout=5,
                 ) as conn:
-                    conn.execute("LISTEN tsp_full_events")
+                    conn.execute("LISTEN lss_full_events")
                     self.listener_connected = True
                     while not self.stop.is_set():
                         tenants = self._drain_wakeups()

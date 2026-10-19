@@ -9,7 +9,7 @@
 - 部署平台：火山引擎 VKE，命名空间 `banxia`
 - 业务边界：A 股研究、筛选、监控、回测、复盘和报告；不连接券商，不自动下单
 
-本文只描述当前架构。历史 Kafka/Flink、独立 Policy API、SSE Gateway、独立 TSP
+本文只描述当前架构。历史 Kafka/Flink、独立 Policy API、SSE Gateway、独立 LSS
 PostgreSQL 和 DinD 拓扑已从现行文档移除，回溯时使用 Git 历史和不可变发布记录。
 详细组件参数见 [v0.5.1 精简生产架构](36-lean-architecture-v0.5.1.md)，实际部署状态见
 [全新安装发布记录](releases/2026-10-19-fresh-install-v0.5.1.md)。
@@ -21,7 +21,7 @@ flowchart LR
     U[浏览器] -->|HTTPS| ALB[ALB / TLS]
     ALB --> APP[统一 React + FastAPI]
     APP --> POLICY[内嵌 Policy ASGI]
-    APP --> PLATFORM[tsp-platform]
+    APP --> PLATFORM[lss-platform]
     APP --> PG[(PostgreSQL)]
     APP --> RD[(Redis)]
 
@@ -56,11 +56,11 @@ flowchart LR
 
 | 工作负载 | 副本 | 职责 |
 | --- | ---: | --- |
-| `tsp-product` | HPA 2～4 | React、统一 API、账户、多租户、SSE、Policy 门面 |
-| `tsp-task-worker` | 1，Recreate | 监督研究、实时规则、通知和定时任务 |
+| `lss-product` | HPA 2～4 | React、统一 API、账户、多租户、SSE、Policy 门面 |
+| `lss-task-worker` | 1，Recreate | 监督研究、实时规则、通知和定时任务 |
 | `report-scheduler` | 1，Recreate | Policy 刷新队列、历史任务、报告调度和补跑 |
-| `tsp-platform` | 1 | 公共行情版本、平台配置和只读行情接口 |
-| `tsp-compute` | 1 | 回测、优化和研究计算，固定并发 |
+| `lss-platform` | 1 | 公共行情版本、平台配置和只读行情接口 |
+| `lss-compute` | 1 | 回测、优化和研究计算，固定并发 |
 | `market-collector` | 2，租约单活 | rustdx 采集、WAL、特征、状态机和投影 |
 | `market-reference-sync` | 1 | 证券、板块、行业和交易日参考数据 |
 | `intraday-monitor` | 1 | 采集状态、规则评估和告警指标 |
@@ -74,8 +74,8 @@ flowchart LR
 | 数据域 | 权威存储 | 说明 |
 | --- | --- | --- |
 | Policy 策略、计划、状态、任务和审计 | PostgreSQL `banxia` | 事务边界与 Inbox/Outbox |
-| 身份、租户、会话和路由 | PostgreSQL `tsp_control` | 独立运行角色 |
-| 租户业务数据 | PostgreSQL `tsp_data_production` | RLS 与独立运行角色 |
+| 身份、租户、会话和路由 | PostgreSQL `lss_control` | 独立运行角色 |
+| 租户业务数据 | PostgreSQL `lss_data_production` | RLS 与独立运行角色 |
 | 盘口、分钟线、特征和历史行情 | ClickHouse | 批量、幂等、按日期分区 |
 | 最新行情、决策和 SSE 投影 | Redis | 可由权威存储重建 |
 | 报告、研究资产和原始归档 | 火山引擎 TOS | 内容寻址、Manifest、SHA-256 |
@@ -102,10 +102,10 @@ WAL 重放由稳定 `event_id` 和 PostgreSQL 唯一键去重。Redis 故障不�
 
 ## 6. 请求与任务流
 
-- 普通 Web 请求由 `tsp-product` 认证、授权并查询权威存储或投影。
+- 普通 Web 请求由 `lss-product` 认证、授权并查询权威存储或投影。
 - `/api/policy/*` 由统一权限层校验后转入同进程 Policy `/api/v1/*`。
 - SSE 使用短期一次性票据；私有事件先持久化，再通过 PostgreSQL 通知和游标补扫恢复。
-- API 只登记持久任务；`tsp-task-worker` 和 `report-scheduler` 负责领取、租约和终态。
+- API 只登记持久任务；`lss-task-worker` 和 `report-scheduler` 负责领取、租约和终态。
 - Task Worker 通过集群内 TCP 向 Compute 发送固定 JSON 行协议任务。
 - Compute 使用服务传入的 `DATA_DIR` 读取指定公共行情版本，私有中间结果只写临时目录。
 

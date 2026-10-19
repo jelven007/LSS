@@ -16,7 +16,7 @@ PVC 和应用 Secret，不恢复旧用户、策略或报告。
 
 - 生产采用 Market Worker，但源码、依赖、本地 Compose 和 Kubernetes 基础层仍保留
   Kafka/Flink 与独立消费 Worker，形成两套实时处理路径。
-- `tsp-product` 的 API 与四类 Task Worker 共用 Pod；API 的 HPA 扩容会同时复制所有
+- `lss-product` 的 API 与四类 Task Worker 共用 Pod；API 的 HPA 扩容会同时复制所有
   后台进程，后台负载也会影响 Web 的扩容判定。
 - Market Worker 启动先读取本地报告；生产报告目录已为临时卷，应以数据库监控计划启动。
 - Policy 报告刷新写入 PostgreSQL 任务队列，但当前生产清单没有常驻
@@ -45,14 +45,14 @@ PVC 和应用 Secret，不恢复旧用户、策略或报告。
 | 运行单元 | 职责与扩容依据 |
 | --- | --- |
 | Web/API | React、会话、权限、查询、任务提交、SSE；按 Web 负载扩容 |
-| Task Worker | TSP 持久任务、实时规则、通知、定时任务；与 API 分开配置容量 |
+| Task Worker | LSS 持久任务、实时规则、通知、定时任务；与 API 分开配置容量 |
 | Policy 报告调度 | 消费页面刷新、历史生成任务，按策略配置调度与补跑 |
 | Market Worker | 数据库计划、rustdx、WAL、行情持久化、特征、策略事务与决策投影 |
 | Compute | 固定计算入口、并发限制、取消和回收；无业务密钥，拒绝出网 |
 | 公共行情平台与参考同步 | 不可变行情版本、证券和板块参考数据 |
 
 PostgreSQL 保存业务事实，ClickHouse 保存行情历史，Redis 保存可重建投影，TOS 保存
-对象资产。TSP 公共行情文件暂保留 NAS，不在没有替代读取链路时强行迁走。
+对象资产。LSS 公共行情文件暂保留 NAS，不在没有替代读取链路时强行迁走。
 
 ## 可靠性约束
 
@@ -84,7 +84,7 @@ PVC 和本地未提交的 PostgreSQL 权限修改保持原样。
 
 - Policy：394 项，369 通过、25 项需要额外存储环境而跳过；新增空报告目录启动与
   真实 WAL 失败保留/恢复用例，保留状态机、T+1、费用和幂等回归。
-- TSP：53 项通过，覆盖告警与退役接口、任务监督、Policy 门面、Compute、健康检查和 OpenAPI。
+- LSS：53 项通过，覆盖告警与退役接口、任务监督、Policy 门面、Compute、健康检查和 OpenAPI。
 - 前端：41 个测试文件、178 项通过；TypeScript 与 Vite 生产构建通过。
 - Compose 示例配置校验通过；Kustomize 渲染 54 个资源，验证卷挂载引用、
   独立 Worker、单例报告调度与 Compute 网络边界。

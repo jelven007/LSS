@@ -10,15 +10,15 @@ TOS 和带本地 WAL 的 Market Worker，不再部署 Kafka、Flink、MinIO 或�
 
 VKE overlay 包含：
 
-- 统一 Web/API、独立 `tsp-task-worker`、Policy `report-scheduler`、
-  `tsp-platform` 和隔离 `tsp-compute`。
+- 统一 Web/API、独立 `lss-task-worker`、Policy `report-scheduler`、
+  `lss-platform` 和隔离 `lss-compute`。
 - 带 SQLite WAL 的双副本 `market-worker`，通过 PostgreSQL 租约单活。
 - 工作日 16:20 参考数据同步、16:30/23:30 报告、16:35 涨停历史和 16:50 模拟盘任务。
 - 使用独立 RWO 云盘保存每个 `market-collector` 副本的本地 WAL。
-- Policy、TSP 控制库和 TSP 业务库共享 PostgreSQL 集群并使用独立角色。
-- PostgreSQL/ClickHouse 迁移、TSP 数据库初始化和策略目录初始化 Job。
-- TOS 保存 Policy 报告和原始归档；TSP 公共行情目录暂保留一个 NAS RWX 卷。
-- 公网 ALB 统一转发到 `tsp-product:80`，SSE 与普通 API 共用入口。
+- Policy、LSS 控制库和 LSS 业务库共享 PostgreSQL 集群并使用独立角色。
+- PostgreSQL/ClickHouse 迁移、LSS 数据库初始化和策略目录初始化 Job。
+- TOS 保存 Policy 报告和原始归档；LSS 公共行情目录暂保留一个 NAS RWX 卷。
+- 公网 ALB 统一转发到 `lss-product:80`，SSE 与普通 API 共用入口。
 - PDB、HPA、跨可用区/节点软分散和默认拒绝入站的 NetworkPolicy。
 - 可选的 ServiceMonitor/PodMonitor。
 
@@ -29,7 +29,7 @@ VKE overlay 包含：
 3. VKE Worker 子网可访问 rustdx 行情节点和上海地域 TOS 内网 Endpoint。
 4. 已创建 CR 镜像仓库，并推送 Policy、Web Runtime 和 Compute 镜像。
 5. 已开通 ALB 服务授权，并准备证书中心证书。
-6. TOS 已创建 `strategy-reports` 与 `market-raw` Bucket；TSP 公共行情仍需 NAS。
+6. TOS 已创建 `strategy-reports` 与 `market-raw` Bucket；LSS 公共行情仍需 NAS。
 
 火山引擎 ESSD 云盘的最小容量为 10GiB，数据卷和 Collector WAL 均不得
 低于此容量。
@@ -53,7 +53,7 @@ rg -n 'REPLACE_WITH_' \
 - `overlays/volcengine/data-services.yaml`：PostgreSQL、ClickHouse、Redis 及 EBS 容量。
 - `overlays/volcengine/runtime-config.yaml`：集群内数据服务地址。
 - `overlays/volcengine/storage.yaml`：EBS `Retain` 存储类。
-- `overlays/volcengine/tsp-storage.yaml`：TSP 公共行情兼容 NAS。
+- `overlays/volcengine/lss-storage.yaml`：LSS 公共行情兼容 NAS。
 - `overlays/volcengine/collector-statefulset.yaml`：WAL 使用的块存储类。
 - `overlays/volcengine/ingress.yaml`：新建 ALB 的子网和证书中心证书 ID。
 - `banxia-secrets.example.yaml`：数据库、Redis、TOS 及 CR 凭据。
@@ -92,21 +92,21 @@ kubectl apply --server-side --force-conflicts -f /tmp/banxia-vke.yaml
 
 升级前先完成 PostgreSQL 与对象迁移，具体顺序见
 [精简架构发布顺序](../../docs/36-lean-architecture-v0.5.1.md#7-发布顺序)。不要在迁移
-校验前删除旧 `tsp-postgres` PVC。完整清单应用后等待数据库初始化，再检查工作负载：
+校验前删除旧 `lss-postgres` PVC。完整清单应用后等待数据库初始化，再检查工作负载：
 
 ```bash
 kubectl -n banxia wait \
   --for=condition=complete job/banxia-schema-migration --timeout=15m
 kubectl -n banxia wait \
-  --for=condition=complete job/tsp-database-bootstrap --timeout=15m
+  --for=condition=complete job/lss-database-bootstrap --timeout=15m
 kubectl -n banxia wait \
-  --for=condition=complete job/tsp-product-initialize --timeout=20m
+  --for=condition=complete job/lss-product-initialize --timeout=20m
 kubectl -n banxia wait \
   --for=condition=complete job/banxia-catalog-bootstrap --timeout=15m
-kubectl -n banxia rollout status deployment/tsp-product --timeout=10m
-kubectl -n banxia rollout status deployment/tsp-task-worker --timeout=10m
+kubectl -n banxia rollout status deployment/lss-product --timeout=10m
+kubectl -n banxia rollout status deployment/lss-task-worker --timeout=10m
 kubectl -n banxia rollout status deployment/report-scheduler --timeout=10m
-kubectl -n banxia rollout status deployment/tsp-compute --timeout=10m
+kubectl -n banxia rollout status deployment/lss-compute --timeout=10m
 kubectl -n banxia rollout status statefulset/market-collector --timeout=10m
 kubectl -n banxia get pods,pvc,ingress
 ```
@@ -116,8 +116,8 @@ kubectl -n banxia get pods,pvc,ingress
 
 ```bash
 kubectl -n banxia delete job \
-  banxia-schema-migration tsp-database-bootstrap \
-  tsp-product-initialize banxia-catalog-bootstrap --ignore-not-found
+  banxia-schema-migration lss-database-bootstrap \
+  lss-product-initialize banxia-catalog-bootstrap --ignore-not-found
 kubectl apply --server-side --force-conflicts -f /tmp/banxia-vke.yaml
 ```
 
@@ -125,8 +125,8 @@ PostgreSQL Job 使用 `banxia.schema_migration` 记录已完成脚本；ClickHou
 脚本使用 `IF NOT EXISTS`，可重复执行。
 
 当前 overlay 的 Policy PostgreSQL migration ConfigMap 包含 `001` 至 `025` 和 `028`；
-`026/027` 仍仅用于开发与隔离测试，不升级生产运行策略。TSP 双库迁移由
-`tsp-product-initialize` 执行到 schema `v6`。
+`026/027` 仍仅用于开发与隔离测试，不升级生产运行策略。LSS 双库迁移由
+`lss-product-initialize` 执行到 schema `v6`。
 
 ## DNS 与入口
 
@@ -137,8 +137,8 @@ kubectl -n banxia get albinstance banxia-alb
 kubectl -n banxia get ingress banxia-api
 ```
 
-入口由 ALB 终止 TLS。TSP Web、普通 API、Policy Facade 和事件流统一使用
-`tsp-product:80`。域名只应解析到当前 ALB 公网地址。
+入口由 ALB 终止 TLS。LSS Web、普通 API、Policy Facade 和事件流统一使用
+`lss-product:80`。域名只应解析到当前 ALB 公网地址。
 
 ## 全量重建
 

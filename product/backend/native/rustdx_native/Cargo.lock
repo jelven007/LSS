@@ -199,6 +199,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
+name = "lss-rustdx-native"
+version = "0.1.1"
+dependencies = [
+ "jelven-rustdx-complete",
+ "pyo3",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -463,16 +473,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68efdc1b76d477a5fac1ec831bc5528a99bde79643119ff159e6d2003e5f52b2"
 dependencies = [
  "chrono",
-]
-
-[[package]]
-name = "tsp-rustdx-native"
-version = "0.1.1"
-dependencies = [
- "jelven-rustdx-complete",
- "pyo3",
- "serde",
- "serde_json",
 ]
 
 [[package]]

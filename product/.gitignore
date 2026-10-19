@@ -96,16 +96,16 @@ reports/tickflow_pro_probe/
 .dbg/
 
 # ===== 打包产物 (本地构建的安装包,不入库) =====
-backend/TSP-win-x64.zip
-backend/TSP-macos.zip
-backend/TSP-linux-x64.tar.gz
+backend/LSS-win-x64.zip
+backend/LSS-macos.zip
+backend/LSS-linux-x64.tar.gz
 packaging/Output/
 packaging/icon_preview.png
 packaging/designs/
 packaging/install.log
 packaging/installed_run.log
 # macOS 本地构建产物 (PyInstaller .app 与 create-dmg 产出的 .dmg,根目录产出)
-TSP.app/
-TSP-macos*.dmg
-TSP-macos*.zip
+LSS.app/
+LSS-macos*.dmg
+LSS-macos*.zip
 reports/cursor_tickflow_pro_rate_limit_p0.bundle

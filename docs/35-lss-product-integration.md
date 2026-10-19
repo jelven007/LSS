@@ -1,29 +1,29 @@
-# TSP 产品移植与 Policy 整合
+# LSS 产品移植与 Policy 整合
 
 ## 1. 基线
 
 - 当前仓库：`https://github.com/jelven007/LSS`
 - 当前主线：`132db778c03b5e4d724afd510c63d269c7764211`
-- TSP 初始导入来源：`jelven007/TSP@bb8ea7045b613f189159e7ebd84162567ffb09e5`
+- LSS 初始导入来源：`jelven007/LSS@bb8ea7045b613f189159e7ebd84162567ffb09e5`
 - 当前整合版本：`0.5.1`
 - 客户端：Web；Android/APK 已移除
 
-TSP 提供产品壳层、账户、多租户和通用研究能力；Policy 提供次日计划、当日实盘、领域策略
+LSS 提供产品壳层、账户、多租户和通用研究能力；Policy 提供次日计划、当日实盘、领域策略
 和报告。`v0.5.1` 将两者打入同一个 Runtime 镜像，并由统一 FastAPI 对外服务。
 
 ## 2. 产品菜单
 
 | 顺序 | 菜单 | 主要实现 | 路由 |
 | --- | --- | --- | --- |
-| 1 | 首页 | TSP Dashboard | `/` |
-| 2 | 自选 | TSP Watchlist | `/watchlist` |
-| 3 | 策略 | TSP Screener | `/screener` |
+| 1 | 首页 | LSS Dashboard | `/` |
+| 2 | 自选 | LSS Watchlist | `/watchlist` |
+| 3 | 策略 | LSS Screener | `/screener` |
 | 4 | 次日计划 | Policy | `/next-plan` |
 | 5 | 当日实盘 | Policy | `/live-trading` |
-| 6 | 复盘 | TSP Review | `/review` |
-| 7 | 回测 | TSP Backtest | `/backtest` |
-| 8 | 个股分析 | TSP StockAnalysis | `/stock-analysis` |
-| 9 | 设置 | TSP Settings | `/settings` |
+| 6 | 复盘 | LSS Review | `/review` |
+| 7 | 回测 | LSS Backtest | `/backtest` |
+| 8 | 个股分析 | LSS StockAnalysis | `/stock-analysis` |
+| 9 | 设置 | LSS Settings | `/settings` |
 
 桌面侧栏默认展开，可切换为图标栏；移动端使用抽屉。Policy 依赖失败时，次日计划和当日
 实盘仍先渲染页面框架、日期、状态和空态，不触发全局登出。
@@ -32,7 +32,7 @@ TSP 提供产品壳层、账户、多租户和通用研究能力；Policy 提供
 
 ```text
 浏览器
-  -> TSP Cookie / RBAC / Tenant
+  -> LSS Cookie / RBAC / Tenant
   -> /api/policy/*
   -> Policy facade
   -> httpx ASGI Transport
@@ -50,38 +50,38 @@ TSP 提供产品壳层、账户、多租户和通用研究能力；Policy 提供
 
 ## 4. 数据边界
 
-Policy 与 TSP 共用一个 PostgreSQL 集群，但保持数据库与角色隔离：
+Policy 与 LSS 共用一个 PostgreSQL 集群，但保持数据库与角色隔离：
 
 | 数据 | 权威落点 |
 | --- | --- |
-| 用户、租户、角色、会话、找回密码 | `tsp_control` |
-| 自选、TSP 策略、复盘、任务、通知、用户设置 | `tsp_data_production` |
+| 用户、租户、角色、会话、找回密码 | `lss_control` |
+| 自选、LSS 策略、复盘、任务、通知、用户设置 | `lss_data_production` |
 | Policy 策略、次日计划、候选、决策、报告元数据 | `banxia` |
 | 高频行情和实时特征 | ClickHouse |
 | 最新行情、决策和 SSE 投影 | Redis |
 | 报告、研究资产和原始归档 | TOS |
-| 公共行情版本和租户产物 | TSP NAS 状态卷 |
+| 公共行情版本和租户产物 | LSS NAS 状态卷 |
 
-TSP 运行时只获得两个最小权限 Runtime DSN；管理员 DSN 只用于初始化和迁移 Job。
-Policy 数据不会复制到 TSP 表，TSP 只通过领域门面读取 Policy 权威结果。
+LSS 运行时只获得两个最小权限 Runtime DSN；管理员 DSN 只用于初始化和迁移 Job。
+Policy 数据不会复制到 LSS 表，LSS 只通过领域门面读取 Policy 权威结果。
 
 ## 5. 运行单元
 
 | 单元 | 职责 |
 | --- | --- |
-| `tsp-product` API | React、账户、多租户、SSE、TSP API、Policy 门面 |
-| `tsp-task-worker` | 统一监督研究、实时规则、模拟盘、通知和计划任务 |
+| `lss-product` API | React、账户、多租户、SSE、LSS API、Policy 门面 |
+| `lss-task-worker` | 统一监督研究、实时规则、模拟盘、通知和计划任务 |
 | `report-scheduler` | Policy 报告刷新、历史生成和定时补跑 |
-| `tsp-platform` | 唯一公共行情写入者与不可变版本发布 |
-| `tsp-compute` | 无密钥、禁止出网的受限计算服务 |
+| `lss-platform` | 唯一公共行情写入者与不可变版本发布 |
+| `lss-compute` | 无密钥、禁止出网的受限计算服务 |
 | `market-collector` | rustdx、SQLite WAL、实时特征、Policy 状态机和 Redis 投影 |
 
-独立 SSE Gateway、四个独立 TSP Worker、Pod 内 DinD、独立 TSP PostgreSQL 和独立
+独立 SSE Gateway、四个独立 LSS Worker、Pod 内 DinD、独立 LSS PostgreSQL 和独立
 Policy API 均已退出生产清单。
 
 ## 6. Compute 边界
 
-API 使用 `TSP_COMPUTE_ADDRESS=tsp-compute:7000` 连接 Compute。Compute：
+API 使用 `LSS_COMPUTE_ADDRESS=lss-compute:7000` 连接 Compute。Compute：
 
 - 只读挂载公共行情版本。
 - 不注入数据库、SMTP、TOS 或平台管理 Secret。
@@ -105,7 +105,7 @@ Unix Socket + 容器 Broker 仅保留给独立部署兼容模式，不进入 VKE
 
 ## 8. 质量基线
 
-- TSP 前端：42 个测试文件、180 项通过。
+- LSS 前端：42 个测试文件、180 项通过。
 - Policy：394 项，369 通过、25 项按环境跳过。
 - Policy Facade：包含 ASGI 模式、错误映射、参数校验和资源释放。
 - Task Worker：监督四类后台进程，任一异常退出触发整体失败。

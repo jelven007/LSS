@@ -46,6 +46,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: tsp-product
+                name: lss-product
                 port:
                   number: 80

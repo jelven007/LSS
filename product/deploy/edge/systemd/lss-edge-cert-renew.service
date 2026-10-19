@@ -1,5 +1,5 @@
 [Unit]
-Description=Renew TSP edge TLS certificate
+Description=Renew LSS edge TLS certificate
 Requires=docker.service
 After=docker.service network-online.target
 

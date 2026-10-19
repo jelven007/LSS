@@ -249,7 +249,7 @@ class AccountIdentity:
                  now + timedelta(seconds=CODE_TTL), now + timedelta(seconds=RESEND_SECONDS)),
             )
         sent = email_adapter.send_email(
-            smtp, password, "TSP 注册验证码",
+            smtp, password, "LSS 注册验证码",
             f"你的注册验证码是: {code}\n\n验证码将在 10 分钟后失效，请勿转发给他人。\n"
             "如果不是你本人操作，请忽略此邮件。", max_attempts=1,
         )
@@ -330,7 +330,7 @@ class AccountIdentity:
         sent = email_adapter.send_email(
             smtp,
             password,
-            "TSP 密码找回验证码",
+            "LSS 密码找回验证码",
             f"你的密码找回验证码是: {code}\n\n验证码将在 10 分钟后失效，请勿转发给他人。\n"
             "如果不是你本人操作，请忽略此邮件。",
             max_attempts=1,
@@ -662,7 +662,7 @@ class AccountIdentity:
         if role not in {"admin", "tenant"}:
             raise AccessError(400, "不支持的系统角色")
         with self.db.control.connection() as conn, conn.transaction():
-            conn.execute("SELECT pg_advisory_xact_lock(hashtext('tsp-admin-role-update'))")
+            conn.execute("SELECT pg_advisory_xact_lock(hashtext('lss-admin-role-update'))")
             current_actor = conn.execute(
                 "SELECT * FROM control.users WHERE id=%s FOR SHARE", (actor["id"],),
             ).fetchone()

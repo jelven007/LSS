@@ -1,4 +1,4 @@
-// TSP 品牌图标族 — 侧栏菜单专用
+// LSS 品牌图标族 — 侧栏菜单专用
 //
 // 设计语言与 brand/logo-proposals.html「图标系统」一致:
 //   24 网格 / 2px 等宽线幅 / 全直角 (butt 笔帽 + miter 转角) / 方括号与 K 线 DNA

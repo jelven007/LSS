@@ -1,6 +1,6 @@
 # 开放接口示例 (Open API Examples)
 
-外部程序接入 TSP 核心能力的可运行最小示例 — 纯 Python 标准库, 零第三方依赖。
+外部程序接入 LSS 核心能力的可运行最小示例 — 纯 Python 标准库, 零第三方依赖。
 
 ## 准备
 
@@ -16,8 +16,8 @@
 2. 设置环境变量后运行:
 
    ```bash
-   export TSP_BASE=http://127.0.0.1:3018   # 面板实际地址
-   export TSP_TOKEN=tsp_xxxx               # 创建 Token 时只显示一次, 立即保存
+   export LSS_BASE=http://127.0.0.1:3018   # 面板实际地址
+   export LSS_TOKEN=lss_xxxx               # 创建 Token 时只显示一次, 立即保存
 
    python 01_pull_market.py
    ```
@@ -33,7 +33,7 @@
 
 ## 通用约定
 
-- 认证: `Authorization: Bearer tsp_...` 头; 与面板密码会话并行, 互不影响
+- 认证: `Authorization: Bearer lss_...` 头; 与面板密码会话并行, 互不影响
 - 限流: 每 Token 默认 120 次/分钟, 响应头 `X-RateLimit-Remaining` 实时可见, 超限 429 + `Retry-After`
 - 错误语义: 401 Token 无效或已吊销 / 403 scope 不足或端点未开放 / 429 超限
 - 机器可读契约: `GET /api/openapi.json?tier=a` — 可直接导入 Postman / 生成客户端

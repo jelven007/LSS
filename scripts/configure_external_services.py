@@ -99,11 +99,11 @@ def main() -> None:
             patch(kubectl, "secret", "banxia-secrets", credentials)
             patch(kubectl, "configmap", "banxia-runtime", config)
         if smtp:
-            patch(kubectl, "secret", "tsp-product-secrets", smtp)
-        workloads = (["deployment/tsp-product"] +
+            patch(kubectl, "secret", "lss-product-secrets", smtp)
+        workloads = (["deployment/lss-product"] +
                      (["deployment/market-reference-sync", "deployment/report-scheduler",
                        "statefulset/market-collector"] if use_tos else []) +
-                     (["deployment/tsp-task-worker"] if use_smtp else []))
+                     (["deployment/lss-task-worker"] if use_smtp else []))
         for workload in workloads:
             result = subprocess.run([*kubectl, "rollout", "restart", workload],
                                     capture_output=True, text=True, timeout=40)

@@ -232,7 +232,7 @@ export function Layout() {
     if (alertsTotal != null) setAlertTotal(alertsTotal)
   }, [alertsTotal])
 
-  // 产品主导航固定为九项；TSP 其余页面保留路由，但不进入主菜单。
+  // 产品主导航固定为九项；LSS 其余页面保留路由，但不进入主菜单。
   type NavIcon = (props: BrandIconProps) => ReactNode
   type NavItem = { to: string; label: string; icon: NavIcon; badge?: string }
   const allNav: NavItem[] = [...PRIMARY_NAV]
@@ -316,7 +316,7 @@ export function Layout() {
                 className="font-bold text-[11px] uppercase tracking-[0.14em] text-foreground whitespace-nowrap"
                 style={{ textShadow: `0 0 10px ${BRAND}44` }}
               >
-                TSP
+                LSS
               </div>
             )}
             {/* 收起/展开 按钮 (桌面三态循环) / 移动端抽屉关闭按钮 */}

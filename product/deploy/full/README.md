@@ -23,26 +23,26 @@ Compose 通过以下变量选择资源，私密值应置于权限 `0600` 的环�
 
 | 变量 | 内容 |
 | --- | --- |
-| `TSP_FULL_IMAGE` | 以原 Dockerfile、`BACKEND_EXTRAS=cell` 构建的确切完整镜像版本；Compute 层会按冻结锁补装 `backtest` extra |
-| `TSP_FULL_ENV_FILE` | API/Gateway/Worker 私密环境文件，包含 `TSP_CELL_ID`、两个 runtime DSN、市场网关、流票据密钥和邮件配置 |
-| `TSP_PLATFORM_ENV_FILE` | 平台环境文件，仅有供应商/系统配置和两个内部网关 Token，无数据库 DSN |
-| `TSP_PLATFORM_DATA_DIR` | 平台可写原行情目录；候选阶段使用独立复制件 |
-| `TSP_PLATFORM_CONFIG_DIR` | 平台配置：`preferences.json`、`secrets.json`、`data_sources/`；不包含旧用户业务文件 |
-| `TSP_PUBLIC_MARKET_DIR` | 独立公共版本目录，包含 `releases/<id>/` 与原子 `current` 链接 |
-| `TSP_COMPUTE_SOCKET_DIR` | 主机 Broker socket 目录，默认 `/run/tsp-full` |
-| `TSP_FULL_API_PORT` | 候选 API 仅监听主机回环，默认 3030 |
-| `TSP_FULL_GATEWAY_PORT` | 候选实时网关仅监听主机回环，默认 3031 |
-| `TSP_FULL_PG_NETWORK` | PostgreSQL 外部 Docker network，默认 `tsp-pg_default` |
-| `TSP_FULL_EDGE_NETWORK` | HTTPS Edge 外部 Docker network，默认 `app_default`；API/Gateway 分别使用 `tsp-full-api`、`tsp-full-gateway` 别名 |
+| `LSS_FULL_IMAGE` | 以原 Dockerfile、`BACKEND_EXTRAS=cell` 构建的确切完整镜像版本；Compute 层会按冻结锁补装 `backtest` extra |
+| `LSS_FULL_ENV_FILE` | API/Gateway/Worker 私密环境文件，包含 `LSS_CELL_ID`、两个 runtime DSN、市场网关、流票据密钥和邮件配置 |
+| `LSS_PLATFORM_ENV_FILE` | 平台环境文件，仅有供应商/系统配置和两个内部网关 Token，无数据库 DSN |
+| `LSS_PLATFORM_DATA_DIR` | 平台可写原行情目录；候选阶段使用独立复制件 |
+| `LSS_PLATFORM_CONFIG_DIR` | 平台配置：`preferences.json`、`secrets.json`、`data_sources/`；不包含旧用户业务文件 |
+| `LSS_PUBLIC_MARKET_DIR` | 独立公共版本目录，包含 `releases/<id>/` 与原子 `current` 链接 |
+| `LSS_COMPUTE_SOCKET_DIR` | 主机 Broker socket 目录，默认 `/run/lss-full` |
+| `LSS_FULL_API_PORT` | 候选 API 仅监听主机回环，默认 3030 |
+| `LSS_FULL_GATEWAY_PORT` | 候选实时网关仅监听主机回环，默认 3031 |
+| `LSS_FULL_PG_NETWORK` | PostgreSQL 外部 Docker network，默认 `lss-pg_default` |
+| `LSS_FULL_EDGE_NETWORK` | HTTPS Edge 外部 Docker network，默认 `app_default`；API/Gateway 分别使用 `lss-full-api`、`lss-full-gateway` 别名 |
 | `POLICY_SERVICE_URL` | Policy 服务端地址；VKE 内优先使用集群内 Service |
-| `POLICY_SERVICE_TOKEN` | TSP API 服务调用 Policy 固定白名单接口的 Bearer Token |
+| `POLICY_SERVICE_TOKEN` | LSS API 服务调用 Policy 固定白名单接口的 Bearer Token |
 | `POLICY_SERVICE_TIMEOUT_SECONDS` | Policy 请求超时，默认 30 秒 |
 
-API/Gateway/Worker 文件中设 `TSP_CELL_MARKET_URL=http://platform:3018`、`TSP_CELL_MARKET_TOKEN`；其值必须与平台的 `TSP_PLATFORM_MARKET_TOKEN` 一致。两端的 `TSP_PLATFORM_ADMIN_TOKEN` 也必须一致，并与市场 Token 不同。
+API/Gateway/Worker 文件中设 `LSS_CELL_MARKET_URL=http://platform:3018`、`LSS_CELL_MARKET_TOKEN`；其值必须与平台的 `LSS_PLATFORM_MARKET_TOKEN` 一致。两端的 `LSS_PLATFORM_ADMIN_TOKEN` 也必须一致，并与市场 Token 不同。
 
-`TSP_CELL_STREAM_TICKET_SECRET` 是 API 与 Gateway 共享的 HMAC 密钥，至少 32 字节，必须由密码学安全随机源独立生成，不能复用数据库密码、平台 Token 或注册口令。所有 API/Gateway 实例必须使用同一个值；轮换时先停止 Edge 新连接，同时更新并重启 API 与 Gateway，避免新票据在旧网关验签失败。密钥为空或过短时服务启动失败。
+`LSS_CELL_STREAM_TICKET_SECRET` 是 API 与 Gateway 共享的 HMAC 密钥，至少 32 字节，必须由密码学安全随机源独立生成，不能复用数据库密码、平台 Token 或注册口令。所有 API/Gateway 实例必须使用同一个值；轮换时先停止 Edge 新连接，同时更新并重启 API 与 Gateway，避免新票据在旧网关验签失败。密钥为空或过短时服务启动失败。
 
-注册邮件使用原 `AUTH_SMTP_*` 配置，未设置时读取平台 SMTP 设置。通知复用该传输配置，目的地使用本租户渠道。原 `TSP_CELL_SMTP_*` 仅为未配置原邮件服务时的通知后备。Webhook 的允许 origin 使用 `TSP_CELL_WEBHOOK_ORIGINS`。
+注册邮件使用原 `AUTH_SMTP_*` 配置，未设置时读取平台 SMTP 设置。通知复用该传输配置，目的地使用本租户渠道。原 `LSS_CELL_SMTP_*` 仅为未配置原邮件服务时的通知后备。Webhook 的允许 origin 使用 `LSS_CELL_WEBHOOK_ORIGINS`。
 
 平台配置与数据目录必须可由 UID 10001 读写；API 挂载同一配置目录只读。迁移目录前保存原所有权和文件权限；候选目录调整权限不得触碰原生产目录。公共版本文件中不会发布 `user_data`、环境文件或数据源凭据，扩展数据配置的 `pull` 信息也不进入公共版本。
 
@@ -59,17 +59,17 @@ API/Gateway/Worker 文件中设 `TSP_CELL_MARKET_URL=http://platform:3018`、`TS
 5. 启动独立 `platform` 并等待首个完整公共版本。版本发布逐项复制新文件、复用上一不可变版本的相同文件，并在数据世代或文件清单变化时放弃本次发布。
 6. 以完整镜像构建 `Compute.Dockerfile`（传入 `RUNTIME_IMAGE`）。该层使用冻结锁补装
    `backtest` extra，并执行 `vectorbt` 导入检查；否则公开的 `signal_backtest`
-   计算类型会在运行时失败。配置 `/etc/tsp-full/broker.env` 的确切
-   `TSP_COMPUTE_IMAGE` 和主机 `TSP_PUBLIC_MARKET_DIR`。主机 Python 需 3.11+，
-   项目代码部署到 `/opt/tsp-full/backend`；Broker 本身只需标准库。
-7. 确认主机 GID 10001 已存在；若不存在，使用 `groupadd --gid 10001 tsp-runtime` 创建。安装 `tsp-compute-broker.service`，准备 `/opt/tsp-full/python/bin/python` 后启动 Broker，再启动 Gateway、API 和四个 Worker。
+   计算类型会在运行时失败。配置 `/etc/lss-full/broker.env` 的确切
+   `LSS_COMPUTE_IMAGE` 和主机 `LSS_PUBLIC_MARKET_DIR`。主机 Python 需 3.11+，
+   项目代码部署到 `/opt/lss-full/backend`；Broker 本身只需标准库。
+7. 确认主机 GID 10001 已存在；若不存在，使用 `groupadd --gid 10001 lss-runtime` 创建。安装 `lss-compute-broker.service`，准备 `/opt/lss-full/python/bin/python` 后启动 Broker，再启动 Gateway、API 和四个 Worker。
 8. API 的 `/health/ready` 必须通过数据库、公共文件、平台连接、指标缓存、计算 Broker 及四类 Worker 心跳。Gateway 的 `/health/ready` 必须分别通过双库、私有事件 LISTEN、撤权 LISTEN 和平台 marker 流。只看容器运行或 `/health/live` 不算功能就绪。
 
 ```bash
-docker compose -p tsp-full-candidate -f deploy/full/compose.yml config --quiet
-docker compose -p tsp-full-candidate -f deploy/full/compose.yml up -d platform
-docker compose -p tsp-full-candidate -f deploy/full/compose.yml up -d gateway
-docker compose -p tsp-full-candidate -f deploy/full/compose.yml up -d research realtime notifications scheduled api
+docker compose -p lss-full-candidate -f deploy/full/compose.yml config --quiet
+docker compose -p lss-full-candidate -f deploy/full/compose.yml up -d platform
+docker compose -p lss-full-candidate -f deploy/full/compose.yml up -d gateway
+docker compose -p lss-full-candidate -f deploy/full/compose.yml up -d research realtime notifications scheduled api
 ```
 
 Edge 只将精确路径 `/api/events` 和 `/api/events/ticket` 路由至 Gateway，其余请求继续进入 API。`/api/events/ticket` 先由权威 Cookie/API Token 身份核验签发 60 秒一次性票据；Gateway 消费后本地校验，并通过 PostgreSQL 专用 direct/session `LISTEN` 连接接收撤权和私有事件唤醒。该连接不能经过 PgBouncer 事务池。通知丢失时私有事件最多 30 秒全扫追赶；撤权广播失效时已有流由 60 秒硬 TTL 收敛。
@@ -84,6 +84,6 @@ Edge 只将精确路径 `/api/events` 和 `/api/events/ticket` 路由至 Gateway
 
 发布前必须完成旧数据/产物对账、注册与邮件、管理员改密、全部 18/19 业务页面关键操作、角色与数据隔离、真实模型、交易窗口与跨日结算，以及 100 个独立活跃身份混合负载。
 
-切流前暂停旧写入者，最终增量复制并重新对账、发布公共版本，确认 API 与 Gateway 深度健康后，将普通 Nginx upstream 从旧 `app:3018` 改为 `tsp-full-api:3018`，并将两个事件精确路径指向 `tsp-full-gateway:3018`，沿用已签发的本地 CA HTTPS。执行 `nginx -t` 后仅 reload，保存切流时间和镜像/配置/数据版本。
+切流前暂停旧写入者，最终增量复制并重新对账、发布公共版本，确认 API 与 Gateway 深度健康后，将普通 Nginx upstream 从旧 `app:3018` 改为 `lss-full-api:3018`，并将两个事件精确路径指向 `lss-full-gateway:3018`，沿用已签发的本地 CA HTTPS。执行 `nginx -t` 后仅 reload，保存切流时间和镜像/配置/数据版本。
 
 仅回退实时网关时，先把两个事件精确路径恢复到原 API upstream 并执行 `nginx -t`/reload，再停止 Gateway；旧 API 事件端点保持兼容。完整恢复时先阻止候选写入，保存切流后的两个数据库及私有产物，恢复原 Nginx、镜像和备份，再启动唯一旧行情写入者。不能让两个版本同时写共享目录，也不能恢复旧快照后直接丢弃切流后新注册账号或业务写入；恢复需要对这部分增量明确对账。

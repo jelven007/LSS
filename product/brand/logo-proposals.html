@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TSP · Logo 设计提案 · TSP</title>
+<title>LSS · Logo 设计提案 · LSS</title>
 <style>
   :root{
     --bg:#0e1015; --bg2:#13161d; --card:#161923; --line:#262b38;
@@ -60,9 +60,9 @@
   .tile.lt{background:var(--tile-light)} .tile.dk{background:var(--tile-dark);border:1px solid #232838}
   .tile .big{display:flex;align-items:center;justify-content:center;height:150px}
   .lockup{display:flex;align-items:center;gap:13px}
-  .lockup .wm-tsp{font-size:26px;font-weight:800;letter-spacing:.02em;line-height:1.1}
+  .lockup .wm-lss{font-size:26px;font-weight:800;letter-spacing:.02em;line-height:1.1}
   .lockup .wm-sub{font-family:var(--mono);font-size:10px;letter-spacing:.3em;color:#8b8fa3;margin-top:3px}
-  .tile.lt .wm-tsp{color:#23262e}
+  .tile.lt .wm-lss{color:#23262e}
   .strip{display:flex;gap:26px;align-items:flex-end;margin-top:18px;flex-wrap:wrap}
   .s-group{display:flex;gap:8px;align-items:flex-end}
   .chip{border-radius:10px;display:flex;align-items:center;justify-content:center}
@@ -128,8 +128,8 @@
 <header>
   <div class="wrap">
     <div class="eyebrow">Brand Identity Proposal</div>
-    <h1>TSP · Logo 设计提案 <em>/ 19 个方向</em></h1>
-    <p class="sub"><b>TSP</b> — A股智能量化工作台。自托管 · 插件化数据源 · 选股 / 回测 / 监控 / 因子挖掘 / AI 助手。
+    <h1>LSS · Logo 设计提案 <em>/ 19 个方向</em></h1>
+    <p class="sub"><b>LSS</b> — A股智能量化工作台。自托管 · 插件化数据源 · 选股 / 回测 / 监控 / 因子挖掘 / AI 助手。
     双辑呈报：<b>核心七向</b>延续品牌资产正统演进，<b>扩展十二向</b>放宽图形类型边界。每个方案均给出<b>明 / 暗双底展示、字标组合（Lockup）、48/24/16px 小尺寸验证</b>，可直接对比评审。</p>
   </div>
 </header>
@@ -266,7 +266,7 @@
     <p style="font-size:12px;color:var(--txt3);margin-top:10px">选中态：品牌紫底 + 反白图标；默认态：亮紫线幅。图标 22px 网格、4.5px 线幅等比缩放。</p>
   </div>
 
-  <footer>brand/logo-proposals.html · self-contained · 19 logos (7+12) × light/dark × 48/24/16px + icon system · TSP Brand Review</footer>
+  <footer>brand/logo-proposals.html · self-contained · 19 logos (7+12) × light/dark × 48/24/16px + icon system · LSS Brand Review</footer>
 </div>
 
 <script>
@@ -534,7 +534,7 @@ var CONCEPTS = [
           ['适用','独立 App 图标 / 社区徽章；作为公司主标则独占性偏弱']]},
   {k:'D', zh:'T 字 K 线', en:'T Monogram', tag:'把字母 T 画成一根 K 线 —— 横画是价格压杠，竖画是影线与实体，名字与图形互为一笔。',
    notes:[['造型逻辑','T 的竖笔 = K 线（影线 + 实体），横笔压顶，一个字形同时是字母与行情符号'],
-          ['语义','品牌名 TSP 首字母绑定，记忆成本低'],
+          ['语义','品牌名 LSS 首字母绑定，记忆成本低'],
           ['小尺寸','大色块构成，16px 极稳'],
           ['适用','需要「字母标」体系的场合：文档站、CLI 工具、开源组织头像']]},
   {k:'E', zh:'突破面板', en:'Panel Breakout', tag:'一块工作台面板，走势线从开口处破框而出 —— Panel 是产品，Breakout 是交易者共同的执念。',
@@ -616,8 +616,8 @@ function icon(k,g,s){
 }
 function lockup(k,g,txt,cls){
   return '<div class="lockup">'+icon(k,g,46)
-    +'<div><div class="wm-tsp" style="color:'+(cls==='lt'?'#23262e':'#e8eaf2')+'">TSP</div>'
-    +'<div class="wm-sub">TSP</div></div></div>';
+    +'<div><div class="wm-lss" style="color:'+(cls==='lt'?'#23262e':'#e8eaf2')+'">LSS</div>'
+    +'<div class="wm-sub">LSS</div></div></div>';
 }
 function chip(k,g,s,pad){
   return '<div class="chip '+g.split('-')[1]+'" style="width:'+(s+pad*2)+'px;height:'+(s+pad*2)+'px">'+icon(k,g,s)+'</div>';

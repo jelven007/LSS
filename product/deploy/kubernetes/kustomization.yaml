@@ -10,5 +10,5 @@ resources:
 generatorOptions:
   disableNameSuffixHash: true
   labels:
-    app.kubernetes.io/name: tsp-product
+    app.kubernetes.io/name: lss-product
     app.kubernetes.io/managed-by: kustomize

@@ -3,10 +3,10 @@ set -euo pipefail
 umask 077
 
 # The CA directory is never mounted into Nginx or copied to client devices.
-PKI_DIR="${TSP_EDGE_PKI_DIR:-/etc/tsp-edge}"
-EDGE_IP="${TSP_EDGE_IP:-118.196.108.188}"
-CERT_DAYS="${TSP_EDGE_CERT_DAYS:-365}"
-RENEW_DAYS="${TSP_EDGE_RENEW_DAYS:-30}"
+PKI_DIR="${LSS_EDGE_PKI_DIR:-/etc/lss-edge}"
+EDGE_IP="${LSS_EDGE_IP:-118.196.108.188}"
+CERT_DAYS="${LSS_EDGE_CERT_DAYS:-365}"
+RENEW_DAYS="${LSS_EDGE_RENEW_DAYS:-30}"
 FORCE=false
 if [[ "${1:-}" == "--force" && $# == 1 ]]; then
   FORCE=true
@@ -16,7 +16,7 @@ elif (( $# > 0 )); then
 fi
 
 [[ "$EDGE_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || {
-  echo "TSP_EDGE_IP must be an IPv4 address" >&2
+  echo "LSS_EDGE_IP must be an IPv4 address" >&2
   exit 2
 }
 IFS=. read -r -a OCTETS <<< "$EDGE_IP"
@@ -52,7 +52,7 @@ if [[ ! -e "$CA_KEY" && ! -e "$CA_CERT" ]]; then
     exit 1
   fi
   openssl req -x509 -newkey rsa:4096 -nodes -sha256 -days 3650 \
-    -subj "/CN=TSP Local Root CA" \
+    -subj "/CN=LSS Local Root CA" \
     -addext "basicConstraints=critical,CA:TRUE,pathlen:0" \
     -addext "keyUsage=critical,keyCertSign,cRLSign" \
     -addext "subjectKeyIdentifier=hash" \
@@ -93,7 +93,7 @@ subjectKeyIdentifier=hash
 authorityKeyIdentifier=keyid,issuer
 EOF
 openssl req -new -newkey rsa:3072 -nodes -sha256 \
-  -subj "/CN=TSP Edge $EDGE_IP" \
+  -subj "/CN=LSS Edge $EDGE_IP" \
   -keyout "$STAGE/privkey.pem" -out "$STAGE/server.csr" 2>"$STAGE/openssl.log"
 openssl x509 -req -sha256 -days "$CERT_DAYS" \
   -in "$STAGE/server.csr" -CA "$CA_CERT" -CAkey "$CA_KEY" \

@@ -1,13 +1,13 @@
-<!-- TSP 品牌 logo — App 图标 / 头像徽章版 (直角方底)
+<!-- LSS 品牌 logo — App 图标 / 头像徽章版 (直角方底)
      品牌紫渐变方底 + 纯白全直角标记; 平台圆角由 OS/宿主自行裁切 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="TSP">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="LSS">
   <defs>
-    <linearGradient id="tsp-badge" x1="4" y1="4" x2="60" y2="60" gradientUnits="userSpaceOnUse">
+    <linearGradient id="lss-badge" x1="4" y1="4" x2="60" y2="60" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#8B5CF6"/>
       <stop offset="1" stop-color="#6D28D9"/>
     </linearGradient>
   </defs>
-  <rect x="2" y="2" width="60" height="60" fill="url(#tsp-badge)"/>
+  <rect x="2" y="2" width="60" height="60" fill="url(#lss-badge)"/>
   <path d="M23.5 15.5 H18.5 V48.5 H23.5"
         stroke="#FFFFFF" stroke-width="4" stroke-linejoin="miter" stroke-linecap="butt"/>
   <path d="M40.5 15.5 H45.5 V48.5 H40.5"

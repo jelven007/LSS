@@ -41,17 +41,17 @@ flowchart LR
 
 | 工作负载 | 职责 | 副本 |
 | --- | --- | ---: |
-| `tsp-product` | React 静态资源、统一 API、账户、多租户、SSE | HPA 2～4 |
-| `tsp-task-worker` | TSP 研究、实时规则、通知、定时任务 | 1，Recreate |
+| `lss-product` | React 静态资源、统一 API、账户、多租户、SSE | HPA 2～4 |
+| `lss-task-worker` | LSS 研究、实时规则、通知、定时任务 | 1，Recreate |
 | `report-scheduler` | Policy 刷新队列、历史生成、定时报告与补跑 | 1，Recreate |
-| `tsp-platform` | 公共行情版本与平台配置 | 1 |
-| `tsp-compute` | 无密钥、禁止出网的受限计算进程 | 1 |
+| `lss-platform` | 公共行情版本与平台配置 | 1 |
+| `lss-compute` | 无密钥、禁止出网的受限计算进程 | 1 |
 | `market-collector` | `market-worker` 入口，行情、特征、策略和投影 | 2，租约单活 |
 | `market-reference-sync` | 证券、板块和参考数据同步 | 1 |
 | `intraday-monitor` | 采集状态、规则计算和告警指标 | 1 |
 | `market-archive` | 五类 ClickHouse 行情日终归档 | CronJob，验收前暂停 |
 
-研究、实时规则、通知和定时任务由独立 `tsp-task-worker` 统一监督。API 扩容不会
+研究、实时规则、通知和定时任务由独立 `lss-task-worker` 统一监督。API 扩容不会
 复制后台进程。任一子进程异常退出时，
 容器失败并由 Kubernetes 重建，避免部分 Worker 无声失效。
 Policy 定时报告与页面刷新共用 `report-scheduler`，不再额外运行 16:30/23:30 报告
@@ -73,7 +73,7 @@ Market Worker 启动及候选刷新直接读取数据库计划，不挂载报告
 生产主路径不再部署以下组件：
 
 - 独立 Policy API Deployment 和集群 HTTP Policy Bridge。
-- 独立 TSP PostgreSQL StatefulSet。
+- 独立 LSS PostgreSQL StatefulSet。
 - Kafka、Flink、`market-sink`、`strategy-engine`、`outbox-relay` 和
   `projection-worker` 常驻工作负载。
 - 自建 MinIO 和 Policy 报告 NAS。
@@ -108,7 +108,7 @@ Redis 丢失不影响权威数据，可从 PostgreSQL 和 ClickHouse 重建。
 
 ## 5. 计算隔离
 
-`tsp-compute` 不包含数据库、SMTP、对象存储或平台管理凭据，并采用：
+`lss-compute` 不包含数据库、SMTP、对象存储或平台管理凭据，并采用：
 
 - 独立 Pod 和 Service。
 - 默认拒绝全部出站网络。
@@ -123,17 +123,17 @@ Socket，同时保留进度流、取消和大结果返回能力。
 
 ## 6. PostgreSQL 合并
 
-Policy、TSP 控制库和 TSP 业务库使用同一个 PostgreSQL 集群：
+Policy、LSS 控制库和 LSS 业务库使用同一个 PostgreSQL 集群：
 
 - `banxia`：Policy 业务。
-- `tsp_control`：身份、租户和路由。
-- `tsp_data_production`：租户业务数据。
-- `tsp_control_runtime` 与 `tsp_data_runtime` 使用不同密码、禁止继承和
+- `lss_control`：身份、租户和路由。
+- `lss_data_production`：租户业务数据。
+- `lss_control_runtime` 与 `lss_data_runtime` 使用不同密码、禁止继承和
   `BYPASSRLS`。
 
 已有生产数据必须先执行
 `product/deploy/kubernetes/migrate-legacy-postgres.yaml`，验证行数和登录后才能删除旧
-`tsp-postgres` StatefulSet。禁止直接删除旧 PVC。
+`lss-postgres` StatefulSet。禁止直接删除旧 PVC。
 
 ## 7. 发布顺序
 
@@ -142,11 +142,11 @@ Policy、TSP 控制库和 TSP 业务库使用同一个 PostgreSQL 集群：
 各 Worker。具体步骤见[全新安装](06-deployment-operations.md#4-本次全新安装)。
 下列顺序保留给需要保留数据的后续升级。
 
-1. 备份 Policy PostgreSQL、旧 TSP PostgreSQL、ClickHouse、MinIO 和 NAS。
+1. 备份 Policy PostgreSQL、旧 LSS PostgreSQL、ClickHouse、MinIO 和 NAS。
 2. 创建 TOS Bucket，迁移对象并验证 SHA-256。
-3. 更新 `banxia-secrets` 的 TOS AK/SK，更新 TSP 新旧数据库 DSN。
-4. 应用 `tsp-database-bootstrap`，创建数据库和两个运行角色。
-5. 执行旧 TSP PostgreSQL 迁移 Job，并完成数量和抽样校验。
+3. 更新 `banxia-secrets` 的 TOS AK/SK，更新 LSS 新旧数据库 DSN。
+4. 应用 `lss-database-bootstrap`，创建数据库和两个运行角色。
+5. 执行旧 LSS PostgreSQL 迁移 Job，并完成数量和抽样校验。
 6. 构建并推送 `v0.5.1` Policy、Web Runtime 和 Compute 镜像，固定 digest。
 7. 服务端 dry-run 后，先暂停旧报告 CronJob 并确认存量作业结束，再发布新清单。
    旧 API 侧车与新 Task Worker 在滚动窗口内依靠持久任务租约协调；发布完成后确认

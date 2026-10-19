@@ -27,22 +27,22 @@ class ComputeExecutor:
         address: str | None = None,
     ):
         self.socket_path = socket_path or os.environ.get(
-            "TSP_COMPUTE_SOCKET",
-            "/run/tsp/compute.sock",
+            "LSS_COMPUTE_SOCKET",
+            "/run/lss/compute.sock",
         )
-        self.address = address or os.environ.get("TSP_COMPUTE_ADDRESS", "").strip()
+        self.address = address or os.environ.get("LSS_COMPUTE_ADDRESS", "").strip()
 
     def _connect(self) -> socket.socket:
         if self.address:
             host, separator, raw_port = self.address.rpartition(":")
             if not separator or not host:
-                raise ValueError("TSP_COMPUTE_ADDRESS must use host:port")
+                raise ValueError("LSS_COMPUTE_ADDRESS must use host:port")
             try:
                 port = int(raw_port)
             except ValueError as exc:
-                raise ValueError("TSP_COMPUTE_ADDRESS port must be an integer") from exc
+                raise ValueError("LSS_COMPUTE_ADDRESS port must be an integer") from exc
             if not 1 <= port <= 65535:
-                raise ValueError("TSP_COMPUTE_ADDRESS port is out of range")
+                raise ValueError("LSS_COMPUTE_ADDRESS port is out of range")
             return socket.create_connection((host, port), timeout=5)
         client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         client.settimeout(5)

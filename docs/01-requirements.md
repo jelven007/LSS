@@ -172,10 +172,10 @@
 | FR-OPS-003 | 支持按事件 ID、股票和时间范围从 WAL 或权威存储重放 | P1 |
 | FR-OPS-004 | 配置、策略版本和人工操作写入不可变审计记录 | P0 |
 | FR-OPS-005 | 备份恢复和区域故障切换必须定期演练 | P1 |
-| FR-OPS-006 | Web 产品和 Policy 领域统一运行于 TSP Runtime，Policy 不单独暴露公网服务 | P0 |
+| FR-OPS-006 | Web 产品和 Policy 领域统一运行于 LSS Runtime，Policy 不单独暴露公网服务 | P0 |
 | FR-OPS-007 | 明确区分保留数据升级与全新安装；全新安装从空库和新凭据初始化 | P0 |
 | FR-OPS-008 | 生产镜像使用版本 Tag 和不可变 Digest 双重固定 | P0 |
-| FR-OPS-009 | TSP 与 Policy 共享 PostgreSQL 集群，数据库和运行角色保持隔离 | P0 |
+| FR-OPS-009 | LSS 与 Policy 共享 PostgreSQL 集群，数据库和运行角色保持隔离 | P0 |
 | FR-OPS-010 | 公网仅暴露统一 API，Policy 通过进程内 ASGI 调用 | P0 |
 | FR-OPS-011 | 生产不得依赖特权 DinD、Kafka、Flink 或自建 MinIO | P0 |
 | FR-OPS-012 | TOS 与 SMTP 通过受控 Secret 配置；不得将密钥写入源码、日志或命令参数 | P0 |
@@ -259,7 +259,7 @@ Web 是唯一客户端入口，不再提供 Android/APK。登录后的固定主�
 8. 个股分析
 9. 设置
 
-首页、自选、策略、复盘、回测、个股分析、设置和账户体系使用 TSP 产品实现；次日计划
+首页、自选、策略、复盘、回测、个股分析、设置和账户体系使用 LSS 产品实现；次日计划
 与当日实盘继续使用 Policy 权威数据。
 
 ### 11.2 账户与安全

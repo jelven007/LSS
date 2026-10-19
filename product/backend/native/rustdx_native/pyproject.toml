@@ -3,15 +3,15 @@ requires = ["maturin>=1.8,<2"]
 build-backend = "maturin"
 
 [project]
-name = "tsp-rustdx-native"
+name = "lss-rustdx-native"
 version = "0.1.1"
 requires-python = ">=3.11"
-description = "TSP native bridge for jelven-rustdx-complete"
+description = "LSS native bridge for jelven-rustdx-complete"
 license = { text = "MIT" }
 
 [tool.maturin]
 bindings = "pyo3"
-module-name = "tsp_rustdx_native"
+module-name = "lss_rustdx_native"
 features = ["pyo3/extension-module"]
 
 [tool.uv]

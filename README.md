@@ -45,7 +45,7 @@ Task Worker -> 隔离 Compute
 Report Scheduler -> PostgreSQL + TOS
 ```
 
-生产不再部署 Kafka、Flink、独立 Policy API、独立 SSE Gateway、独立 TSP
+生产不再部署 Kafka、Flink、独立 Policy API、独立 SSE Gateway、独立 LSS
 PostgreSQL、自建 MinIO 或 Pod 内 DinD。可靠性由 SQLite WAL、PostgreSQL
 Inbox/Outbox、稳定事件 ID 和幂等写入保证。
 
@@ -166,6 +166,6 @@ python3 product/scripts/check_version.py --current product/VERSION
 - [接口规范](docs/04-api.md)
 - [部署与运维](docs/06-deployment-operations.md)
 - [迭代计划](docs/07-iteration-plan.md)
-- [TSP 与 Policy 整合](docs/35-tsp-product-integration.md)
+- [LSS 与 Policy 整合](docs/35-lss-product-integration.md)
 
 历史研究保留原始数据源、窗口和成交假设，不代表当前运行依赖或生产状态。

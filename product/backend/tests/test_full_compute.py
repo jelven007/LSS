@@ -25,7 +25,7 @@ from app.strategy.engine import StrategyEngine
 def socket_dir():
     # AF_UNIX paths are limited to 104 bytes on macOS; pytest's normal
     # temporary path includes the long test name.
-    with tempfile.TemporaryDirectory(prefix="tsp-ipc-", dir="/tmp") as directory:
+    with tempfile.TemporaryDirectory(prefix="lss-ipc-", dir="/tmp") as directory:
         yield Path(directory)
 
 
@@ -47,7 +47,7 @@ def test_broker_owns_image_entrypoint_and_only_mounts_public_market(socket_dir):
     public = tmp_path / "public"
     public.mkdir()
     with ComputeBroker(tmp_path / "compute.sock", "pinned-image:digest", public, 4) as broker:
-        command = broker.command("tsp-test-job")
+        command = broker.command("lss-test-job")
     assert command[command.index("--network") + 1] == "none"
     assert command[command.index("--user") + 1] == "10001:10001"
     assert command[command.index("--memory") + 1] == "4g"

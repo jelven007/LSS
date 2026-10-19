@@ -443,7 +443,7 @@ def _restored_cluster(
     control_dump: bytes,
     data_dump: bytes,
 ):
-    prefix = "tsp_restore_" + uuid.uuid4().hex[:10]
+    prefix = "lss_restore_" + uuid.uuid4().hex[:10]
     databases = [prefix + "_control", prefix + "_data"]
     roles = [prefix + "_identity", prefix + "_business"]
     with psycopg.connect(root_dsn, autocommit=True, row_factory=dict_row) as root:
@@ -815,7 +815,7 @@ def _reconcile_post_cutover(
 
 def run(*, postgres_image: str, output: Path) -> dict:
     suffix = uuid.uuid4().hex[:10]
-    postgres = "tsp-recovery-postgres-" + suffix
+    postgres = "lss-recovery-postgres-" + suffix
     started = time.time()
     report: dict[str, Any] = {
         "status": "failed",
@@ -833,7 +833,7 @@ def run(*, postgres_image: str, output: Path) -> dict:
         },
     }
     try:
-        with tempfile.TemporaryDirectory(prefix="tsp-recovery-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="lss-recovery-") as temporary:
             root = Path(temporary)
             source_paths = _seed_files(root / "source")
             traffic = root / "traffic.json"
@@ -865,7 +865,7 @@ def run(*, postgres_image: str, output: Path) -> dict:
                 with _cluster(
                     root_dsn,
                     8,
-                    name_prefix="tsp_recovery_source_",
+                    name_prefix="lss_recovery_source_",
                     base_url="http://localhost",
                 ) as source:
                     principals = _login(source, _seed(

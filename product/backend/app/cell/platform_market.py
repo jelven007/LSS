@@ -30,7 +30,7 @@ def _serialize_full_snapshot(function):
 
 
 def _authorize(authorization: str | None) -> None:
-    expected = os.environ.get("TSP_PLATFORM_MARKET_TOKEN", "")
+    expected = os.environ.get("LSS_PLATFORM_MARKET_TOKEN", "")
     if not expected or not authorization or not secrets.compare_digest(authorization, "Bearer " + expected):
         raise HTTPException(401, "platform_authentication_required")
 

@@ -101,26 +101,26 @@ def fake_http(monkeypatch):
 # ── 纯函数 ────────────────────────────────────────────────
 
 def test_outbound_headers_default_and_override():
-    """出站标识头: 默认带 tsp UA + X-TSP-Client; 用户同名头优先 (大小写不敏感)。"""
+    """出站标识头: 默认带 lss UA + X-LSS-Client; 用户同名头优先 (大小写不敏感)。"""
     from app.services.ext_pull import outbound_headers
 
     h = outbound_headers()
-    assert h["User-Agent"].startswith("tsp/")
-    assert h["X-TSP-Client"] == "tsp"
+    assert h["User-Agent"].startswith("lss/")
+    assert h["X-LSS-Client"] == "lss"
 
     h2 = outbound_headers({"user-agent": "my-ua", "X-Custom": "1"})
     assert h2["user-agent"] == "my-ua"          # 小写同名覆盖默认 UA
     assert "User-Agent" not in h2                # 不重复发送
-    assert h2["X-TSP-Client"] == "tsp"  # 未覆盖的标识头保留
+    assert h2["X-LSS-Client"] == "lss"  # 未覆盖的标识头保留
     assert h2["X-Custom"] == "1"
 
 
-async def test_fetch_rows_carries_tsp_identity(fake_http):
+async def test_fetch_rows_carries_lss_identity(fake_http):
     fake_http.responses["https://example.test/rank?date=2026-01-05"] = [_row("A", "2026-01-05")]
     await fetch_rows_for_date(_cfg(), date(2026, 1, 5))
     headers = fake_http.header_calls[-1]
-    assert headers["User-Agent"].startswith("tsp/")
-    assert headers["X-TSP-Client"] == "tsp"
+    assert headers["User-Agent"].startswith("lss/")
+    assert headers["X-LSS-Client"] == "lss"
 
 
 async def test_fetch_rows_user_headers_take_precedence(fake_http):
@@ -137,7 +137,7 @@ async def test_fetch_rows_user_headers_take_precedence(fake_http):
     await fetch_rows_for_date(cfg, date(2026, 1, 5))
     headers = fake_http.header_calls[-1]
     assert headers["User-Agent"] == "custom-ua"
-    assert headers["X-TSP-Client"] == "tsp"
+    assert headers["X-LSS-Client"] == "lss"
 
 
 def test_with_date_param_url_building():

@@ -90,8 +90,8 @@ async def middleware(request: Request, call_next):
                 account = await run_in_threadpool(
                     service.current_user, request.cookies.get(COOKIE_NAME, ""),
                 )
-            expected_scope = request.headers.get("x-tsp-account-scope") or request.query_params.get("account_scope")
-            current_scope = f"tsp-v1:{account['id']}:{account['default_tenant_id'] or 'market'}:{account['auth_version']}"
+            expected_scope = request.headers.get("x-lss-account-scope") or request.query_params.get("account_scope")
+            current_scope = f"lss-v1:{account['id']}:{account['default_tenant_id'] or 'market'}:{account['auth_version']}"
             if expected_scope and expected_scope != current_scope:
                 raise AccessError(401, "账户已切换，请重新登录")
             request.state.account = account
@@ -151,8 +151,8 @@ async def middleware(request: Request, call_next):
         if service_role == "gateway":
             response = await call_next(request)
             response.headers["Cache-Control"] = "no-store"
-            response.headers["X-TSP-Account-Scope"] = (
-                f"tsp-v1:{account['id']}:{account['default_tenant_id'] or 'market'}:{account['auth_version']}"
+            response.headers["X-LSS-Account-Scope"] = (
+                f"lss-v1:{account['id']}:{account['default_tenant_id'] or 'market'}:{account['auth_version']}"
             )
             return response
         if service_role == "api" and not any(
@@ -177,8 +177,8 @@ async def middleware(request: Request, call_next):
         response.headers["Cache-Control"] = "no-store"
         account = getattr(request.state, "account", None)
         if account:
-            response.headers["X-TSP-Account-Scope"] = (
-                f"tsp-v1:{account['id']}:{account['default_tenant_id'] or 'market'}:{account['auth_version']}"
+            response.headers["X-LSS-Account-Scope"] = (
+                f"lss-v1:{account['id']}:{account['default_tenant_id'] or 'market'}:{account['auth_version']}"
             )
         return response
     except AccessError as exc:

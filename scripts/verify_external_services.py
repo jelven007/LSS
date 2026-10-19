@@ -116,7 +116,7 @@ def main() -> None:
     try:
         execute(kubectl, "report-scheduler", "python",
                 f"verify = {args.tos!r}\n" + TOS_CHECK)
-        execute(kubectl, "tsp-product", "/app/.venv/bin/python",
+        execute(kubectl, "lss-product", "/app/.venv/bin/python",
                 f"recipient = {json.dumps(args.email_to or '')}\n" + SMTP_CHECK)
     except (RuntimeError, subprocess.TimeoutExpired) as exc:
         raise SystemExit(str(exc)) from None

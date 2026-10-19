@@ -1,4 +1,4 @@
-# TSP 运维手册
+# LSS 运维手册
 
 本文档面向自托管部署的维护人员，提供启动、巡检、备份、恢复、升级和故障处理
 步骤。安装方式见[部署指南](./deployment.md)，配置项见
@@ -20,7 +20,7 @@
 - TOS 与 SMTP 尚未签收；`market-archive` CronJob 必须保持暂停，直到有数据交易日
   的手工归档、对象读回和哈希校验通过。
 - 下方根目录 Compose 操作适用于独立运行模式，其生产形态是单容器、单 Uvicorn worker。
-- 同一 `DATA_DIR` 只能由一个 TSP 主实例写入。
+- 同一 `DATA_DIR` 只能由一个 LSS 主实例写入。
 - 默认服务端口为 `3018`。
 - Docker Compose 将主机 `./data` 挂载到容器 `/app/data`。
 - Compose 使用 `restart: unless-stopped`；镜像内置容器 `HEALTHCHECK`，调用
@@ -62,10 +62,10 @@ mkdir -p data backups
 
 ```bash
 kubectl -n banxia get deploy,statefulset,cronjob,pod
-kubectl -n banxia rollout status deployment/tsp-product --timeout=5m
-kubectl -n banxia rollout status deployment/tsp-task-worker --timeout=5m
+kubectl -n banxia rollout status deployment/lss-product --timeout=5m
+kubectl -n banxia rollout status deployment/lss-task-worker --timeout=5m
 kubectl -n banxia rollout status deployment/report-scheduler --timeout=5m
-kubectl -n banxia rollout status deployment/tsp-compute --timeout=5m
+kubectl -n banxia rollout status deployment/lss-compute --timeout=5m
 kubectl -n banxia rollout status statefulset/market-collector --timeout=5m
 curl -fsS https://shanao.asia/health/ready
 ```
@@ -115,9 +115,9 @@ docker compose down
 ### 3.3 单个 Docker 容器
 
 ```bash
-docker ps --filter name=tsp
-docker logs --tail=200 tsp
-docker restart tsp
+docker ps --filter name=lss
+docker logs --tail=200 lss
+docker restart lss
 curl -fsS http://127.0.0.1:3018/health
 ```
 
@@ -328,7 +328,7 @@ Report Scheduler 使用数据库租约/队列；`market-archive` 在周二至周
 ## 8. 备份
 
 VKE 生产备份必须同时覆盖 PostgreSQL 三库、ClickHouse、TOS 对象与 Manifest、
-TSP 公共行情 NAS、Market Worker WAL/PVC，以及恢复所需的镜像 digest 和脱敏配置
+LSS 公共行情 NAS、Market Worker WAL/PVC，以及恢复所需的镜像 digest 和脱敏配置
 清单。Redis 是可重建投影，不作为唯一恢复来源。当前版本尚未完成整套生产恢复演练，
 不得据此承诺 RTO/RPO。
 
@@ -356,7 +356,7 @@ TSP 公共行情 NAS、Market Worker WAL/PVC，以及恢复所需的镜像 diges
 ```bash
 docker compose stop
 stamp=$(date +%Y%m%d-%H%M%S)
-tar -czf "backups/tsp-data-${stamp}.tar.gz" data
+tar -czf "backups/lss-data-${stamp}.tar.gz" data
 docker compose start
 curl -fsS http://127.0.0.1:3018/health
 ```
@@ -364,8 +364,8 @@ curl -fsS http://127.0.0.1:3018/health
 `.env` 等敏感配置建议用组织认可的加密备份工具单独保存。备份后至少执行：
 
 ```bash
-tar -tzf "backups/tsp-data-${stamp}.tar.gz" | head
-shasum -a 256 "backups/tsp-data-${stamp}.tar.gz"
+tar -tzf "backups/lss-data-${stamp}.tar.gz" | head
+shasum -a 256 "backups/lss-data-${stamp}.tar.gz"
 ```
 
 备份清单可读和哈希可计算只证明归档可访问，不等于业务恢复成功。
@@ -383,7 +383,7 @@ shasum -a 256 "backups/tsp-data-${stamp}.tar.gz"
 恢复必须在停止所有写入者后进行。建议先在隔离目录或测试主机演练：
 
 1. 记录当前版本和故障现象。
-2. 停止 TSP，确认没有残留进程写数据目录。
+2. 停止 LSS，确认没有残留进程写数据目录。
 3. 将当前损坏或待替换目录改名保留，不直接覆盖。
 4. 解压已验证哈希的备份。
 5. 使用与备份兼容的代码或镜像启动。
@@ -398,7 +398,7 @@ shasum -a 256 "backups/tsp-data-${stamp}.tar.gz"
 docker compose stop
 stamp=$(date +%Y%m%d-%H%M%S)
 mv data "data.before-restore-${stamp}"
-tar -xzf backups/tsp-data-YYYYMMDD-HHMMSS.tar.gz
+tar -xzf backups/lss-data-YYYYMMDD-HHMMSS.tar.gz
 docker compose start
 curl -fsS http://127.0.0.1:3018/health
 ```
@@ -472,7 +472,7 @@ df -h
 
 - 立即停止写任务和服务，保留日志与现场副本。
 - 查明主要占用，不盲删 Parquet、DuckDB、任务或认证文件。
-- 释放与 TSP 数据无关且确认可删的空间。
+- 释放与 LSS 数据无关且确认可删的空间。
 - 从已验证备份恢复；无法确认的金融数据重新从指定 Provider 构建并审计。
 
 ## 12. 安全操作

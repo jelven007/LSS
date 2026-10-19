@@ -76,10 +76,10 @@ def test_admin_selection_persists_and_old_ui_scope_is_rejected(env):
     client = env["client"]
     client.cookies.set("tf_session", token)
     assert client.post("/api/account/tenant", json={"tenant_id": first["default_tenant_id"]}).status_code == 200
-    first_scope = client.get("/api/watchlist").headers["x-tsp-account-scope"]
+    first_scope = client.get("/api/watchlist").headers["x-lss-account-scope"]
     assert client.get("/api/watchlist").json()["tenant_id"] == first["default_tenant_id"]
     assert client.post("/api/account/tenant", json={"tenant_id": second["default_tenant_id"]}).status_code == 200
-    assert client.get("/api/watchlist", headers={"X-TSP-Account-Scope": first_scope}).status_code == 401
+    assert client.get("/api/watchlist", headers={"X-LSS-Account-Scope": first_scope}).status_code == 401
     assert env["identity"].current_user(token)["default_tenant_id"] == second["default_tenant_id"]
     assert env["control"].execute(
         "SELECT 1 FROM control.audit WHERE actor_id=%s AND action='admin.tenant.select'", (admin["id"],),
@@ -101,7 +101,7 @@ def test_tokens_bind_admin_target_and_scope_not_current_selection(env):
     tokens = Tokens(service)
     created = tokens.create(admin, "market", ["read:market"], 90, "token-create")
     value = created["plaintext"]
-    assert value.startswith("tsp_ft_") and value not in str(tokens.list(admin))
+    assert value.startswith("lss_ft_") and value not in str(tokens.list(admin))
     account, context = tokens.authenticate(value, None, "read", "GET", "/api/kline/daily")
     assert account["default_tenant_id"] == first["default_tenant_id"]
     assert context.token_id == created["token"]["id"] and "paper:write" not in context.permissions
@@ -234,7 +234,7 @@ def test_admin_platform_forwarding_preserves_body_and_excludes_browser_credentia
 
     from app.multitenancy.platform import PlatformAdmin
 
-    monkeypatch.setenv("TSP_PLATFORM_ADMIN_TOKEN", "internal-test-token")
+    monkeypatch.setenv("LSS_PLATFORM_ADMIN_TOKEN", "internal-test-token")
     seen = []
 
     async def remote(request):

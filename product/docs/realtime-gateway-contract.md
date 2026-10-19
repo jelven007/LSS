@@ -1,7 +1,7 @@
 # 单机实时网关契约
 
 > 历史兼容契约：本文描述二期单机阶段的独立 SSE Gateway，不是当前 `v0.5.1` VKE
-> 生产拓扑。当前 SSE 已并入统一 `tsp-product`，请以[当前架构](architecture.md)
+> 生产拓扑。当前 SSE 已并入统一 `lss-product`，请以[当前架构](architecture.md)
 > 和运行时 OpenAPI 为准。
 
 日期：2026-10-16。适用范围：完整产品单机多租户部署。
@@ -71,7 +71,7 @@
 
 ## 4. 撤权与恢复
 
-账号停用、密码变更、租户切换、成员关系或路由变更、API Token 吊销会在控制库事务内发送 `tsp_access_revoked` 通知。网关使用 PostgreSQL 专用 direct/session `LISTEN` 连接更新本地高水位：
+账号停用、密码变更、租户切换、成员关系或路由变更、API Token 吊销会在控制库事务内发送 `lss_access_revoked` 通知。网关使用 PostgreSQL 专用 direct/session `LISTEN` 连接更新本地高水位：
 
 - principal 撤权只影响对应会话或 API Token；
 - user 撤权影响该用户已有流；
@@ -79,7 +79,7 @@
 - 通知早于或等于票据签发时间时，流立即结束；
 - 广播中断时由 60 秒票据硬 TTL 收敛，不能无限续期。
 
-私有业务事件先写入 `business.full_events`，再发送 `tsp_full_events` 租户唤醒。SQL 是事实源，通知只负责唤醒：
+私有业务事件先写入 `business.full_events`，再发送 `lss_full_events` 租户唤醒。SQL 是事实源，通知只负责唤醒：
 
 - 同一 API 进程内，相同租户的多个标签页共用一次 SQL 读取；
 - 正常情况只读取收到通知的租户；

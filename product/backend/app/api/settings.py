@@ -1401,7 +1401,7 @@ def test_webhook(req: WebhookTestIn, request: Request = None) -> dict:
     from app.services import preferences
     from app.services import webhook_adapter
 
-    title = "TSP 推送测试"
+    title = "LSS 推送测试"
     body = "如果你看到这条消息，说明推送配置正确 🎉"
 
     if req.channel == "feishu":

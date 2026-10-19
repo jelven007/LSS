@@ -16,9 +16,9 @@
 | 主线 | `132db778c03b5e4d724afd510c63d269c7764211` |
 | 候选标签 | `v0.5.1-rc.1` |
 | 生产清单 | `deploy/kubernetes/overlays/volcengine/` |
-| TSP 子清单 | `product/deploy/kubernetes/` |
+| LSS 子清单 | `product/deploy/kubernetes/` |
 
-Kafka、Flink、自建 MinIO、独立 Policy API、独立 SSE Gateway、独立 TSP PostgreSQL、
+Kafka、Flink、自建 MinIO、独立 Policy API、独立 SSE Gateway、独立 LSS PostgreSQL、
 Policy 报告 NAS 和 Pod 内 DinD 不属于当前生产目标。历史资源若仍在云账号中，先核对
 挂载、快照、备份和引用，再按变更流程清理，不能仅凭名称删除。
 
@@ -26,11 +26,11 @@ Policy 报告 NAS 和 Pod 内 DinD 不属于当前生产目标。历史资源若
 
 | 工作负载 | 类型 | 副本/调度 | 职责 |
 | --- | --- | --- | --- |
-| `tsp-product` | Deployment + HPA | 2～4 | React、统一 API、SSE、RBAC、内嵌 Policy |
-| `tsp-task-worker` | Deployment | 1 / Recreate | 研究、监控、模拟盘、通知和计划任务 |
+| `lss-product` | Deployment + HPA | 2～4 | React、统一 API、SSE、RBAC、内嵌 Policy |
+| `lss-task-worker` | Deployment | 1 / Recreate | 研究、监控、模拟盘、通知和计划任务 |
 | `report-scheduler` | Deployment | 1 / Recreate | Policy 报告队列、定时生成和补跑 |
-| `tsp-platform` | Deployment | 1 | 公共行情版本和平台服务 |
-| `tsp-compute` | Deployment | 1 | 隔离回测与研究计算 |
+| `lss-platform` | Deployment | 1 | 公共行情版本和平台服务 |
+| `lss-compute` | Deployment | 1 | 隔离回测与研究计算 |
 | `market-collector` | StatefulSet | 2 / 租约单活 | rustdx 采集、SQLite WAL、特征和投影 |
 | `market-reference-sync` | Deployment | 1 | 证券、板块、行业和交易日参考数据 |
 | `intraday-monitor` | Deployment | 1 | 盘中指标与告警采集 |
@@ -43,22 +43,22 @@ Policy 报告 NAS 和 Pod 内 DinD 不属于当前生产目标。历史资源若
 
 | 数据域 | 当前资源 | 持久化边界 |
 | --- | --- | --- |
-| 事务与身份 | PostgreSQL StatefulSet | `banxia`、`tsp_control`、`tsp_data_production` 三库隔离 |
+| 事务与身份 | PostgreSQL StatefulSet | `banxia`、`lss_control`、`lss_data_production` 三库隔离 |
 | 行情与特征 | ClickHouse StatefulSet | EBS PVC；五类行情表按交易日归档 |
 | 实时投影 | Redis StatefulSet | 可从 PostgreSQL/ClickHouse 重建 |
 | Market Worker 缓冲 | `market-collector` PVC | 每个 Pod 独立 SQLite WAL |
-| 公共行情版本 | `tsp-product-state` NAS RWX | Platform 写入，API/Compute 只读消费 |
+| 公共行情版本 | `lss-product-state` NAS RWX | Platform 写入，API/Compute 只读消费 |
 | 报告与原始归档 | 火山引擎 TOS | `strategy-reports`、`market-raw` 两个私有 Bucket |
 
 PostgreSQL 三库共用集群但不共用数据库和运行角色。管理员 DSN 只供初始化与迁移 Job；
 Compute 不获得数据库、SMTP、TOS 或平台管理凭据。
 
 TOS 是生产对象存储。当前 AK/SK 尚未配置，实际对象写入、读回和 Manifest 完整性
-尚未签收。TSP 公共行情 NAS 仍是运行依赖，不得当作已迁移到 TOS。
+尚未签收。LSS 公共行情 NAS 仍是运行依赖，不得当作已迁移到 TOS。
 
 ## 4. 网络与安全
 
-- 公网流量经 ALB 终止 TLS，只转发到 `tsp-product`。
+- 公网流量经 ALB 终止 TLS，只转发到 `lss-product`。
 - PostgreSQL、ClickHouse、Redis、Platform 和 Compute 只暴露集群内 Service。
 - Market Worker 和参考同步需要访问 rustdx；报告和归档需要访问 TOS。
 - Compute NetworkPolicy 禁止出站，只允许 API/Task Worker 访问其服务端口。
@@ -83,7 +83,7 @@ TOS 是生产对象存储。当前 AK/SK 尚未配置，实际对象写入、读
 ## 6. 已验证状态
 
 - 新 PostgreSQL、ClickHouse、Redis 和对应卷已创建并 Ready。
-- PostgreSQL 三库、TSP 双运行角色、schema v6 和管理员工作空间初始化完成。
+- PostgreSQL 三库、LSS 双运行角色、schema v6 和管理员工作空间初始化完成。
 - Web/API 两副本、Platform、Task Worker、Report Scheduler、Compute 和
   Market Collector 已完成部署。
 - HTTPS、登录、九项页面、SSE 和 `/health/ready` 通过。

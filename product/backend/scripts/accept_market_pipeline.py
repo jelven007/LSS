@@ -81,7 +81,7 @@ def run(args):
         raise ValueError("requested securities must exist in the input universe")
     (origin / "instruments").mkdir()
     instruments.write_parquet(origin / "instruments/instruments.parquet")
-    os.environ["TSP_PLATFORM_MARKET_TOKEN"] = secrets.token_urlsafe(32)
+    os.environ["LSS_PLATFORM_MARKET_TOKEN"] = secrets.token_urlsafe(32)
     custom.load_all()
     if not custom.provider_has_dataset(args.provider, "daily"):
         raise ValueError("selected provider has no daily capability")
@@ -117,12 +117,12 @@ def run(args):
         reader._refresh_instruments()
         market = PublicMarket(SimpleNamespace(
             market_url=f"http://127.0.0.1:{args.platform_port}",
-            market_token=SecretStr(os.environ["TSP_PLATFORM_MARKET_TOKEN"]),
+            market_token=SecretStr(os.environ["LSS_PLATFORM_MARKET_TOKEN"]),
         ))
         bridge = PublicQuoteBridge(reader, market)
         markers = QuoteMarkerBridge(
             f"http://127.0.0.1:{args.platform_port}",
-            os.environ["TSP_PLATFORM_MARKET_TOKEN"], on_event=bridge.mark_event,
+            os.environ["LSS_PLATFORM_MARKET_TOKEN"], on_event=bridge.mark_event,
         )
         bridge.attach_markers(markers)
         bridge.start()

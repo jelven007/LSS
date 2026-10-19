@@ -31,7 +31,7 @@ def market_read_path(method: str, path: str) -> bool:
 
 
 def market_read_access(request) -> bool:
-    expected = os.environ.get("TSP_PLATFORM_MARKET_TOKEN", "")
+    expected = os.environ.get("LSS_PLATFORM_MARKET_TOKEN", "")
     return bool(expected and secrets.compare_digest(request.headers.get("authorization", ""), "Bearer " + expected)
                 and market_read_path(request.method, request.url.path))
 
@@ -60,7 +60,7 @@ def management_path(method: str, path: str) -> bool:
 
 
 def platform_access(request) -> bool:
-    expected = os.environ.get("TSP_PLATFORM_ADMIN_TOKEN", "")
+    expected = os.environ.get("LSS_PLATFORM_ADMIN_TOKEN", "")
     provided = request.headers.get("authorization", "")
     return bool(expected and secrets.compare_digest(provided, "Bearer " + expected)
                 and management_path(request.method, request.url.path))
@@ -68,7 +68,7 @@ def platform_access(request) -> bool:
 
 class PlatformAdmin:
     def __init__(self, url: str, token=None, allowed=management_path):
-        token = token or os.environ.get("TSP_PLATFORM_ADMIN_TOKEN", "")
+        token = token or os.environ.get("LSS_PLATFORM_ADMIN_TOKEN", "")
         if not url or not token:
             raise RuntimeError("platform administration gateway is not configured")
         self.client = httpx.AsyncClient(
@@ -86,7 +86,7 @@ class PlatformAdmin:
         # Never forward the browser cookie, tenant ID or an external API token.
         headers = {key: request.headers[key] for key in ("content-type", "accept") if key in request.headers}
         if self.allowed is management_path:
-            headers["x-tsp-admin-email"] = request.state.account.get("email") or ""
+            headers["x-lss-admin-email"] = request.state.account.get("email") or ""
         try:
             response = await self.client.send(self.client.build_request(
                 request.method, request.url.path, params=request.query_params,
@@ -171,7 +171,7 @@ async def lifespan(app):
         app.state.minute_refresh = minutes
         minutes.start()
         resources.callback(minutes.stop)
-        publisher = PublicPublisher(store.data_dir, os.environ["TSP_PUBLIC_MARKET_DIR"], repo._write_lock)
+        publisher = PublicPublisher(store.data_dir, os.environ["LSS_PUBLIC_MARKET_DIR"], repo._write_lock)
         app.state.public_publisher = publisher
         publisher.start()
         resources.callback(publisher.close)

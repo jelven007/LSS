@@ -198,7 +198,7 @@ def main():
     from app.strategy.custom_signals import private_signal_registry
 
     settings.backtest_matrix_disk_cache_enabled = False
-    with (tempfile.TemporaryDirectory(prefix="tsp-job-") as directory,
+    with (tempfile.TemporaryDirectory(prefix="lss-job-") as directory,
           private_factor_registry(payload.get("factors", []), strict=True),
           private_signal_registry(payload.get("signals", [])),
           contextlib.redirect_stdout(sys.stderr)):

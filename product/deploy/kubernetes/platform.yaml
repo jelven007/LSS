@@ -1,11 +1,11 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: tsp-product-state
+  name: lss-product-state
   namespace: banxia
 spec:
   accessModes: [ReadWriteMany]
-  storageClassName: tsp-nas-rwx
+  storageClassName: lss-nas-rwx
   resources:
     requests:
       storage: 100Gi
@@ -13,13 +13,13 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: tsp-platform
+  name: lss-platform
   namespace: banxia
   labels:
-    app: tsp-platform
+    app: lss-platform
 spec:
   selector:
-    app: tsp-platform
+    app: lss-platform
   ports:
     - name: http
       port: 3018
@@ -28,21 +28,21 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: tsp-platform
+  name: lss-platform
   namespace: banxia
   labels:
-    app: tsp-platform
+    app: lss-platform
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: tsp-platform
+      app: lss-platform
   template:
     metadata:
       labels:
-        app: tsp-platform
+        app: lss-platform
         component: platform
     spec:
       serviceAccountName: banxia-workload
@@ -60,7 +60,7 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: prepare-state
-          image: tsp-product-runtime:v0.5.1
+          image: lss-product-runtime:v0.5.1
           command: [/bin/sh, -ec]
           args:
             - |
@@ -85,7 +85,7 @@ spec:
               memory: 128Mi
       containers:
         - name: platform
-          image: tsp-product-runtime:v0.5.1
+          image: lss-product-runtime:v0.5.1
           command:
             - /app/.venv/bin/python
             - -m
@@ -109,20 +109,20 @@ spec:
               value: /state/platform-data
             - name: PLATFORM_CONFIG_DIR
               value: /state/platform-config
-            - name: TSP_PUBLIC_MARKET_DIR
+            - name: LSS_PUBLIC_MARKET_DIR
               value: /state/public
             - name: TICKFLOW_ENV_FILE
               value: /dev/null
-            - name: TSP_PLATFORM_MARKET_TOKEN
+            - name: LSS_PLATFORM_MARKET_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: tsp-product-secrets
-                  key: TSP_PLATFORM_MARKET_TOKEN
-            - name: TSP_PLATFORM_ADMIN_TOKEN
+                  name: lss-product-secrets
+                  key: LSS_PLATFORM_MARKET_TOKEN
+            - name: LSS_PLATFORM_ADMIN_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: tsp-product-secrets
-                  key: TSP_PLATFORM_ADMIN_TOKEN
+                  name: lss-product-secrets
+                  key: LSS_PLATFORM_ADMIN_TOKEN
             - name: POLARS_MAX_THREADS
               value: "4"
             - name: OPENBLAS_NUM_THREADS
@@ -171,7 +171,7 @@ spec:
       volumes:
         - name: state
           persistentVolumeClaim:
-            claimName: tsp-product-state
+            claimName: lss-product-state
         - name: tmp
           emptyDir:
             sizeLimit: 2Gi

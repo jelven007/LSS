@@ -87,8 +87,8 @@ class NotificationTransport:
         message = EmailMessage()
         message["From"] = self.settings.smtp_from
         message["To"] = channel["destination"]
-        message["Subject"] = "TSP 工作空间提醒"
-        message["Message-ID"] = f"<{delivery_id}@tsp-notifications>"
+        message["Subject"] = "LSS 工作空间提醒"
+        message["Message-ID"] = f"<{delivery_id}@lss-notifications>"
         message.set_content(event.get("message", "工作空间有新的提醒"))
         try:
             client_type = smtplib.SMTP_SSL if self.settings.smtp_security == "tls" else smtplib.SMTP

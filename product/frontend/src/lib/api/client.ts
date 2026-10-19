@@ -35,7 +35,7 @@ export async function request<T>(path: string, init?: RequestOptions): Promise<T
   if (!isFormData) headers['Content-Type'] = 'application/json'
   Object.assign(headers, fetchInit.headers as Record<string, string> | undefined)
   if (multitenancyEnabled() && path.startsWith('/api/') && !path.startsWith('/api/auth/')) {
-    headers['X-TSP-Account-Scope'] = startedScope
+    headers['X-LSS-Account-Scope'] = startedScope
   }
 
   const controller = timeoutMs == null || fetchInit.signal ? undefined : new AbortController()
@@ -63,7 +63,7 @@ export async function request<T>(path: string, init?: RequestOptions): Promise<T
     if (timer !== undefined) window.clearTimeout(timer)
   }
 
-  if (startedScope !== accountScope() || !verifyResponseScope(response.headers.get('X-TSP-Account-Scope'))) {
+  if (startedScope !== accountScope() || !verifyResponseScope(response.headers.get('X-LSS-Account-Scope'))) {
     throw new DOMException('账户已切换', 'AbortError')
   }
   if (!response.ok) {

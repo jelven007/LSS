@@ -4,7 +4,7 @@ resources:
   - ../../base
   - ../../../../product/deploy/kubernetes
   - storage.yaml
-  - tsp-storage.yaml
+  - lss-storage.yaml
   - data-services.yaml
   - ingress.yaml
   - migration-job.yaml
@@ -34,11 +34,11 @@ images:
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
     newTag: v0.5.1
     digest: sha256:3f569013ce24412457b1d9c118921cd0b45157b09984b3e39775681d7e0bc789
-  - name: tsp-product-runtime
+  - name: lss-product-runtime
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
     newTag: web-v0.5.1
     digest: sha256:cf1a2864e39678b4a5ee5cda7735494bf85771cff7a22a49d6ea4993d3a8d995
-  - name: tsp-product-compute
+  - name: lss-product-compute
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
     newTag: compute-v0.5.1
     digest: sha256:9bf4fce66903f48286812aa84dfdbcef3afcb9a7f68cc3e964e41ec5e47070f0

@@ -50,7 +50,7 @@ def test_stream_ticket_roundtrip_is_bound_and_single_use(monkeypatch):
     assert claims.policy_version == context.policy_version
     assert claims.routing_epoch == context.routing_epoch
     assert claims.principal == "session:digest-1"
-    assert claims.audience == "tsp-tenant-events"
+    assert claims.audience == "lss-tenant-events"
     assert claims.token_id is None
     assert claims.token_scopes == ()
     assert codec.consume(ticket) is None

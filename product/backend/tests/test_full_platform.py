@@ -105,7 +105,7 @@ def test_publication_rejects_a_changed_generation_and_keeps_previous(tmp_path, m
 
 
 def test_platform_only_accepts_explicit_management_paths(monkeypatch):
-    monkeypatch.setenv("TSP_PLATFORM_ADMIN_TOKEN", "private-internal-token")
+    monkeypatch.setenv("LSS_PLATFORM_ADMIN_TOKEN", "private-internal-token")
     for method, path in (
         ("GET", "/api/settings"), ("POST", "/api/pipeline/run"),
         ("POST", "/api/kline/rebuild_enriched"), ("POST", "/api/ext-data/concept/pull/run"),
@@ -127,7 +127,7 @@ def test_platform_only_accepts_explicit_management_paths(monkeypatch):
 
 
 def test_public_market_read_model_has_an_explicit_pure_read_allowlist(monkeypatch):
-    monkeypatch.setenv("TSP_PLATFORM_MARKET_TOKEN", "market-read-token")
+    monkeypatch.setenv("LSS_PLATFORM_MARKET_TOKEN", "market-read-token")
     for path in (
         "/api/intraday/status",
         "/api/overview/market",
@@ -333,7 +333,7 @@ def test_platform_marker_stream_never_sends_market_frames(monkeypatch):
     from app.cell.platform_market import market_events
     from app.services.quote_service import QuoteService
 
-    monkeypatch.setenv("TSP_PLATFORM_MARKET_TOKEN", "market-read-token")
+    monkeypatch.setenv("LSS_PLATFORM_MARKET_TOKEN", "market-read-token")
     quotes = QuoteService()
     request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(quote_service=quotes)))
 

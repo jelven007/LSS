@@ -161,7 +161,7 @@ def send_registration_code(email: str) -> int:
     sent = email_adapter.send_email(
         config,
         password,
-        "TSP 注册验证码",
+        "LSS 注册验证码",
         (
             f"你的注册验证码是: {code}\n\n"
             f"验证码将在 {CODE_TTL_SECONDS // 60} 分钟后失效, 请勿转发给他人。\n"
@@ -191,7 +191,7 @@ def send_recovery_code(email: str, *, deliver: bool) -> int:
     sent = email_adapter.send_email(
         config,
         password,
-        "TSP 密码找回验证码",
+        "LSS 密码找回验证码",
         (
             f"你的密码找回验证码是: {code}\n\n"
             f"验证码将在 {CODE_TTL_SECONDS // 60} 分钟后失效, 请勿转发给他人。\n"

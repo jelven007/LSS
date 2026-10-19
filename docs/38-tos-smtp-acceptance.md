@@ -28,7 +28,7 @@ python3 scripts/configure_external_services.py --tos --smtp
 
 可选 `--context`、`--server`、`--namespace` 指定集群；默认命名空间 `banxia`。
 脚本要求交互式终端，密钥输入不回显。先验证所有输入，然后通过 stdin 对
-`banxia-secrets`、`banxia-runtime`、`tsp-product-secrets` 做 merge patch，
+`banxia-secrets`、`banxia-runtime`、`lss-product-secrets` 做 merge patch，
 保留数据库、Redis、Token 等其他键；不获取旧 Secret。
 更新后重启 API、参考同步、报告、Market Worker 和 Task Worker。
 

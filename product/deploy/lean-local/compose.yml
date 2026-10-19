@@ -1,18 +1,18 @@
 # Isolated integration environment; shares no databases with older local stacks.
 name: policy-lean-test
 
-x-tsp: &tsp
-  image: ${TSP_RUNTIME_IMAGE:?Build the current runtime first}
+x-lss: &lss
+  image: ${LSS_RUNTIME_IMAGE:?Build the current runtime first}
   user: "10001:10001"
   env_file: ${LEAN_STATE_DIR:?Private state directory required}/runtime.env
-  environment: &tsp-env
+  environment: &lss-env
     SERVICE_ROLE: api
     MULTITENANCY_ENABLED: "true"
-    TSP_CELL_ID: local
-    TSP_CELL_SCHEMA_VERSION: "6"
-    TSP_CELL_POOL_SIZE: "4"
-    TSP_CELL_MARKET_URL: http://platform:3018
-    TSP_COMPUTE_ADDRESS: compute:7000
+    LSS_CELL_ID: local
+    LSS_CELL_SCHEMA_VERSION: "6"
+    LSS_CELL_POOL_SIZE: "4"
+    LSS_CELL_MARKET_URL: http://platform:3018
+    LSS_COMPUTE_ADDRESS: compute:7000
     DATA_DIR: /state/public/current
     PLATFORM_CONFIG_DIR: /state/platform-config
     TENANT_ARTIFACTS_DIR: /state/tenant-artifacts
@@ -44,10 +44,10 @@ services:
     extends: {file: ../../../deploy/compose/docker-compose.yml, service: postgres}
     image: postgres:16
     environment:
-      TSP_CONTROL_RUNTIME_PASSWORD: ${TSP_CONTROL_RUNTIME_PASSWORD:?Required}
-      TSP_DATA_RUNTIME_PASSWORD: ${TSP_DATA_RUNTIME_PASSWORD:?Required}
+      LSS_CONTROL_RUNTIME_PASSWORD: ${LSS_CONTROL_RUNTIME_PASSWORD:?Required}
+      LSS_DATA_RUNTIME_PASSWORD: ${LSS_DATA_RUNTIME_PASSWORD:?Required}
     volumes:
-      - ./postgres-init.sh:/docker-entrypoint-initdb.d/900-tsp.sh:ro
+      - ./postgres-init.sh:/docker-entrypoint-initdb.d/900-lss.sh:ro
 
   clickhouse:
     extends: {file: ../../../deploy/compose/docker-compose.yml, service: clickhouse}
@@ -84,14 +84,14 @@ services:
     mem_limit: 1g
 
   initialize:
-    image: ${TSP_RUNTIME_IMAGE}
+    image: ${LSS_RUNTIME_IMAGE}
     user: "10001:10001"
     env_file: ${LEAN_STATE_DIR}/admin.env
     entrypoint: [/bin/sh, -ec]
     command:
       - |
-        /app/.venv/bin/python -m app.cell.admin migrate --kind control --runtime-role tsp_control_runtime --target-version 6
-        /app/.venv/bin/python -m app.cell.admin migrate --kind data --runtime-role tsp_data_runtime --cell-id local --target-version 6
+        /app/.venv/bin/python -m app.cell.admin migrate --kind control --runtime-role lss_control_runtime --target-version 6
+        /app/.venv/bin/python -m app.cell.admin migrate --kind data --runtime-role lss_data_runtime --cell-id local --target-version 6
         /app/.venv/bin/python -m app.cell.admin bootstrap-full-identity
         /app/.venv/bin/python -m app.cell.admin register-cell --cell-id local --api-url "http://127.0.0.1:${LEAN_WEB_PORT:-3051}"
         /app/.venv/bin/python -m app.cell.admin sync-strategies
@@ -100,14 +100,14 @@ services:
     restart: "no"
 
   platform:
-    <<: *tsp
+    <<: *lss
     env_file: ${LEAN_STATE_DIR}/platform.env
     environment:
-      <<: *tsp-env
+      <<: *lss-env
       SERVICE_ROLE: platform
       MULTITENANCY_ENABLED: "false"
       DATA_DIR: /state/platform-data
-      TSP_PUBLIC_MARKET_DIR: /state/public
+      LSS_PUBLIC_MARKET_DIR: /state/public
     command: [/app/.venv/bin/python, -m, uvicorn, app.main:app, --host, 0.0.0.0, --port, "3018"]
     volumes:
       - ${LEAN_STATE_DIR}/platform-data:/state/platform-data
@@ -122,7 +122,7 @@ services:
       retries: 8
 
   compute:
-    image: ${TSP_COMPUTE_IMAGE:?Build the current compute image first}
+    image: ${LSS_COMPUTE_IMAGE:?Build the current compute image first}
     user: "10001:10001"
     entrypoint: [/app/.venv/bin/python, -m, app.multitenancy.compute_broker]
     command: [--listen, "0.0.0.0:7000", --market-root, /state/public, --capacity, "2"]
@@ -150,7 +150,7 @@ services:
       retries: 8
 
   task-worker:
-    <<: *tsp
+    <<: *lss
     command: [/app/.venv/bin/python, -m, app.multitenancy.task_worker]
     depends_on:
       initialize: {condition: service_completed_successfully}
@@ -159,12 +159,12 @@ services:
     healthcheck: {disable: true}
 
   api:
-    <<: *tsp
+    <<: *lss
     env_file:
       - ${LEAN_STATE_DIR}/runtime.env
       - ${LEAN_STATE_DIR}/policy.env
     environment:
-      <<: *tsp-env
+      <<: *lss-env
       POLICY_SERVICE_URL: embedded://policy
     command: [/app/.venv/bin/python, -m, uvicorn, app.main:app, --host, 0.0.0.0, --port, "3018", --workers, "1"]
     ports:

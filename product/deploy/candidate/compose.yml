@@ -7,12 +7,12 @@ x-logging: &logging
 
 services:
   postgres:
-    image: ${TSP_CANDIDATE_POSTGRES_IMAGE:?Pinned PostgreSQL image required}
+    image: ${LSS_CANDIDATE_POSTGRES_IMAGE:?Pinned PostgreSQL image required}
     env_file:
-      - ${TSP_CANDIDATE_POSTGRES_ENV_FILE:?Private PostgreSQL environment required}
+      - ${LSS_CANDIDATE_POSTGRES_ENV_FILE:?Private PostgreSQL environment required}
     environment:
-      POSTGRES_USER: tsp_admin
-      POSTGRES_DB: tsp_control
+      POSTGRES_USER: lss_admin
+      POSTGRES_DB: lss_control
       POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
     command:
       - postgres
@@ -23,36 +23,36 @@ services:
       - -c
       - work_mem=32MB
     ports:
-      - "127.0.0.1:${TSP_CANDIDATE_PG_PORT:-35432}:5432"
+      - "127.0.0.1:${LSS_CANDIDATE_PG_PORT:-35432}:5432"
     volumes:
       - candidate-pg:/var/lib/postgresql/data
-      - ${TSP_CANDIDATE_PG_BOOTSTRAP:?PostgreSQL bootstrap path required}:/docker-entrypoint-initdb.d/10-bootstrap.sh:ro
+      - ${LSS_CANDIDATE_PG_BOOTSTRAP:?PostgreSQL bootstrap path required}:/docker-entrypoint-initdb.d/10-bootstrap.sh:ro
     networks: [pg, admin]
     restart: unless-stopped
     stop_grace_period: 30s
     shm_size: 1g
     logging: *logging
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tsp_admin -d tsp_control"]
+      test: ["CMD-SHELL", "pg_isready -U lss_admin -d lss_control"]
       interval: 10s
       timeout: 5s
       retries: 12
 
   initialize:
     profiles: [init]
-    image: ${TSP_FULL_IMAGE:?Pinned full-product runtime image required}
+    image: ${LSS_FULL_IMAGE:?Pinned full-product runtime image required}
     user: "10001:10001"
     env_file:
-      - ${TSP_CANDIDATE_ADMIN_ENV_FILE:?Private migration environment required}
+      - ${LSS_CANDIDATE_ADMIN_ENV_FILE:?Private migration environment required}
     environment:
-      TSP_CANDIDATE_PUBLIC_URL: ${TSP_CANDIDATE_PUBLIC_URL:?Candidate HTTPS URL required}
+      LSS_CANDIDATE_PUBLIC_URL: ${LSS_CANDIDATE_PUBLIC_URL:?Candidate HTTPS URL required}
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |-
-        /app/.venv/bin/python -m app.cell.admin migrate --kind control --runtime-role tsp_runtime --target-version 6
-        /app/.venv/bin/python -m app.cell.admin migrate --kind data --runtime-role tsp_runtime --cell-id candidate --target-version 6
+        /app/.venv/bin/python -m app.cell.admin migrate --kind control --runtime-role lss_runtime --target-version 6
+        /app/.venv/bin/python -m app.cell.admin migrate --kind data --runtime-role lss_runtime --cell-id candidate --target-version 6
         /app/.venv/bin/python -m app.cell.admin bootstrap-full-identity
-        /app/.venv/bin/python -m app.cell.admin register-cell --cell-id candidate --api-url "$$TSP_CANDIDATE_PUBLIC_URL"
+        /app/.venv/bin/python -m app.cell.admin register-cell --cell-id candidate --api-url "$$LSS_CANDIDATE_PUBLIC_URL"
         /app/.venv/bin/python -m app.cell.admin sync-strategies
     networks: [pg]
     depends_on:
@@ -66,30 +66,30 @@ services:
     restart: "no"
 
   broker:
-    image: ${TSP_BROKER_IMAGE:?Pinned compute-broker image required}
+    image: ${LSS_BROKER_IMAGE:?Pinned compute-broker image required}
     user: "0:10001"
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - >-
-        rm -f /run/tsp/compute.sock;
+        rm -f /run/lss/compute.sock;
         exec /app/.venv/bin/python -m app.multitenancy.compute_broker
-        --socket /run/tsp/compute.sock
-        --image "$$TSP_COMPUTE_IMAGE"
-        --market-root "$$TSP_PUBLIC_MARKET_DIR"
-        --capacity "$$TSP_COMPUTE_CAPACITY"
-        --memory-mb "$$TSP_COMPUTE_MEMORY_MB"
-        --cpus "$$TSP_COMPUTE_CPUS"
+        --socket /run/lss/compute.sock
+        --image "$$LSS_COMPUTE_IMAGE"
+        --market-root "$$LSS_PUBLIC_MARKET_DIR"
+        --capacity "$$LSS_COMPUTE_CAPACITY"
+        --memory-mb "$$LSS_COMPUTE_MEMORY_MB"
+        --cpus "$$LSS_COMPUTE_CPUS"
     environment:
-      TSP_COMPUTE_IMAGE: ${TSP_COMPUTE_IMAGE:?Pinned compute image required}
-      TSP_PUBLIC_MARKET_DIR: ${TSP_PUBLIC_MARKET_DIR:?Public release directory required}
-      TSP_COMPUTE_CAPACITY: ${TSP_COMPUTE_CAPACITY:-2}
-      TSP_COMPUTE_MEMORY_MB: ${TSP_COMPUTE_MEMORY_MB:-4096}
-      TSP_COMPUTE_CPUS: ${TSP_COMPUTE_CPUS:-2}
+      LSS_COMPUTE_IMAGE: ${LSS_COMPUTE_IMAGE:?Pinned compute image required}
+      LSS_PUBLIC_MARKET_DIR: ${LSS_PUBLIC_MARKET_DIR:?Public release directory required}
+      LSS_COMPUTE_CAPACITY: ${LSS_COMPUTE_CAPACITY:-2}
+      LSS_COMPUTE_MEMORY_MB: ${LSS_COMPUTE_MEMORY_MB:-4096}
+      LSS_COMPUTE_CPUS: ${LSS_COMPUTE_CPUS:-2}
       PYTHONDONTWRITEBYTECODE: "1"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${TSP_COMPUTE_SOCKET_DIR:?Broker socket directory required}:/run/tsp
-      - ${TSP_PUBLIC_MARKET_DIR:?Public release directory required}:${TSP_PUBLIC_MARKET_DIR}:ro
+      - ${LSS_COMPUTE_SOCKET_DIR:?Broker socket directory required}:/run/lss
+      - ${LSS_PUBLIC_MARKET_DIR:?Public release directory required}:${LSS_PUBLIC_MARKET_DIR}:ro
     network_mode: none
     read_only: true
     tmpfs:
@@ -102,7 +102,7 @@ services:
     restart: unless-stopped
     logging: *logging
     healthcheck:
-      test: ["CMD", "/app/.venv/bin/python", "-c", "from app.multitenancy.executor import ComputeExecutor; assert ComputeExecutor('/run/tsp/compute.sock').health()['ready']"]
+      test: ["CMD", "/app/.venv/bin/python", "-c", "from app.multitenancy.executor import ComputeExecutor; assert ComputeExecutor('/run/lss/compute.sock').health()['ready']"]
       interval: 30s
       timeout: 8s
       retries: 3
@@ -134,11 +134,11 @@ services:
     logging: *logging
 
   edge:
-    image: ${TSP_CANDIDATE_NGINX_IMAGE:?Pinned Nginx image required}
+    image: ${LSS_CANDIDATE_NGINX_IMAGE:?Pinned Nginx image required}
     volumes:
-      - ${TSP_CANDIDATE_NGINX_CONFIG:?Candidate Nginx config required}:/etc/nginx/nginx.conf:ro
+      - ${LSS_CANDIDATE_NGINX_CONFIG:?Candidate Nginx config required}:/etc/nginx/nginx.conf:ro
     ports:
-      - "${TSP_CANDIDATE_BIND_ADDRESS:-127.0.0.1}:${TSP_CANDIDATE_HTTP_PORT:-38080}:8080"
+      - "${LSS_CANDIDATE_BIND_ADDRESS:-127.0.0.1}:${LSS_CANDIDATE_HTTP_PORT:-38080}:8080"
     networks: [edge, ingress]
     depends_on:
       api:
@@ -165,15 +165,15 @@ services:
 networks:
   default:
     internal: true
-    name: ${COMPOSE_PROJECT_NAME:-tsp-product-candidate}_internal
+    name: ${COMPOSE_PROJECT_NAME:-lss-product-candidate}_internal
   pg:
     external: false
     internal: true
-    name: ${COMPOSE_PROJECT_NAME:-tsp-product-candidate}_pg
+    name: ${COMPOSE_PROJECT_NAME:-lss-product-candidate}_pg
   edge:
     external: false
     internal: true
-    name: ${COMPOSE_PROJECT_NAME:-tsp-product-candidate}_edge
+    name: ${COMPOSE_PROJECT_NAME:-lss-product-candidate}_edge
   admin: {}
   ingress: {}
   market: {}
@@ -181,4 +181,4 @@ networks:
 
 volumes:
   candidate-pg:
-    name: ${COMPOSE_PROJECT_NAME:-tsp-product-candidate}_pg_data
+    name: ${COMPOSE_PROJECT_NAME:-lss-product-candidate}_pg_data

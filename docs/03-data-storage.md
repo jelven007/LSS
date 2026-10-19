@@ -17,11 +17,11 @@
 | 证券目录、交易日历、板块关系 | PostgreSQL | TOS | 时点版本与原始文件归档 |
 | 公司财务、除权除息、F10 | PostgreSQL / TOS | ClickHouse | 按数据形态版本化 |
 | Policy 策略、计划、决策、任务、审计 | PostgreSQL `banxia` | TOS | 事务权威数据 |
-| TSP 身份、租户和路由 | PostgreSQL `tsp_control` | 无 | 独立运行角色 |
-| TSP 租户业务数据 | PostgreSQL `tsp_data_production` | TOS | RLS 与独立运行角色 |
+| LSS 身份、租户和路由 | PostgreSQL `lss_control` | 无 | 独立运行角色 |
+| LSS 租户业务数据 | PostgreSQL `lss_data_production` | TOS | RLS 与独立运行角色 |
 | 最新行情、特征、决策、SSE 投影 | Redis | PostgreSQL、ClickHouse | 可重建 |
 | 报告、研究资产、原始归档 | 火山引擎 TOS | PostgreSQL 元数据 | 内容寻址与哈希校验 |
-| TSP 公共行情版本、租户产物 | NAS RWX | 发布 Manifest | Compute 只读挂载公共数据 |
+| LSS 公共行情版本、租户产物 | NAS RWX | 发布 Manifest | Compute 只读挂载公共数据 |
 | 日志、追踪、指标 | Loki、Tempo、Prometheus | TOS/长期指标存储 | 独立生命周期 |
 
 生产不再部署 Kafka、Flink、自建 MinIO 或 Policy 报告 NAS。本地 Policy Compose
@@ -81,10 +81,10 @@ advisory lease 单活采集。故障切换后旧主 WAL 不会自动转移，旧
 | 数据库 | 责任 | 运行角色 |
 | --- | --- | --- |
 | `banxia` | Policy 领域数据 | `banxia` |
-| `tsp_control` | 身份、租户、会话、Cell 和路由 | `tsp_control_runtime` |
-| `tsp_data_production` | 自选、策略、任务、模拟盘、通知和审计 | `tsp_data_runtime` |
+| `lss_control` | 身份、租户、会话、Cell 和路由 | `lss_control_runtime` |
+| `lss_data_production` | 自选、策略、任务、模拟盘、通知和审计 | `lss_data_runtime` |
 
-两个 TSP 运行角色使用独立密码，禁止超级用户、`BYPASSRLS`、建库、建角色和角色继承。
+两个 LSS 运行角色使用独立密码，禁止超级用户、`BYPASSRLS`、建库、建角色和角色继承。
 建库与迁移只允许离线初始化 Job 使用管理员 DSN。
 
 ### 5.2 Policy 核心表
@@ -109,8 +109,8 @@ advisory lease 单活采集。故障切换后旧主 WAL 不会自动转移，旧
 
 ### 5.3 迁移
 
-`tsp-database-bootstrap` 只负责创建数据库、角色和连接权限；
-`tsp-product-initialize` 负责 Schema 迁移与首次身份初始化。旧 `tsp-postgres` 数据迁移由
+`lss-database-bootstrap` 只负责创建数据库、角色和连接权限；
+`lss-product-initialize` 负责 Schema 迁移与首次身份初始化。旧 `lss-postgres` 数据迁移由
 显式 Job 完成，迁移前后必须核对表数、行数、管理员登录和关键业务数据。
 
 ## 6. ClickHouse

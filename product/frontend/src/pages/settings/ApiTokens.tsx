@@ -111,7 +111,7 @@ export function SettingsApiTokensPanel() {
               )}
               <div className="text-[10px] text-muted">
                 {full ? 'Token 仅访问所选租户的开放业务接口。' : '扩展表结构、数据同步、设置等管理接口永不开放给 Token。'}
-                调用方式: <span className="font-mono">Authorization: Bearer {full ? 'tsp_ft_' : 'tsp_'}...</span>，默认限流 120 次/分钟。
+                调用方式: <span className="font-mono">Authorization: Bearer {full ? 'lss_ft_' : 'lss_'}...</span>，默认限流 120 次/分钟。
               </div>
             </div>
             <div className="flex gap-2">

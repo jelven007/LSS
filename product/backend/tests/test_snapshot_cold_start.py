@@ -69,7 +69,7 @@ def test_cold_full_snapshot_does_not_recompute_sector_or_abnormal(monkeypatch, t
     sector = SimpleNamespace(list_targets=forbidden, build_snapshots=forbidden)
     state = SimpleNamespace(repo=repo, quote_service=service, sector_monitor_service=sector)
     request = SimpleNamespace(app=SimpleNamespace(state=state))
-    monkeypatch.setenv("TSP_PLATFORM_MARKET_TOKEN", "test-snapshot-token")
+    monkeypatch.setenv("LSS_PLATFORM_MARKET_TOKEN", "test-snapshot-token")
     snapshot = full_snapshot(request, "Bearer test-snapshot-token")
     assert snapshot["sectors"] == {} and snapshot["abnormal"] == []
     assert snapshot["days"] == {"stock": None, "etf": None, "index": None}

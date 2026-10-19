@@ -56,8 +56,8 @@ PROBE = """
 import json,os
 from pathlib import Path
 assert os.getuid()==10001
-assert not any(name in os.environ for name in ['TSP_PRIVATE_PROBE','TSP_CELL_CONTROL_DSN',
-    'TSP_CELL_DATA_DSN','AI_API_KEY','SMTP_PASSWORD'])
+assert not any(name in os.environ for name in ['LSS_PRIVATE_PROBE','LSS_CELL_CONTROL_DSN',
+    'LSS_CELL_DATA_DSN','AI_API_KEY','SMTP_PASSWORD'])
 assert not Path('/var/run/docker.sock').exists()
 try:
     Path('/market/forbidden-write').write_text('no')
@@ -105,7 +105,7 @@ def filter(df, params):
 
 
 def run(args) -> dict:
-    with tempfile.TemporaryDirectory(prefix="tsp-compute-check-", dir=args.work_dir) as directory:
+    with tempfile.TemporaryDirectory(prefix="lss-compute-check-", dir=args.work_dir) as directory:
         root = Path(directory)
         market = root / "public"
         market.mkdir()
@@ -117,7 +117,7 @@ def run(args) -> dict:
         market_info = json.loads(fixture.stdout.strip().splitlines()[-1])
         as_of = market_info["as_of"]
         with ComputeBroker(root / "compute.sock", args.image, market, 4) as broker:
-            command = broker.command("tsp-compute-isolation-probe")
+            command = broker.command("lss-compute-isolation-probe")
             command = command[:-2] + ["-c", PROBE]
             probe = subprocess.run(command, capture_output=True, text=True, timeout=60, check=True)
             isolation = json.loads(probe.stdout)
@@ -132,7 +132,7 @@ def run(args) -> dict:
                 assert describe["definition"]["meta"]["id"] == "custom_sandbox"
                 assert describe["definition"]["execution_backend"] == "polars_expr"
                 snapshot_probe = subprocess.run(
-                    broker.command("tsp-compute-monitor-probe")[:-2] + ["-c", MONITOR_PROBE],
+                    broker.command("lss-compute-monitor-probe")[:-2] + ["-c", MONITOR_PROBE],
                     capture_output=True, text=True, timeout=60, check=True,
                 )
                 monitor_payload = {**base, "kind": "monitor", "snapshot": json.loads(snapshot_probe.stdout),
@@ -204,7 +204,7 @@ def run(args) -> dict:
                     "data_fingerprint": {"generation": market_info["generation"]}}})
                 assert mining["status"] in {"succeeded", "succeeded_with_budget_exhausted"}, mining
                 checked = subprocess.run(
-                    broker.command("tsp-compute-artifact-probe")[:-2] + ["-c", ARTIFACT_PROBE],
+                    broker.command("lss-compute-artifact-probe")[:-2] + ["-c", ARTIFACT_PROBE],
                     input=json.dumps(mining["artifact_data"]), capture_output=True, text=True,
                     timeout=60, check=True,
                 )

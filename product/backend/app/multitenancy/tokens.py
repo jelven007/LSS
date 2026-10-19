@@ -32,7 +32,7 @@ class Tokens:
         self.identity = service
 
     def authenticate(self, value, selected, request_id, method, path, *, touch=True):
-        if not value.startswith("tsp_ft_") or len(value) > 256:
+        if not value.startswith("lss_ft_") or len(value) > 256:
             raise AccessError(401, "API Token 无效或已吊销")
         with self.identity.db.control.connection() as conn:
             row = conn.execute(
@@ -86,7 +86,7 @@ class Tokens:
         if not name.strip() or not scopes or not set(scopes) <= SCOPES or not 1 <= days <= 365:
             raise AccessError(400, "Token 权限或有效期无效")
         context = self.identity.context(account, None, request_id)
-        value, item_id = "tsp_ft_" + secrets.token_urlsafe(32), uuid.uuid4().hex
+        value, item_id = "lss_ft_" + secrets.token_urlsafe(32), uuid.uuid4().hex
         permissions = READ_PERMISSIONS
         if "run:backtest" in scopes:
             permissions |= {"strategies:write"}

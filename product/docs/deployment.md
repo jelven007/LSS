@@ -63,7 +63,7 @@ BASE_IMAGE_REGISTRY=public.ecr.aws/docker docker compose build app
 ```bash
 docker build -f product/Dockerfile \
   --build-arg BASE_IMAGE_REGISTRY=public.ecr.aws/docker \
-  -t tsp:local .
+  -t lss:local .
 ```
 该参数只替换 Node、Python、Rust 基础镜像的仓库前缀，版本和依赖锁不变；
 使用备选仓库时应核对镜像摘要。`USE_CN_MIRROR` 仅控制构建中的 npm、PyPI、
@@ -161,7 +161,7 @@ pnpm dev
 rustdx 原生桥接是后端默认依赖，不需要额外指定 `--extra rustdx`。开发脚本在
 已有 `.venv` 时也同步依赖，并在启动前校验桥接。Docker 镜像和桌面包在构建时
 内置扩展并校验，目标机器不需要 Rust。旧源码环境的桥接不匹配时执行
-`uv sync --frozen --reinstall-package tsp-rustdx-native` 重建。
+`uv sync --frozen --reinstall-package lss-rustdx-native` 重建。
 
 ## 桌面安装包
 

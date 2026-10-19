@@ -1,7 +1,7 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: tsp-product
+  name: lss-product
   namespace: banxia
   labels:
     app.kubernetes.io/name: banxia-strategy
@@ -11,7 +11,7 @@ spec:
     matchNames: [banxia]
   selector:
     matchLabels:
-      app: tsp-product
+      app: lss-product
   endpoints:
     - port: http
       path: /metrics

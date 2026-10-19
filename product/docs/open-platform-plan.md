@@ -74,8 +74,8 @@
 
 - 存储沿用 secrets 模式: `data/user_data/api_tokens.json`（chmod 0600）:
   `{id, name, token_hash, scopes, created_at, last_used_at, revoked}`；明文 Token
-  只在创建响应中出现一次（前缀 `tsp_` + 32 字节随机 hex）。
-- 认证通道与现有单密码**并行不替代**: 本机/内网 UI 登录照旧; `Authorization: Bearer tsp_...` 是外部调用方专用第二通道。
+  只在创建响应中出现一次（前缀 `lss_` + 32 字节随机 hex）。
+- 认证通道与现有单密码**并行不替代**: 本机/内网 UI 登录照旧; `Authorization: Bearer lss_...` 是外部调用方专用第二通道。
 - 中间件顺序: 访问密码门 → Token 识别（有 Bearer 头则走 Token 路径, 免密码会话）→ scope 校验 → 限流。
 
 ### 4.2 Scope 矩阵（最小够用, 宁少勿滥）
