@@ -15,7 +15,8 @@ rustdx native -> Market Worker + SQLite WAL
        -> 统一 FastAPI -> React Web
 ```
 
-当前版本为 `v0.5.1`，正按全新环境安装到火山引擎 VKE，入口为 <https://shanao.asia>。
+当前版本为 `v0.5.1`，已在火山引擎 VKE 新环境上线，入口为 <https://shanao.asia>。
+HTTPS、登录、九项页面和 SSE 已验收；TOS/SMTP 配置及完整业务验收仍待完成。
 实际部署状态、镜像摘要与功能限制见
 [本次安装记录](docs/releases/2026-10-19-fresh-install-v0.5.1.md)；
 本地 Compose 用于 Policy 开发与集成验证。
@@ -24,7 +25,7 @@ rustdx native -> Market Worker + SQLite WAL
 个股分析、设置及完整账户体系。Policy 作为内嵌业务模块提供次日计划和当日实盘，不再
 经过独立 HTTP Bridge。Web 是唯一客户端，Android/APK 已删除。精简架构见
 [v0.5.1 技术架构](docs/36-lean-architecture-v0.5.1.md)，发布状态见
-[v0.5.1 发布候选](docs/releases/2026-10-18-lean-v0.5.1.md)，上一生产范围见
+[本次全新安装](docs/releases/2026-10-19-fresh-install-v0.5.1.md)，上一生产范围见
 [v0.5.0 生产记录](docs/releases/2026-10-18-web-v0.5.0.md)，变更历史见
 [CHANGELOG](CHANGELOG.md)，完整文档以 [docs/README.md](docs/README.md) 为统一入口：
 

@@ -18,7 +18,9 @@
 仓库最新集成线为 `main`，应用语义版本为 `0.5.1`。生产部署位于火山引擎 VKE，
 入口为 <https://shanao.asia>；完整镜像 digest 与验收证据见
 [版本基线](docs/version-baseline.md)和 Policy 仓库的
-[v0.5.1 精简架构](../docs/36-lean-architecture-v0.5.1.md)。
+[全新安装记录](../docs/releases/2026-10-19-fresh-install-v0.5.1.md)。
+公网登录、九页和 SSE 已验收；TOS/SMTP 与完整业务签收待完成，
+本地最新 main 与候选标签因 GitHub 凭据阻塞尚未推送。
 
 ## 项目定位
 
