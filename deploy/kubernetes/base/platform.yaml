@@ -134,7 +134,7 @@ spec:
             runAsGroup: 10001
           containers:
             - name: market-archive
-              image: banxia-strategy:REPLACE_WITH_GIT_COMMIT
+              image: banxia-market-archive:REPLACE_WITH_GIT_COMMIT
               command: [python, -m, banxia_strategy.application.market_archive]
               envFrom:
                 - configMapRef: {name: banxia-runtime}

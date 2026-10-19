@@ -95,8 +95,22 @@ python -m banxia_strategy.application.market_archive --date 2026-10-16
 默认日期为上海时区前一自然日。显式归档当天仅允许 20:00 后执行；
 完整度以源表稳定性与数据覆盖验收为准，不能仅凭时间判断。
 部署清单 `market-archive` CronJob 在周二至周六 00:10 归档前一天数据，
-默认 `suspend: true`。先发布含新模块的 Policy 镜像、手动完成有数据的交易日
-验收，再启用；不要让旧镜像运行新入口。
+默认 `suspend: true`。归档镜像与停用任务已部署，手动完成有数据的交易日
+验收后再启用；不要让旧镜像运行新入口。
+
+归档候选制品使用独立镜像别名，既有实时/报告镜像 Digest 不变：
+
+| 项目 | 值 |
+| --- | --- |
+| 源码提交 | `9db47bcd30041e5dc023db086f8cbf15da9e8f3d` |
+| 镜像标签 | `policy-v0.5.1-archive-9db47bc` |
+| 镜像 Digest | `sha256:873d58fac341555873d5928bd49032f5d977b88a8bfdd40d14906de93302d57a` |
+| 平台 | `linux/amd64` |
+| 模块 SHA-256 | `953dd5174ff2416fd0113741067576ab845df2ebe0687fb36693720537625a38` |
+
+以已发布 Policy 基础 Digest 构建增量候选，包含归档模块及源码副本。
+`market-archive-smoke-9db47bc` 已 Complete，真实 Pod 读取模块核对 SHA-256，
+确认五类数据集入口可加载；这不等于真实对象归档完成。
 
 修改源清单的 `suspend` 为 `false` 并重新发布，保证后续 apply 不会重新暂停任务。
 临时开启可使用：
@@ -127,6 +141,9 @@ python3 scripts/verify_external_services.py --email-to <指定收件地址>
 - 主数据同步回归 4 项、存储适配器回归 34 项通过。
 - 邮件默认配置、通知适配器和发送测试接口回归 37 项通过（模拟传输）。
 - 受影响文件 Ruff 通过。
-- Kustomize 渲染及集群整包 server dry-run 通过；尚未实际应用新归档任务。
+- Kustomize 渲染及集群整包 server dry-run 通过；停用 CronJob 已应用，
+  归档镜像烟测 Job Complete。
 - 线上只读查询已完成；实际写入、日终有数据归档和邮件流程需有效新凭据。
+- <https://shanao.asia/health/ready> 仍返回 200/ready。
+- GitHub 主线推送仍受本机认证阻塞；本轮无交互推送超时，不记为已同步。
 - 不创建正式稳定 Tag，不将源码、模拟测试或健康检查当作业务签收。

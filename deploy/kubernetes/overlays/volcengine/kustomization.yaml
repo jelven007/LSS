@@ -26,6 +26,10 @@ patches:
       kind: StatefulSet
     path: scheduling-patch.yaml
 images:
+  - name: banxia-market-archive
+    newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
+    newTag: policy-v0.5.1-archive-9db47bc
+    digest: sha256:873d58fac341555873d5928bd49032f5d977b88a8bfdd40d14906de93302d57a
   - name: banxia-strategy
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
     newTag: v0.5.1
