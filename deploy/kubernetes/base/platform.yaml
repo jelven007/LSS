@@ -108,6 +108,48 @@ spec:
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  name: market-archive
+  namespace: banxia
+spec:
+  # Enable after valid TOS credentials and the first collected trading day are verified.
+  suspend: true
+  schedule: "10 0 * * 2-6"
+  timeZone: Asia/Shanghai
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels: {app: banxia-market-archive, component: job}
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+          containers:
+            - name: market-archive
+              image: banxia-strategy:REPLACE_WITH_GIT_COMMIT
+              command: [python, -m, banxia_strategy.application.market_archive]
+              envFrom:
+                - configMapRef: {name: banxia-runtime}
+                - secretRef: {name: banxia-secrets}
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests: {cpu: 250m, memory: 256Mi, ephemeral-storage: 1Gi}
+                limits: {cpu: "2", memory: 1Gi, ephemeral-storage: 20Gi}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
   name: limit-up-history-sync
   namespace: banxia
 spec:

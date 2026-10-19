@@ -28,6 +28,7 @@
 | --- | --- |
 | [v0.5.1 精简生产架构](36-lean-architecture-v0.5.1.md) | 当前统一应用、Market Worker、数据归属、计算隔离和迁移顺序 |
 | [生产架构精简与功能退役](37-production-simplification.md) | 旧链路删除、独立任务容量、报告队列修复与回归结果 |
+| [TOS、SMTP 配置与归档验收](38-tos-smtp-acceptance.md) | 安全凭据注入、日终行情归档、对象哈希和邮件验证 |
 | [rustdx 数据源迁移](30-rustdx-migration.md) | 当前原生桥接、安装与部署配置、历史兼容和实测验证 |
 | [rustdx 生产发布记录](releases/2026-10-15-rustdx-r1.md) | 镜像摘要、上线验收结果和回滚方式 |
 | [v0.5.0 Web 产品发布](releases/2026-10-18-web-v0.5.0.md) | 整合产品、镜像、VKE 重建和验收记录 |

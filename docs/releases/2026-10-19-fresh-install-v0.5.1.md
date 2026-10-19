@@ -89,6 +89,10 @@ Policy 制品复用本轮已构建且未变更的源码。部署使用 Digest，
 
 - TOS AK/SK 为空，基础资料同步 `market-reference-sync` 因 AccessDenied 重试；
   对象归档、报告落 TOS 与完整行情链路尚未签收。没有创建替代存储或恢复旧凭据。
+- 后续已补交互式安全配置、TOS/SMTP 验证工具和五表行情日终归档源码。
+  线上 rustdx 主数据只读采集通过、ClickHouse 五表空态已核验；新归档 CronJob
+  默认停用，尚未发布含新模块的镜像。实际归档与邮件仍需有效新凭据，
+  详见 [TOS/SMTP 验收记录](../38-tos-smtp-acceptance.md)。
 - SMTP/AI 未配置；验证码、邮件找回密码、AI 分析未验收。
 - 尚无 Policy 激活计划和报告；实际有信号回测、交易时段覆盖、容量与恢复演练
   不在此次公网入口烟测结论内。

@@ -62,6 +62,11 @@ TSP 控制库和业务库必须使用不同运行角色，两个角色均禁止 
    全新环境没有历史报告，页面必须展示真实空态。
 7. SMTP 未配置时保持禁用；上线记录明确说明邮件注册及密码找回尚未验收。
 
+TOS/SMTP 使用交互式 `scripts/configure_external_services.py` 更新指定 Secret 键，
+密钥不回显，不导出原有 Secret。日终 `market-archive` CronJob 默认停用，待有效
+TOS 凭据、含新入口的 Policy 镜像和首个有数据交易日完成验证后启用。
+配置、对象读回及指定收件人验证命令见 [TOS/SMTP 验收](38-tos-smtp-acceptance.md)。
+
 初始化 Job 的 `HOME` 与 `NUMBA_CACHE_DIR` 必须指向可写 `/tmp`，避免非 root 环境
 中策略模块加载失败。首次行情同步可以继续在后台运行；公共快照只读取已有缓存，
 数据未就绪时返回真实空态，不让 Web 启动排队等待全量同步。

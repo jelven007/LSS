@@ -152,6 +152,13 @@ kubectl kustomize --load-restrictor LoadRestrictionsNone \
 - 重复任务不生成冲突对象。
 - Manifest 可定位完整输入和产物。
 - 从旧 MinIO 迁移后的对象数、总大小和抽样哈希一致。
+- 日终五表归档覆盖去重、空值/精度、重复执行内容寻址、对象损坏、导出截断及源修订；
+  全空交易日失败，源数据改变时不发布 Manifest。
+- 配置工具只做 Secret merge patch，所有输入验证前不写集群；失败不回显密钥。
+- SMTP 单元回归与真实收件箱确认分别记录，SMTP 接受请求不能代替邮件到达。
+
+2026-10-19 的源码回归、线上只读结果和真实 TOS/SMTP 待验收项见
+[TOS、SMTP 配置与归档验收](38-tos-smtp-acceptance.md)。
 
 ### 完整链路
 

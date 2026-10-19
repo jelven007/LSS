@@ -159,6 +159,13 @@ strategy-reports/
 Manifest 至少包含对象哈希、Schema 版本、生成时间、策略版本、输入范围和文件列表。
 生产配置使用 `BANXIA_OBJECT_*`；旧 `BANXIA_MINIO_*` 仅为迁移期兼容变量。
 
+当前主数据归档由 `MarketReferenceSync` 实现；已采集 ClickHouse 行情的日终归档由
+`banxia_strategy.application.market_archive` 实现，五表去重后流式写入
+`clickhouse/dataset=<table>/trade_date=<date>/<sha256>.json.gz`，逐对象读回校验后
+发布 `scope=collected_data` 的 Manifest。空安装不会产生完整归档清单。
+上方 Parquet 目录仍是目标格式，不能视为当前已落盘事实；完整采集覆盖、恢复测试
+和真实 TOS 授权状态见 [验收记录](38-tos-smtp-acceptance.md)。
+
 ## 9. 生命周期
 
 | 数据 | 在线保留 | 归档/删除 |
