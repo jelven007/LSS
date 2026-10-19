@@ -8,10 +8,9 @@
 它不会修改现有 `shanao.asia`、Policy VKE 工作负载或生产数据库。
 
 完整产品的 Compute Broker 需要在宿主机创建无网络、无凭据的临时计算容器。VKE 节点
-使用 containerd，不能按当前安全模型挂载 Docker socket；在实现 Kubernetes 原生
-Compute Runner 前，本独立主机方案仍使用受限宿主 Broker。生产 VKE 不挂载宿主
-Docker socket，而使用 [`../kubernetes`](../kubernetes/README.md) 定义的 Pod 内 DinD
-受控例外。
+使用 containerd，不能挂载 Docker socket；本独立主机兼容方案仍使用受限宿主 Broker。
+生产 VKE 使用 [`../kubernetes`](../kubernetes/README.md) 定义的独立 `tsp-compute`
+Pod，无业务密钥、禁止出网，不使用 Broker 或 DinD。
 
 ## 资源与边界
 
@@ -93,7 +92,8 @@ curl -fsS http://127.0.0.1:38080/health/ready
 
 ## 验收门槛
 
-1. `/health/ready` 同时通过数据库、公共版本、平台、Broker 和四类 Worker 检查。
+1. `/health/ready` 同时通过数据库、公共版本、平台、Broker 和兼容候选 Worker 检查；
+   这是独立主机回滚方案的验收项，不代表当前 VKE 生产拓扑。
 2. 注册、登录、退出、找回密码和管理员改密均使用真实 SMTP。
 3. 首页、自选、策略、次日计划、当日实盘、复盘、回测、个股分析、设置九项可访问。
 4. 两个独立租户验证自选、策略和任务数据隔离。

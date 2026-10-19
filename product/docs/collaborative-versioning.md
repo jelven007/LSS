@@ -1,88 +1,76 @@
-# 多人协作与版本管理
+# 协作与版本管理
 
-`main` 是唯一集成主线。每项任务使用独立短期分支；多人或多个 AI 同时开发时，
-各自使用 clone 或 worktree，不能在同一工作目录切换分支或覆盖对方的未提交内容。
-分支版本表示起点，交付身份必须同时包含应用版本和完整提交 SHA。
+当前仓库为 <https://github.com/jelven007/LSS>，`main` 是唯一集成主线。源码、
+标签、镜像和生产环境是四个独立状态，统一记录见[版本基线](./version-baseline.md)。
 
 ## 开发与合并
 
-从最新 `origin/main` 建立 `feat/<任务>`、`fix/<任务>`、`docs/<任务>` 或
-`chore/<任务>`，一个分支解决一个问题。共享分支通过普通 merge 更新，不 rebase 或
-强推他人的提交；个人尚未共享的提交可本地整理。已归并的分支不再用于新任务。
-删除分支前核对 PR 已归并且工作目录没有尚未提交或未推送的工作；不自动清理现场。
+- 每项任务使用 `feat/*`、`fix/*`、`docs/*` 或 `chore/*` 短期分支。
+- 多人并行时使用独立 clone 或 worktree，不在同一工作目录覆盖他人未提交内容。
+- 共享分支只做普通 merge 或 fast-forward，不强推已共享历史。
+- 删除分支前确认内容已合并，且没有未提交或未推送工作。
+- 提交应聚焦；用户已有的无关改动和调试文件不得顺带提交。
 
-本地提交和功能分支推送不改应用版本。PR 会检查实际 head 与其和 main 的共同祖先
-的 `VERSION` 一致，防止人工加号或旧分支带回旧号。main 前进不要求纯业务分支为
-更新版本主动改十个文件；合并最新 main 后，分支自然继承新的版本基线。
-发生版本元数据冲突时，以最新 main 的版本为基准，同时保留本任务新增的依赖及
-正文；不能对整份锁文件或文档直接使用 ours/theirs。
+合并前至少核对：
 
-普通贡献者通过 PR，至少一次独立复审、所有讨论解决、最新版本通过
-`version`、`backend`、`frontend` 检查后归并。严格检查要求分支更新到最新 main；
-提供 `merge_group` 检查入口，仓库开启 merge queue 后可使用，当前不宣称已开启。
-允许 merge 与 squash，不允许 rebase merge 反复搬运多人共享历史。
-管理员可仅在 PR 上处理单人维护时的复审例外，不能绕过质量检查或直接推 main。
+1. 需求、架构、测试和运维文档已随行为变化同步。
+2. 受影响自动化测试通过。
+3. 版本、配置、schema、兼容和回滚影响明确。
+4. 不含凭据、生产数据、调试目录或临时产物。
 
-## 自动分配与并发
+## 版本规则
 
-每次远程 main 集成 push 分配一次后继版本；同次批量 push 只分配一次。
-版本格式和进位沿用 `a.b.cd`，不会按分支数、提交数或 tag 次数增加。
-CI 从最新主线构造版本提交，普通快进推送冲突时重新获取并有限重试。
-延迟到达的事件也各分配一次，分配顺序以成功写回顺序为准；该版本源码包含其
-写回基线之前的所有主线集成，事件 SHA 与实际待测 SHA 因此可以不同。
+应用使用语义版本 `MAJOR.MINOR.PATCH`。发布负责人显式同步以下位置：
 
-来源 trailer 用于重跑去重，但只有版本文件集合和每个替换内容都符合精确递增的
-提交才能复用。人工伪造 trailer、版本回退或提前改号明确失败。若以其他凭据重触发
-自动版本提交，验证后复用自身，不再次加号。版本号在质量门前分配；失败留下号段
-缺口，后续修复通过新 PR 产生新号，禁止回收、移动标签或重写主线。
+- 根项目 `pyproject.toml` 与 `src/banxia_strategy/__init__.py`。
+- `product/backend/pyproject.toml`、`uv.lock` 和 `app/__init__.py`。
+- `product/frontend/package.json`。
+- `product/VERSION`。
+- 版本基线、发布记录和用户可见说明。
 
-每次运行记录 `ci-revision`，后端、前端、tag 和 Docker 均使用该 SHA。
-CI 重跑复用原来的版本；并发的新 main 不能让旧运行标记到新源码。
+`.github/workflows/product.yml` 只验证这些值一致，不自动递增版本。普通功能提交无需
+改版本；进入明确发布批次时再统一调整，避免同一版本对应无法区分的发布制品。
 
-## 标签、镜像与 Release
+## 当前质量门
 
-主线质量门通过才自动创建 `v<应用版本>`；同名同 SHA 复用，同名不同 SHA 拒绝。
-远程 `v*` 标签禁止修改和删除；允许创建，兼容 CI 与既有历史标签。
-源码标签只表示源码检查通过；稳定安装包和生产部署状态分别记录。
+`product.yml` 在相关 PR 和 `main` push 上执行：
 
-Docker 先构建版本与 SHA 镜像，`latest` 提升单独串行化，并在提升前检查构建
-SHA 是否仍为当前 main。旧运行、旧标签和手动历史构建不会覆盖 `latest`。
-main 已前进但新镜像尚未成功时，`latest` 保留先前值；部署固定 digest。
-GitHub concurrency 只用于这个可丢弃的指针提升，不用于计数版本事件，因为同组
-待执行任务可能被后续任务替换。
+- Policy unittest。
+- 前端测试和生产构建。
+- 统一 API、Policy 门面、Task Worker 与 Compute 定向 Ruff/pytest。
+- 完整单机候选 Compose、Nginx 和 Dockerfile 构建检查。
+- 版本一致性与 VKE Kustomize 渲染检查。
 
-桌面发布手动选择已有 tag，准备阶段解析为完整 SHA；所有质量门、平台和清单
-固定到它，main 继续前进不影响安装包。同版本发布串行化；所选平台有任何失败时
-保持草稿，补齐后才能发布。已发布 immutable Release 不能追加或覆盖平台产物，
-需要新源码版本。`latest.json` 含版本、源码 SHA、实际渠道和 SHA-256。
-源代码回滚通过新 PR revert，继续递增版本；生产回滚固定旧 digest，与主线编号无关。
+工作流权限是 `contents: read`，不会写回提交、创建标签、推送镜像或部署生产。
 
-## 远程规则与权限
+## Tag、镜像与 Release
 
-规则模板位于 `.github/rulesets/`，文件存在不等于远程生效：
+1. 从已通过质量门的 `main` 提交构建镜像。
+2. 记录源码 SHA、文件清单和 Registry digest。
+3. 在隔离或候选环境完成目标验收。
+4. 创建 annotated 候选标签，例如 `v0.5.1-rc.1`。
+5. 推送 `main` 和明确的标签，核对远端 peeled commit。
+6. 完整业务签收后才创建稳定标签或 GitHub Release。
 
-| 规则 | 范围 | 权限 |
-| --- | --- | --- |
-| `main-history` | main 禁止删除和非快进 | 无 bypass，包括自动化 |
-| `main-integration` | PR、独立复审、讨论解决 | 管理员仅 PR 例外；版本写回的自动化例外 |
-| `main-quality` | 最新 main 的三个必需检查，绑定 Actions App | 人员无 bypass；版本写回的自动化例外 |
-| `version-tags` | `v*` 禁止更新和删除 | 无 bypass；不禁止创建 |
-
-自动版本写回发生在质量门前，因此不能对它要求预先存在的同 SHA 检查。
-自动化 bypass 必须限于集成与质量规则，历史和标签规则始终独立生效。
-GitHub App 例外覆盖该 App 的所有 workflow，不能限制到某个 Job；工作流变更应
-独立复审，默认 token 只读，仅 version/tag/发布步骤获得必要写权限。
-个人仓库是否允许内置 Actions App 成为 bypass actor，以实际 API 结果为准。
-若平台拒绝，保留已生效的历史和标签保护，不套用会让版本写回失败的规则；
-PR/复审/质量规则需专用已安装 GitHub App 才能完整生效。不可因此给所有开发者
-直接写 main 的 bypass，也不可把模板描述为已强制执行。
+标签不可替代制品或生产证明；同名标签不得移动。生产只引用固定 digest，不使用
+`latest`。当前仓库没有自动容器发布或桌面 Release 工作流，相关产物必须按实际构建
+与验收记录声明。
 
 远程核验：
 
 ```bash
-gh api repos/jelven007/TSP/rulesets
-gh api repos/jelven007/TSP/rules/branches/main
-git ls-remote --tags origin 'refs/tags/v*'
+git remote get-url origin
+git ls-remote origin refs/heads/main
+git ls-remote origin refs/tags/v0.5.1-rc.1 \
+  'refs/tags/v0.5.1-rc.1^{}'
 ```
 
-实施结果与平台限制见本次验收报告，不根据旧聊天或模板猜测远程状态。
+远程分支保护和 ruleset 以 GitHub 实际配置为准；仓库中的模板或文档不能作为已启用
+证明。
+
+## 回滚
+
+- 源码问题通过新提交修复或 revert，不重写已共享主线。
+- 生产代码回滚固定到已知镜像 digest。
+- 发生不兼容数据写入时，先停止写入者，再恢复与旧镜像匹配的备份。
+- 回滚后重新验证健康、登录、数据范围、任务、SSE 和核心业务。

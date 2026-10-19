@@ -1,349 +1,138 @@
 # 火山引擎生产资源清单
 
-> `v0.5.1` 已调整待发布资源：Kafka、Flink、MinIO、独立 Policy API 和独立 TSP
-> PostgreSQL 退出目标清单，Policy 报告迁移至 TOS。本文其余资源数量是 `v0.5.0`
-> 历史盘点，最终删除前仍用于迁移核对。最新拓扑见
-> [v0.5.1 精简生产架构](36-lean-architecture-v0.5.1.md)。
+更新时间：2026-10-19。应用版本：`0.5.1`。生产入口：<https://shanao.asia>。
 
-## 1. 盘点范围
+本文记录当前仓库清单与本次生产验收确认的逻辑资源。云账号中的实例数量、资源 ID、
+余额和计费随时间变化，必须在执行变更前从控制台或 API 实时查询，本文不再保存容易
+失效的账号级快照。
 
-本文记录 `2026-10-02` 当前生产系统在火山引擎上直接使用或由 VKE 自动创建的资源。
+## 1. 当前边界
 
-`2026-10-18 / v0.5.0` 增量：保留原集群、ALB、Secret 和全部 `Retain` 数据卷，清理并
-重建业务工作负载；新增 TSP Web 产品资源。最终运行状态和镜像 digest 见
-[v0.5.0 发布记录](releases/2026-10-18-web-v0.5.0.md)。
-
-归属判断依据：
-
-- VKE 集群 ID、VKE 自动标签和资源挂载关系。
-- Kubernetes Node、PV/PVC、Ingress 和系统组件运行状态。
-- 火山引擎控制台中的实例、网络、计费方式和关联资源。
-- 生产域名 `shanao.asia` 的实际入口。
-
-火山账号中存在其他项目资源，本文不使用账号首页的全局资源数量作为系统数量。
-
-## 2. 汇总结论
-
-当前生产系统涉及 **14 类火山引擎产品**：
-
-1. 容器服务 VKE
-2. 云服务器 ECS
-3. 弹性容器实例 VCI
-4. 弹性块存储 EBS
-5. 文件存储 NAS
-6. 私有网络 VPC
-7. 公网 NAT 网关
-8. 公网 IP EIP
-9. 应用型负载均衡 ALB
-10. 传统型负载均衡 CLB
-11. 弹性伸缩
-12. 镜像仓库 CR
-13. 证书中心
-14. 托管 Prometheus
-
-生产核心资源汇总：
-
-| 资源 | 当前数量或容量 |
+| 项目 | 当前值 |
 | --- | --- |
-| VKE 托管集群 | 1 个 |
-| ECS 生产节点 | 3 台，共 12 vCPU、48 GiB |
-| VCI 实例 | 13 个，共申请 23.5 Core、58 GiB |
-| VKE EBS 云盘 | 13 块，共 740 GiB |
+| VKE 集群 | `cdaus2p98m08ce3b12nn0` |
+| 命名空间 | `banxia` |
+| 公网入口 | ALB HTTPS 443 / `shanao.asia` |
+| 主线 | `132db778c03b5e4d724afd510c63d269c7764211` |
+| 候选标签 | `v0.5.1-rc.1` |
+| 生产清单 | `deploy/kubernetes/overlays/volcengine/` |
+| TSP 子清单 | `product/deploy/kubernetes/` |
 
-### 2.1 v0.5.0 新增资源
+Kafka、Flink、自建 MinIO、独立 Policy API、独立 SSE Gateway、独立 TSP PostgreSQL、
+Policy 报告 NAS 和 Pod 内 DinD 不属于当前生产目标。历史资源若仍在云账号中，先核对
+挂载、快照、备份和引用，再按变更流程清理，不能仅凭名称删除。
 
-| 资源 | 数量/容量 | 用途 |
-| --- | --- | --- |
-| `tsp-postgres` StatefulSet | 1 副本 | TSP 控制库和业务库 |
-| `data-tsp-postgres-0` EBS PVC | 20 GiB | TSP PostgreSQL |
-| `tsp-product-state` NAS PVC | 100 GiB 申请值 | 平台、公共版本和租户产物 |
-| `tsp-platform` Deployment | 1 副本 | TSP 行情平台 |
-| `tsp-product` Deployment | 1 Pod / 8 容器 | API、Gateway、Worker、Broker、DinD |
-| `tsp-product-admin` Secret | 1 | 数据库 owner 凭据 |
-| `tsp-product-secrets` Secret | 1 | 运行时、SMTP、历史 Policy Bridge 凭据 |
+## 2. 计算资源
 
-新增资源继续位于 `banxia` 命名空间。TSP PostgreSQL 使用
-`banxia-ebs-retain`；TSP 状态卷使用独立 `tsp-nas-rwx` StorageClass 和
-`/banxia/tsp-product` NAS 子目录。
-| NAS 文件系统 | 1 个 |
-| NAT 网关 | 1 个 |
-| 系统关联 EIP | 3 个 |
-| 业务 ALB | 1 个 |
-| API Server CLB | 1 个 |
-| 弹性伸缩组 | 1 个 |
-| CR 实例 | 1 个，1 个命名空间、8 个仓库 |
-| SSL 证书 | 1 张 |
-| Prometheus 工作区 | 1 个 |
-
-## 3. 计算与容器
-
-### 3.1 容器服务 VKE
-
-| 属性 | 当前值 |
-| --- | --- |
-| 集群名称 | `cluster-XM` |
-| 集群 ID | `cdaus2p98m08ce3b12nn0` |
-| 类型 | 托管集群 |
-| 地域/可用区 | 华东 2（上海）/ 可用区 A |
-| Kubernetes | `v1.36.1-vke.4` |
-| 网络模型 | VPC-CNI、共享弹性网卡、IPv4 单栈 |
-| Service CIDR | `10.0.0.0/15` |
-| 转发模式 | eBPF |
-| 节点池 | 1 个 |
-| ECS 节点 | 3 个，全部 Ready |
-| 虚拟节点 | 1 个，运行中 |
-
-VKE 负责 Kubernetes 控制面、调度、组件管理、升级和节点池管理。业务数据服务仍运行在
-集群内，并不是火山托管数据库。
-
-### 3.2 ECS 工作节点
-
-3 台生产节点均为包年包月、自动续费，到期时间为 `2026-11-01 23:59:59`：
-
-| 节点 | 实例 ID | 规格 | 私网 IP |
+| 工作负载 | 类型 | 副本/调度 | 职责 |
 | --- | --- | --- | --- |
-| `node-0000000` | `i-yew9srlssgay8n8nyamo` | `ecs.g4il.xlarge`，4C16G | `172.31.79.233` |
-| `node-0000001` | `i-yew9srlssgay8n8nzxxv` | `ecs.g4il.xlarge`，4C16G | `172.31.79.217` |
-| `node-0000002` | `i-yew9srlssgay8n8o0v7f` | `ecs.g4il.xlarge`，4C16G | `172.31.79.218` |
-
-节点没有独立公网 EIP，通过 NAT 网关访问 mootdx。
-
-### 3.3 弹性容器实例 VCI
-
-VKE 配置了一个虚拟节点：
-
-- 名称：`vci-node1-cn-shanghai-a`
-- ID：`ndaus5l4366rpjalqddi0`
-- 私网 IP：`172.31.79.202`
-- 当前 VCI 实例：13 个
-- 当前资源申请：23.5 Core、58 GiB
-
-VCI 当前承载 CoreDNS、APIG Controller、EBS/NAS CSI Controller、Metrics Server、
-Snapshot Controller 和 Prometheus Agent 等系统 Pod。
-
-### 3.4 弹性伸缩
-
-VKE 节点池关联一个弹性伸缩组：
-
-- Scaling Group：`scg-yew9srf3edan0mqy9sbz`
-- 节点池：`pdausev1o4a5057n7c3f0`
-
-弹性伸缩控制节点池实例生命周期；实际计算费用仍由 ECS 产生。
-
-## 4. 存储
-
-### 4.1 EBS 云盘
-
-VKE 共使用 13 块 ESSD PL0，合计 740 GiB。
-
-节点基础盘：
-
-| 类型 | 数量 | 单盘容量 | 合计 | 计费 |
-| --- | ---: | ---: | ---: | --- |
-| ECS 系统盘 | 3 | 100 GiB | 300 GiB | 包年包月 |
-| ECS 节点数据盘 | 3 | 100 GiB | 300 GiB | 包年包月 |
-
-应用 PVC：
-
-| 用途 | PVC | 云盘 ID | 容量 |
-| --- | --- | --- | ---: |
-| PostgreSQL | `data-postgres-0` | `vol-3xdjzijmw65az39dv9cb` | 20 GiB |
-| Redis | `data-redis-0` | `vol-3xdjziksbe2wua8uaa8s` | 10 GiB |
-| Kafka | `data-kafka-0` | `vol-3xdjzii8bq5az39dv99j` | 20 GiB |
-| ClickHouse | `data-clickhouse-0` | `vol-3xdjzii8bq5az39dv99f` | 40 GiB |
-| MinIO | `data-minio-0` | `vol-3xdjzii8bq5az39dv9bf` | 30 GiB |
-| Collector WAL 0 | `wal-market-collector-0` | `vol-3xdk2ex4125az39e6zu0` | 10 GiB |
-| Collector WAL 1 | `wal-market-collector-1` | `vol-3xdk2ex4125az39e6zu1` | 10 GiB |
-
-7 块应用盘按量计费，并采用 `Retain` 回收策略。当前没有配置自动快照策略。
-
-### 4.2 文件存储 NAS
-
-| 属性 | 当前值 |
-| --- | --- |
-| 名称 | `banxia-reports` |
-| 文件系统 ID | `enas-cnsha08273a84410dd` |
-| Kubernetes PVC | `banxia-reports` |
-| PVC 申请容量 | 10 GiB |
-| 用途 | API、策略引擎和报告任务共享报告目录 |
-| 回收策略 | `Retain` |
-
-NAS 使用 NFS v3 挂载，实际计费以 NAS 账单用量为准。
-
-## 5. 网络与公网
-
-### 5.1 VPC
-
-生产集群使用：
-
-- VPC：`Default`
-- VPC ID：`vpc-1pm13zlt8zq4g643rfzcpm2z8`
-- CIDR：`172.31.0.0/16`
-- 核心子网：`Subnet-WZQD`
-- 子网 ID：`subnet-7uuemtcskd1c72200s8k98yw`
-- 节点安全组：`cdaus2p98m08ce3b12nn0-common`
-- Pod 安全组：`cdaus2p98m08ce3b12nn0-pod`
-
-控制面、Pod、VCI、ALB 和 ECS 节点均依赖该 VPC。
-
-### 5.2 NAT 网关
-
-| 属性 | 当前值 |
-| --- | --- |
-| 名称 | `NATGW-sOuu` |
-| ID | `ngw-2hrn9ajwpze2o777owzrknykv` |
-| VPC | `Default` |
-| 模式 | 直通模式 |
-| 计费 | 按量计费、按使用量 |
-| EIP | `118.196.108.124` |
-
-该资源带有 VKE 集群标签，是节点和 Pod 访问 mootdx、镜像源及其他公网服务的出网通道。
-
-### 5.3 公网 IP
-
-系统当前关联 3 个 EIP：
-
-| 用途 | EIP ID | 地址 | 带宽上限 | 计费 |
-| --- | --- | --- | ---: | --- |
-| 业务 ALB | `eip-2ctz5s1qpklj42x5w1eht5034` | `118.196.108.134` | 5 Mbps | 按实际流量 |
-| VKE API Server | `eip-2xs2dcvx2jcao28ojqb1ym4f3` | `118.196.122.161` | 10 Mbps | 按实际流量 |
-| NAT 网关 | `eip-9mb01jvms1z45umv6vtqpfs` | `118.196.108.124` | 200 Mbps | 按实际流量 |
-
-200 Mbps 是带宽上限；按流量计费时不代表持续按 200 Mbps 固定收费。
-
-### 5.4 应用型负载均衡 ALB
-
-| 属性 | 当前值 |
-| --- | --- |
-| 名称 | `banxia-alb` |
-| ID | `alb-1vyswvxt39la83766qanxn7ey` |
-| 版本 | 基础版 |
-| 公网/私网 IP | `118.196.108.134` / `172.31.79.243` |
-| 监听 | HTTP 80、HTTPS 443 |
-| 用途 | `shanao.asia` 生产入口和 TLS 终止 |
-| 删除保护 | 开启 |
-
-### 5.5 传统型负载均衡 CLB
-
-| 属性 | 当前值 |
-| --- | --- |
-| 名称 | `cdaus2p98m08ce3b12nn0-apiserver-lb-internal` |
-| ID | `clb-3qe17svi74jk07prml17vipej` |
-| 规格 | 小型 II |
-| 私网/公网 IP | `172.31.79.199` / `118.196.122.161` |
-| 监听 | TCP 6443 |
-| 用途 | VKE API Server 私网和公网接入 |
-| 计费 | 按量、按规格 |
-
-这是 VKE 自动创建的控制面 CLB，不是此前已经删除的业务 CLB。关闭 API Server
-公网访问只影响公网 EIP 和本地 `kubectl`，不能直接删除该私网控制面 CLB。
-
-## 6. 镜像、证书与监控
-
-### 6.1 镜像仓库 CR
-
-| 属性 | 当前值 |
-| --- | --- |
-| 实例 | `xm1001` |
-| 规格 | 小微版 |
-| 计费 | 混合计费，部分预付 |
-| 有效期 | `2026-10-01` 至 `2026-11-01 23:59:59` |
-| 命名空间 | `banxia`，1/5 |
-| 仓库 | 8/300 |
-| 内网访问 | 开启 |
-| 公网访问 | 开启 |
-| 本月公网流出 | 0 MB |
-
-8 个私有仓库：
-
-- `banxia-strategy`
-- `banxia-flink`
-- `postgres`
-- `redis`
-- `kafka`
-- `clickhouse`
-- `minio`
-- `minio-mc`
-
-### 6.2 证书中心
-
-| 属性 | 当前值 |
-| --- | --- |
-| 证书 ID | `cert-0b9f4e0c80eb4a9e8a0b2321cc063836` |
-| 证书实例 | `test` |
-| 品牌/类型 | DigiCert 免费版、DV、单域名 |
-| 域名 | `shanao.asia`、`www.shanao.asia` |
-| 状态 | 已签发 |
-| 到期 | `2027-01-01 07:59:59` |
-
-证书部署在 ALB HTTPS 监听器上。
-
-### 6.3 托管 Prometheus
-
-- 工作区：`embodied-data`
-- 已启用：容器服务、控制面、DNS、CNI、CSI 基础指标。
-- 集群内运行 Prometheus Agent、Allocator、Kube State Metrics、Node Exporter 和
-  O11y Agent Operator。
-
-指标采集和存储产生的具体费用需按工作区账单核对。
-
-### 6.4 未启用的观测能力
-
-- VKE 容器日志未安装 `log-collector`。
-- VKE 集群审计未开启。
-- 因此当前系统未实际使用日志服务 TLS 保存容器日志和审计日志。
-
-### 6.5 平台基础能力
-
-以下能力被系统使用，但没有独立业务实例，因此未计入前述 14 类资源产品：
-
-- 访问控制 IAM：VKE、弹性伸缩、CSI 和镜像访问所需的角色与服务授权。
-- 资源管理：资源均归属 `default` 项目，并使用 VKE 自动标签识别关联关系。
-- 云监控：提供 ECS、EIP、NAT 和负载均衡的基础监控入口；深度容器指标由托管
-  Prometheus 承担。
-
-## 7. 明确未使用的火山托管产品
-
-当前生产没有使用以下托管数据服务：
-
-| 产品 | 当前替代方案 |
-| --- | --- |
-| ByteRDS/PostgreSQL | VKE 内单副本 PostgreSQL StatefulSet |
-| 托管 Redis | VKE 内单副本 Redis StatefulSet |
-| 托管 Kafka | VKE 内单 Broker Kafka StatefulSet |
-| ByteHouse | VKE 内单副本 ClickHouse StatefulSet |
-| TOS | VKE 内单副本 MinIO StatefulSet |
-| 火山云解析 DNS | 域名 DNS 托管在阿里云 |
-| CDN/WAF | 当前域名直接进入公网 ALB |
-| 日志服务 TLS | VKE `log-collector` 未安装，集群审计未开启 |
-
-这些产品没有出现在当前生产链路中，不应计入当前系统成本。
-
-## 8. 费用关注点
-
-固定或周期性费用主要来自：
-
-- 3 台包年包月 ECS。
-- 6 块随节点购买的 100 GiB 云盘。
-- CR 小微版实例。
-
-按量费用主要来自：
-
-- 13 个 VCI 实例。
-- 7 块应用 EBS。
-- NAS 实际用量。
-- NAT 网关。
-- 3 个 EIP 的实际流量。
-- ALB 和 API Server CLB。
-- 托管 Prometheus 指标采集与存储。
-
-当前控制台提示账号余额低于 100 元。由于账号包含大量其他项目资源，准确金额应在费用中心
-按本文资源 ID、项目和标签过滤，不能使用账号总账直接归因到本系统。
-
-## 9. 优先优化建议
-
-1. 建立 VPC 内运维入口后关闭 API Server 公网访问，释放 10 Mbps EIP；保留私网 CLB。
-2. 核对 13 个系统 VCI 实例账单，评估将部分系统组件调度到空闲 ECS 节点。
-3. 为 PostgreSQL、ClickHouse 和 MinIO 建立 EBS 快照或独立备份；当前 7 块应用盘没有
-   自动快照策略。
-4. 按月核对 ECS、VCI、EBS、NAT、EIP、ALB、CLB、NAS、CR 和 Prometheus 十类费用。
+| `tsp-product` | Deployment + HPA | 2～4 | React、统一 API、SSE、RBAC、内嵌 Policy |
+| `tsp-task-worker` | Deployment | 1 / Recreate | 研究、监控、模拟盘、通知和计划任务 |
+| `report-scheduler` | Deployment | 1 / Recreate | Policy 报告队列、定时生成和补跑 |
+| `tsp-platform` | Deployment | 1 | 公共行情版本和平台服务 |
+| `tsp-compute` | Deployment | 1 | 隔离回测与研究计算 |
+| `market-collector` | StatefulSet | 2 / 租约单活 | rustdx 采集、SQLite WAL、特征和投影 |
+| `market-reference-sync` | Deployment | 1 | 证券、板块、行业和交易日参考数据 |
+| `intraday-monitor` | Deployment | 1 | 盘中指标与告警采集 |
+| `market-archive` | CronJob | 周二至周六 00:10，暂停 | ClickHouse 五表 TOS 日终归档 |
+
+`market-archive` 候选镜像与 CronJob 已部署，但在 TOS 凭据和首个有数据交易日验收前
+保持 `suspend: true`。
+
+## 3. 数据资源
+
+| 数据域 | 当前资源 | 持久化边界 |
+| --- | --- | --- |
+| 事务与身份 | PostgreSQL StatefulSet | `banxia`、`tsp_control`、`tsp_data_production` 三库隔离 |
+| 行情与特征 | ClickHouse StatefulSet | EBS PVC；五类行情表按交易日归档 |
+| 实时投影 | Redis StatefulSet | 可从 PostgreSQL/ClickHouse 重建 |
+| Market Worker 缓冲 | `market-collector` PVC | 每个 Pod 独立 SQLite WAL |
+| 公共行情版本 | `tsp-product-state` NAS RWX | Platform 写入，API/Compute 只读消费 |
+| 报告与原始归档 | 火山引擎 TOS | `strategy-reports`、`market-raw` 两个私有 Bucket |
+
+PostgreSQL 三库共用集群但不共用数据库和运行角色。管理员 DSN 只供初始化与迁移 Job；
+Compute 不获得数据库、SMTP、TOS 或平台管理凭据。
+
+TOS 是生产对象存储。当前 AK/SK 尚未配置，实际对象写入、读回和 Manifest 完整性
+尚未签收。TSP 公共行情 NAS 仍是运行依赖，不得当作已迁移到 TOS。
+
+## 4. 网络与安全
+
+- 公网流量经 ALB 终止 TLS，只转发到 `tsp-product`。
+- PostgreSQL、ClickHouse、Redis、Platform 和 Compute 只暴露集群内 Service。
+- Market Worker 和参考同步需要访问 rustdx；报告和归档需要访问 TOS。
+- Compute NetworkPolicy 禁止出站，只允许 API/Task Worker 访问其服务端口。
+- 应用容器非 root，不挂载宿主 Docker Socket，不使用 `privileged: true`。
+- Registry 拉取凭据、数据库凭据、TOS AK/SK 和 SMTP 授权码保存在 Kubernetes Secret，
+  不进入 ConfigMap、镜像、日志或文档。
+
+## 5. 镜像与配置
+
+本次已验收制品：
+
+| 组件 | 标签 | Digest |
+| --- | --- | --- |
+| Policy / Market Worker | `v0.5.1` | `sha256:3f569013ce24412457b1d9c118921cd0b45157b09984b3e39775681d7e0bc789` |
+| Web Runtime | `web-v0.5.1` | `sha256:cf1a2864e39678b4a5ee5cda7735494bf85771cff7a22a49d6ea4993d3a8d995` |
+| Compute | `compute-v0.5.1` | `sha256:9bf4fce66903f48286812aa84dfdbcef3afcb9a7f68cc3e964e41ec5e47070f0` |
+| 行情归档候选 | `policy-v0.5.1-archive-9db47bc` | `sha256:873d58fac341555873d5928bd49032f5d977b88a8bfdd40d14906de93302d57a` |
+
+生产发布必须继续固定 digest。仓库中的 `REPLACE_WITH_*` 只允许存在于基础模板，
+完整 overlay 渲染结果不得包含占位符。
+
+## 6. 已验证状态
+
+- 新 PostgreSQL、ClickHouse、Redis 和对应卷已创建并 Ready。
+- PostgreSQL 三库、TSP 双运行角色、schema v6 和管理员工作空间初始化完成。
+- Web/API 两副本、Platform、Task Worker、Report Scheduler、Compute 和
+  Market Collector 已完成部署。
+- HTTPS、登录、九项页面、SSE 和 `/health/ready` 通过。
+- Compute 在实际 Pod 内完成策略描述。
+- 行情归档模块在真实候选镜像中完成 SHA-256 烟测。
+
+未完成：
+
+- TOS AK/SK 配置及两个 Bucket 的对象实写/读回。
+- SMTP 真实投递、注册和找回密码。
+- 首个有数据交易日归档。
+- 完整行情覆盖、真实有信号回测、容量和恢复演练。
+
+## 7. 现场核对
+
+```bash
+kubectl -n banxia get deploy,statefulset,cronjob,pod,pvc
+kubectl -n banxia get ingress,service,networkpolicy
+kubectl -n banxia get cronjob market-archive \
+  -o custom-columns=NAME:.metadata.name,SUSPEND:.spec.suspend,LAST:.status.lastScheduleTime
+kubectl -n banxia get pods \
+  -o custom-columns=NAME:.metadata.name,IMAGE:.spec.containers[*].image
+curl -fsS https://shanao.asia/health/ready
+```
+
+渲染发布清单：
+
+```bash
+kubectl kustomize --load-restrictor LoadRestrictionsNone \
+  deploy/kubernetes/overlays/volcengine > /tmp/banxia-vke.yaml
+! rg -n 'REPLACE_WITH_|privileged: true|name: (kafka|minio)' /tmp/banxia-vke.yaml
+```
+
+云资源盘点还应从火山控制台核对 VKE 节点、EBS/NAS、ALB、EIP/NAT、CR、证书和
+Prometheus 的实际 ID、容量、计费与到期时间。账号总资源不能直接归因到本项目。
+
+## 8. 备份与清理
+
+生产恢复集必须覆盖 PostgreSQL 三库、ClickHouse、TOS 对象和 Manifest、公共行情 NAS、
+Market Worker WAL/PVC、镜像 digest 与受控配置。Redis 不是唯一恢复源。
+
+删除旧资源前逐项确认：
+
+1. 当前 Pod、PV/PVC、Ingress、Service 和 Secret 无引用。
+2. 数据已经迁移或明确授权丢弃。
+3. Retain 卷和云盘快照策略已处理。
+4. 回滚窗口已经结束。
+5. 删除动作、执行人、时间和结果进入运维记录。
+
+当前没有完成整套生产恢复演练，也没有承诺 RTO/RPO。详细验收见
+[全新安装记录](releases/2026-10-19-fresh-install-v0.5.1.md)和
+[TOS/SMTP 验收](38-tos-smtp-acceptance.md)。

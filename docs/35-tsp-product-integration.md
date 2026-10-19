@@ -2,9 +2,9 @@
 
 ## 1. 基线
 
-- 上游仓库：`https://github.com/jelven007/TSP`
-- 上游提交：`bb8ea7045b613f189159e7ebd84162567ffb09e5`
-- 上游版本：`0.4.8`
+- 当前仓库：`https://github.com/jelven007/LSS`
+- 当前主线：`132db778c03b5e4d724afd510c63d269c7764211`
+- TSP 初始导入来源：`jelven007/TSP@bb8ea7045b613f189159e7ebd84162567ffb09e5`
 - 当前整合版本：`0.5.1`
 - 客户端：Web；Android/APK 已移除
 
@@ -70,10 +70,11 @@ Policy 数据不会复制到 TSP 表，TSP 只通过领域门面读取 Policy �
 | 单元 | 职责 |
 | --- | --- |
 | `tsp-product` API | React、账户、多租户、SSE、TSP API、Policy 门面 |
-| `task-worker` | 监督 research、realtime、notifications、scheduled 四类 Worker |
+| `tsp-task-worker` | 统一监督研究、实时规则、模拟盘、通知和计划任务 |
+| `report-scheduler` | Policy 报告刷新、历史生成和定时补跑 |
 | `tsp-platform` | 唯一公共行情写入者与不可变版本发布 |
 | `tsp-compute` | 无密钥、禁止出网的受限计算服务 |
-| `market-worker` | rustdx 采集、实时特征、Policy 状态机和 Redis 投影 |
+| `market-collector` | rustdx、SQLite WAL、实时特征、Policy 状态机和 Redis 投影 |
 
 独立 SSE Gateway、四个独立 TSP Worker、Pod 内 DinD、独立 TSP PostgreSQL 和独立
 Policy API 均已退出生产清单。
@@ -90,13 +91,13 @@ API 使用 `TSP_COMPUTE_ADDRESS=tsp-compute:7000` 连接 Compute。Compute：
 
 Unix Socket + 容器 Broker 仅保留给独立部署兼容模式，不进入 VKE 生产清单。
 
-## 7. 发布边界
+## 7. 当前发布边界
 
-1. 先备份旧 TSP PostgreSQL、Policy PostgreSQL、ClickHouse、MinIO 和 NAS。
-2. 先迁移 TSP 双库和 TOS 对象，再切换应用。
-3. 旧 PVC、Secret 和镜像 Digest 在至少五个交易日观察期内保留。
-4. Kustomize 发布不得删除 PostgreSQL、ClickHouse、Redis、NAS、ALB 或 StorageClass。
-5. 生产镜像必须固定 Digest；源码通过不代表生产已生效。
+1. `v0.5.1` 已按全新环境安装，不保留旧业务恢复点。
+2. 生产镜像固定 Digest；源码、标签和线上制品分别核验。
+3. Kustomize 发布不得误删 PostgreSQL、ClickHouse、Redis、NAS、ALB 或 StorageClass。
+4. `market-archive` 保持暂停，直到 TOS、首个有数据交易日和 Manifest 完整性签收。
+5. SMTP、真实有信号回测、容量与恢复演练未完成，不属于当前通过结论。
 
 详细迁移和回滚见
 [部署与运维](06-deployment-operations.md) 与
@@ -104,12 +105,12 @@ Unix Socket + 容器 Broker 仅保留给独立部署兼容模式，不进入 VKE
 
 ## 8. 质量基线
 
-- TSP 前端：43 个测试文件、200 项测试。
-- Policy：401 项测试通过，25 项按环境跳过。
+- TSP 前端：42 个测试文件、180 项通过。
+- Policy：394 项，369 通过、25 项按环境跳过。
 - Policy Facade：包含 ASGI 模式、错误映射、参数校验和资源释放。
 - Task Worker：监督四类后台进程，任一异常退出触发整体失败。
 - Compute：Unix/TCP 协议、取消、不可用状态和隔离参数回归。
 - Kustomize：无旧组件、无占位符、无特权容器和 Docker Socket。
 
 发布候选记录见
-[`releases/2026-10-18-lean-v0.5.1.md`](releases/2026-10-18-lean-v0.5.1.md)。
+[`releases/2026-10-19-fresh-install-v0.5.1.md`](releases/2026-10-19-fresh-install-v0.5.1.md)。

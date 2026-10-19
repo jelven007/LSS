@@ -95,7 +95,7 @@ def _source_path(path: str) -> bool:
     if path.endswith((".parquet", ".db", ".sqlite", ".sqlite3", ".pem", ".key")):
         return False
     return parts[0] in {
-        "backend", "frontend", "scripts", "docs", "packaging", "deploy", ".github", "mcp-server",
+        "backend", "frontend", "scripts", "docs", "packaging", "deploy", ".github",
         "brand", "README.md", "AGENTS.md", "CONTRIBUTING.md", "VERSION", "tiers.yaml",
         "Dockerfile", ".dockerignore", ".gitignore", "操作说明书.md",
     }

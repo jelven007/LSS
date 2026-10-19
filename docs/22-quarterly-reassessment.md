@@ -3,7 +3,8 @@
 > 实验窗口：2025-01-01 ~ 2026-09-28（7 个日历季度，holdout 仅 1 季）  
 > 复用融合管线 L2 (D1≥3%) + L4 (Rule A) + L5 (LHB) + L6 (gap gate) + L1 soft 可选  
 > 组合规则：单票 20%，≤5 并发，月度收益按单笔净 × 权重求和，**季度 = 月度连乘**  
-> 产物：[research/fusion-mvp/quarterly_report.json](../research/fusion-mvp/quarterly_report.json)、脚本 [scripts/quarterly_reassessment.py](../scripts/quarterly_reassessment.py)
+> 产物：`research/fusion-mvp/quarterly_report.json` 为未随源码发布的本地研究产物；脚本见
+> [scripts/quarterly_reassessment.py](../scripts/quarterly_reassessment.py)。
 
 ---
 

@@ -13,24 +13,26 @@
 
 ## 2. v0.5.1 自动化基线
 
-最新精简提交的已执行验证：Policy 394 项（369 通过、25 项按环境跳过），TSP 53 项，
-前端 41 文件、178 项，TypeScript 与生产构建通过；Kustomize 渲染 54 个资源。
-本轮部署继续验证空库初始化、实际镜像架构和公网 HTTPS，结果以
-[安装记录](releases/2026-10-19-fresh-install-v0.5.1.md)为准。
-
-截至 `2026-10-18`：
+当前候选的验证由自动化、制品、集群和公网四层组成。各组测试可能重叠，不能简单相加。
+截至 `2026-10-19`：
 
 | 范围 | 结果 |
 | --- | --- |
-| Policy | 共 401 项：376 项通过，25 项按环境跳过 |
-| TSP 前端 | 43 个测试文件、200 项测试通过 |
-| TSP Policy Facade | 14 项通过 |
-| 扩展注册、Task Worker 与 Compute 定向回归 | 15 项通过 |
-| TypeScript / ESLint / 前端生产构建 | 通过 |
-| Kustomize | 可渲染，无占位符、特权容器和已退出组件 |
+| Policy | 394 项：369 通过、25 项按环境跳过 |
+| TSP 精简架构定向 | Policy Facade、Task Worker、Compute、扩展与健康 46 项通过 |
+| TSP 身份与工作空间 | 真实隔离 PostgreSQL 23 项通过 |
+| Compute | 9 项通过，实际 Pod 策略描述成功 |
+| TSP 前端 | 42 个测试文件、180 项通过 |
+| 静态制品 | TypeScript、ESLint、Vite 构建和首页引用资源检查通过 |
+| TOS/SMTP 新增源码 | 归档 8 项、配置安全 5 项、相关存储/邮件回归通过 |
+| Kustomize | 可渲染、server dry-run 通过，无特权容器和已退出组件 |
+| 公网 | HTTPS、登录、九项页面、SSE、桌面与 390px 窄屏通过 |
 | 版本契约 | 根项目、后端、锁文件、前端和 `VERSION` 均为 `0.5.1` |
 
-跳过项主要依赖隔离 PostgreSQL 或真实基础设施，发布前必须在候选环境单独执行。
+实际 TOS 写入、SMTP 收件箱、首个有数据交易日归档、真实有信号回测、容量和恢复演练
+仍未通过，不能由上述结果推断。完整证据见
+[安装记录](releases/2026-10-19-fresh-install-v0.5.1.md)和
+[TOS/SMTP 验收](38-tos-smtp-acceptance.md)。
 
 ## 3. 本地命令
 
@@ -151,7 +153,7 @@ kubectl kustomize --load-restrictor LoadRestrictionsNone \
 - 报告和原始文件写入后 SHA-256 一致。
 - 重复任务不生成冲突对象。
 - Manifest 可定位完整输入和产物。
-- 从旧 MinIO 迁移后的对象数、总大小和抽样哈希一致。
+- 保留数据升级时，从旧对象存储迁移后的对象数、总大小和抽样哈希一致。
 - 日终五表归档覆盖去重、空值/精度、重复执行内容寻址、对象损坏、导出截断及源修订；
   全空交易日失败，源数据改变时不发布 Manifest。
 - 配置工具只做 Secret merge patch，所有输入验证前不写集群；失败不回显密钥。
@@ -188,7 +190,7 @@ kubectl kustomize --load-restrictor LoadRestrictionsNone \
 7. Compute 的回测、进度、取消和无出网验证。
 8. SMTP 注册验证码和找回密码。
 9. TOS 报告下载与内容哈希。
-10. PostgreSQL、ClickHouse、Redis、TOS 和 NAS 恢复演练。
+10. PostgreSQL、ClickHouse、TOS、NAS 和 Market Worker WAL 恢复演练。
 
 ## 8. 性能与稳定性
 

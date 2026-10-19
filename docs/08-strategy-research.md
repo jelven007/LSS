@@ -1,5 +1,10 @@
 # 历史计划、执行分析与策略优化
 
+> 历史研究档案：本文记录旧数据窗口和 `mootdx` 采集结果，不定义当前生产 Provider、
+> 运行拓扑或已激活策略。当前数据源和验收边界以
+> [需求基线](01-requirements.md)、[架构](02-architecture.md)和
+> [rustdx 迁移说明](30-rustdx-migration.md)为准。
+
 入口：`/research`（主导航“回测优化”）。支持切换实验、日/周/月统计、逐日候选与实际
 开高低收、入场/放弃/退出条件、参数变化、实验日志和下载。研究候选保持独立，不自动启用。
 
@@ -182,11 +187,11 @@ research/20260825-20260924/
 范围以各自 `protocol.json` 为准。后续运行在实验开始前保存代码快照。
 原始输入、全部参数与每日结果均保留，不再对失败实验反复覆盖。
 
-月度研究添加 `--persist` 会先校验输入哈希和磁盘结果一致，再上传 MinIO，最后在一个 PostgreSQL
+月度研究添加 `--persist` 会先校验输入哈希和磁盘结果一致，再上传对象存储，最后在一个 PostgreSQL
 事务中保存 `research_run`、`research_daily`、`research_strategy`。这三张表独立于
 当前计划、候选、观察清单和交易事件；数据库约束要求研究策略 `active=false`。
-数据库和 MinIO 凭据使用 `BANXIA_POSTGRES_DSN`、`BANXIA_MINIO_ENDPOINT`、
-`BANXIA_MINIO_ACCESS_KEY`、`BANXIA_MINIO_SECRET_KEY` 等现有环境变量。
+生产使用 `BANXIA_POSTGRES_DSN` 和 `BANXIA_OBJECT_*` TOS 配置；旧
+`BANXIA_MINIO_*` 只用于迁移期兼容读取。
 
 已有 PostgreSQL 数据卷需先执行新增迁移（首次初始化会自动执行）：
 
@@ -196,7 +201,7 @@ docker compose --env-file deploy/compose/.env -f deploy/compose/docker-compose.y
   < migrations/postgres/004_strategy_research.sql
 ```
 
-Compose API 从 PostgreSQL 读取记录、从 MinIO 流式下载。
+统一 API 从 PostgreSQL 读取记录、从 TOS 流式下载；本地 S3 模拟器只用于集成测试。
 独立 `banxia-strategy serve` 从当前工作目录 `research/` 读取本地结果。
 线上接口沿用现有 Bearer token 鉴权：
 

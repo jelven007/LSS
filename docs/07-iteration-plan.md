@@ -1,300 +1,113 @@
 # 生产化迭代计划
 
-## 当前开发交付
+## 1. 当前基线
 
-`v0.5.1` 已统一 Web/API、独立 Task Worker 和报告调度，Market Worker 从数据库计划
-启动并保留 WAL/Inbox/Outbox。Kafka/Flink、旧服务入口、品牌演示和第三方版本轮询已退役。
-本次交付把功能分支集成到 `main`，构建 amd64 制品并固定 digest，按全新环境完成空库、
-角色、身份初始化和公网验收。CI 只校验版本，发布 Tag 使用注释且不可移动。
-执行结果见[全新安装记录](releases/2026-10-19-fresh-install-v0.5.1.md)。
+`v0.5.1` 精简生产架构已经完成并部署候选版本：
 
-`product/deploy/lean-local/` 提供隔离的本地集成环境，验证公共行情清单后仅复制允许的
-公共文件，生成权限受限的私有环境文件，并初始化共享 PostgreSQL 与独立运行角色。
-生成状态写入 `.local/` 等 Git/Docker 排除目录；该工具不替代线上首次行情采集。
+- React 与 FastAPI 统一入口，Policy 以内嵌 ASGI 运行。
+- Market Worker 取代 Kafka/Flink 常驻链路，保留 SQLite WAL、Inbox/Outbox 和幂等语义。
+- API、Task Worker、报告调度和 Compute 分离。
+- PostgreSQL 三库隔离，ClickHouse 保存行情，Redis 保存投影，TOS 保存对象归档。
+- Kafka、Flink、独立 Policy API、SSE Gateway、独立 TSP PostgreSQL、自建 MinIO
+  和 Pod 内 DinD 已退出当前源码及生产清单。
 
-以下阶段记录早期架构演进，用于历史追溯；其中 Kafka/Flink 不代表当前开发任务。
+历史建设阶段不再作为当前待办维护；对应事实通过 Git 历史和发布记录追溯。
 
-## 1. 迭代原则
+## 2. 迭代原则
 
-- 先建立持久化和可重放能力，再拆分服务和扩大实时计算。
-- 每个阶段保持当前本地功能可用。
-- 使用双写、对账和灰度读取迁移，不一次性替换全部链路。
-- 每个阶段达到退出条件后才能进入下一阶段。
-- 任何阶段都不增加自动下单能力。
+1. 先保证数据正确、可恢复和可解释，再扩容。
+2. 研究结果与生产激活策略隔离，任何候选都需人工确认。
+3. 数据缺失、过期或来源异常时 fail closed。
+4. 每项交付必须同时更新需求、架构、测试、运维和发布状态。
+5. 源码通过、制品可用、生产部署和业务签收分别记录，不互相替代。
+6. 系统保持研究辅助边界，不增加券商连接或自动下单。
 
-## 2. 总体阶段
+## 3. 已完成里程碑
 
-| 阶段 | 目标 | 主要交付 |
+| 里程碑 | 状态 | 主要结果 |
 | --- | --- | --- |
-| P0 | 冻结文档与当前行为 | 文档基线、回归测试、录制数据 |
-| P1 | 建立生产基础设施和领域边界 | 容器、配置、数据模型、存储接口 |
-| P2 | 引入 Kafka 和全量持久化 | 采集服务、WAL、Topic、双写和对账 |
-| P3 | 持久化策略状态和报告 | PostgreSQL 状态机、Outbox、MinIO 报告 |
-| P4 | 引入 Flink 实时指标 | 窗口计算、Checkpoint、板块指标 |
-| P5 | 上线 `/api/v1` 与新版看板 | API、Redis 投影、SSE、兼容层 |
-| P6 | 高可用、压测和生产发布 | 多副本、告警、备份、恢复和灰度 |
-| P7 | 多策略研究与统一体验 | 不可变策略、历史回填、执行分析、盈利优化、统一 Web UI |
+| 统一产品 | 完成 | 九项菜单、账户、多租户、同源 Policy 门面 |
+| 精简实时链路 | 完成 | rustdx、Market Worker、SQLite WAL、事务状态机 |
+| 后台任务解耦 | 完成 | Task Worker 与报告调度独立于 API |
+| 计算隔离 | 完成 | 独立 Compute Pod、无 Secret、禁止出网、只读行情 |
+| 存储收敛 | 完成 | PostgreSQL 三库、ClickHouse、Redis、TOS 契约 |
+| 全新安装 | 完成 | 固定 digest、空库初始化、管理员工作空间、HTTPS |
+| 基础公网验收 | 完成 | 登录、九项页面、静态资源、SSE、就绪检查 |
+| 行情归档能力 | 源码完成 | 五表日终归档、Manifest、对象读回校验、停用 CronJob |
 
-## 3. P0：文档与行为基线
-
-### 工作项
-
-- 评审 `docs/` 下的需求、架构、数据、接口、测试和运维文档。
-- 固定当前策略配置和关键边界行为。
-- 为典型交易日录制可重复的 mootdx 输入数据。
-- 补齐当前单元测试的覆盖率报告。
-- 将当前 JSONL 和报告格式纳入迁移样本。
-
-### 退出条件
-
-- 文档中的未决问题关闭。
-- 当前测试全部通过。
-- 核心策略场景具备固定回放数据。
-- OpenAPI 和 AsyncAPI 通过 Schema 校验。
-
-## 4. P1：基础工程和领域拆分
-
-状态：`COMPLETE`
-
-已完成：
-
-- 盘中纯规则迁入 `banxia_strategy.domain`，旧导入路径保持兼容。
-- 建立版本化事件信封、稳定幂等键和基础存储端口。
-- 建立 PostgreSQL、ClickHouse、Redis、MinIO 和 Kafka 本地 Compose。
-- 建立 PostgreSQL 和 ClickHouse 初始 Schema。
-- 建立 Kafka Topic、DLQ 和 MinIO Bucket 初始化脚本。
-- 实现 PostgreSQL、ClickHouse、Redis、MinIO Python 适配器和可选依赖。
-- 日报接入本地文件、MinIO、PostgreSQL 双写，盘中接入 JSONL 与异步存储双写。
-- 增加内容哈希、Redis TTL、SQL 参数、分钟线去重和部分失败行为单元测试。
-- 从空卷执行 Compose 初始化、基础设施冒烟和真实四存储双写集成测试。
-
-补充完成：
-
-- 统一运行时配置、JSON 结构化日志、请求 ID 和 Prometheus 指标端点。
-- 建立独立采集、行情落库、策略、Outbox、投影、日报和 API 服务入口。
-- 保留 Python 确定性特征 Worker 作为本地回放和 Flink 故障排查入口。
+## 4. 当前 P0：外部服务与业务签收
 
 ### 工作项
 
-- 将单体逻辑拆分为采集、领域策略、应用服务和存储端口。
-- 引入统一配置、结构化日志、OpenTelemetry 和请求 ID。
-- 建立本地 Docker Compose 开发环境。
-- 创建 PostgreSQL、ClickHouse 和对象存储迁移。
-- 定义共享事件 Schema 和代码生成流程。
-- 保留当前 CLI 和 Web 作为兼容入口。
+- 配置最小权限 TOS AK/SK 和两个私有 Bucket。
+- 验证主数据 Manifest 引用对象的长度和 SHA-256。
+- 选择首个有数据交易日，手工完成 ClickHouse 五表日终归档。
+- 确认归档重复执行内容寻址稳定，源数据变化生成新 Manifest。
+- 配置 SMTP 授权码，完成指定收件人的单封邮件和收件箱确认。
+- 验证注册验证码、错误验证码、找回密码和会话/Token 撤销。
+- 执行一条生产真实有信号回测，核对任务、交易明细、资金曲线和数据 provenance。
 
 ### 退出条件
 
-- 领域策略测试不依赖数据库和网络。
-- 所有基础设施可以一条命令启动。
-- 数据库迁移可从空环境执行。
-- 服务可以在无真实 mootdx 的录制数据下运行。
+- TOS 两个 Bucket 写入、读回和 Manifest 核验通过。
+- SMTP 服务接受且收件箱实际到达。
+- `market-archive` 在手工验收后解除暂停，并完成一个调度周期。
+- 生产真实有信号回测成功，结果可追溯到公共行情版本。
+- 发布记录中不存在把空表、健康检查或模拟传输写成业务签收的描述。
 
-## 5. P2：Kafka 与行情持久化
+## 5. 当前 P1：恢复与稳定性
 
 ### 工作项
 
-- 实现独立 `market-collector`。
-- 实现分片租约、连接复用、节点健康和本地 WAL。
-- 发布盘口和一分钟线 Topic。
-- 实现 ClickHouse Sink 和 S3 Parquet 归档。
-- 当前 JSONL 与新链路临时双写。
-- 建立事件数量、时间范围和哈希对账。
+- PostgreSQL 执行隔离恢复和时间点恢复演练。
+- ClickHouse 恢复一个交易日分区并核对行数与指纹。
+- 验证 TOS 归档恢复到隔离环境。
+- 演练 Market Worker 主备切换和旧主 WAL 核销。
+- 清空 Redis 后从权威存储重建投影。
+- 验证 Task Worker、报告调度和 Compute 异常退出后的任务终态。
+- 完成一个真实交易日和至少 72 小时稳定性观察。
 
 ### 退出条件
 
-- Kafka 重复投递不产生业务重复。
-- 采集器重启后 WAL 可续传。
-- ClickHouse 与 S3 对账通过。
-- 连续五个交易日新链路数据完整率达到目标。
-- JSONL 仍可作为回退，但不再是目标权威存储。
+- 实测 RPO/RTO 被记录，不沿用未验证目标值。
+- WAL、Outbox 和任务队列不存在无法解释的积压。
+- 恢复后的计划、决策、报告和行情数量可对账。
+- 告警、Runbook 和负责人覆盖所有 P0/P1 故障。
 
-## 6. P3：策略状态与报告持久化
+## 6. 当前 P2：容量与高可用
 
 ### 工作项
 
-- 实现 PostgreSQL 策略版本、运行、计划和候选模型。
-- 将 `evaluate` 规则迁移为显式状态机。
-- 实现 Inbox、Decision、Outbox 原子事务。
-- 实现 Outbox Relay。
-- 将报告文件写入 MinIO，数据库保存元数据和哈希。
-- 导入现有历史报告。
+- 对 200 只动态监控股票测量采集周期、端到端 P95/P99 和丢失率。
+- 测量 PostgreSQL 事务、连接池、ClickHouse Parts、Redis 重建和 SSE 连接容量。
+- 在 amd64 原生环境执行 Compute 重负载和取消/超时测试。
+- 评估 PostgreSQL Multi-AZ、ClickHouse 副本和 Redis 托管高可用。
+- 验证 API HPA 2～4 副本时不会复制后台消费者。
 
 ### 退出条件
 
-- 不可逆状态在重启后保持。
-- 提交 offset 前故障重放不产生重复决策。
-- 同一交易日重复运行只生成一个成功任务。
-- 现有报告和新报告的关键字段对账通过。
+- 目标工作负载下连续运行无未解释退出、积压单调增长或错误金融结果。
+- 高可用投入基于实测瓶颈和恢复目标。
+- 未达到扩展阈值时不重新引入 Kafka/Flink。
 
-## 7. P4：Flink 实时计算
+## 7. 持续产品迭代
 
-### 工作项
+- 使用新增交易日对研究策略做真正样本外验证。
+- 用可核验成交记录校准分钟成交代理、滑点和不可卖场景。
+- 保持策略版本、数据 release、源码提交、费用与回测结果完整追溯。
+- 继续完善历史证券状态、财务公告时点和数据质量标记。
+- 所有新增能力优先复用 Provider、任务状态、事件和扩展契约，不建立平行实现。
 
-- 实现行情清洗、Watermark 和迟到数据处理。
-- 实现一分钟、多分钟量能和价格窗口。
-- 实现题材上涨比例、涨停家数和板块确认度。
-- 发布版本化实时指标事件。
-- Checkpoint 写入 MinIO，升级前创建 Savepoint。
-- 策略状态机消费指标，但保留数据缺失时的降级路径。
+## 8. 变更管理
 
-### 退出条件
+每项变更必须说明：
 
-- 窗口指标与离线基准结果一致。
-- 乱序和迟到数据测试通过。
-- TaskManager 故障后可以从 Checkpoint 恢复。
-- Flink 不可用时原始行情仍持续落库。
+- 对应需求和业务边界。
+- 是否修改 API、数据库 Schema、事件或数据生命周期。
+- 对 WAL、Inbox/Outbox、缓存、SSE 和任务状态的影响。
+- 自动化测试、候选环境和生产验收证据。
+- 配置、迁移、回滚和恢复步骤。
 
-## 8. P5：API 与 Web 迁移
-
-### 工作项
-
-- 实现 `docs/openapi.yaml` 中的 `/api/v1`。
-- 建立 Redis 最新行情、指标和决策投影。
-- 实现缓存回源和投影重建。
-- 实现 SSE 监控流。
-- Web 看板切换到 `/api/v1`。
-- 旧 `/api/*` 改为兼容适配器并输出弃用信息。
-
-### 退出条件
-
-- OpenAPI 契约测试全部通过。
-- Redis 清空后 API 可以降级并完成重建。
-- SSE 断线重连不造成状态缺失。
-- 新旧接口关键字段语义对照通过。
-- Web 不再直接依赖进程内监控对象。
-
-## 9. P6：生产就绪
-
-### 工作项
-
-- Kubernetes 多副本和跨可用区部署。
-- 配置 HPA、PDB、NetworkPolicy 和资源限制。
-- 建立 Prometheus、Loki、Tempo 仪表盘和告警。
-- 完成 200 股票实时监控容量压测。
-- 执行 Kafka、Flink、PostgreSQL、Redis 和 ClickHouse 故障演练。
-- 执行数据库和对象存储恢复演练。
-- 灰度切换生产流量并观察完整交易日。
-
-### 退出条件
-
-- 所有 P0/P1 告警都有 Runbook。
-- 性能指标满足需求文档。
-- 备份恢复达到 RPO/RTO。
-- 连续五个交易日无数据一致性差异。
-- 生产回滚方案经过演练。
-
-## 10. 建议代码结构
-
-目标仓库可以逐步演进为：
-
-```text
-src/
-  domain/
-    strategy/
-    market/
-  services/
-    collector/
-    strategy_engine/
-    report_worker/
-    api/
-    projection_worker/
-  adapters/
-    mootdx/
-    kafka/
-    postgres/
-    clickhouse/
-    redis/
-    object_storage/
-  contracts/
-    events/
-    api/
-  shared/
-    config/
-    observability/
-    time/
-deploy/
-  compose/
-  kubernetes/
-migrations/
-  postgres/
-  clickhouse/
-tests/
-  unit/
-  contract/
-  component/
-  integration/
-  e2e/
-```
-
-在领域代码稳定前，不强制拆分为多个独立仓库。优先使用单仓库中的多个可部署入口，
-减少跨仓库版本协调。
-
-## 11. 第一轮系统迭代范围
-
-第一轮只进入 P1，不直接上 Flink：
-
-1. 抽取领域状态机和存储端口。
-2. 建立 Docker Compose。
-3. 建立 PostgreSQL、ClickHouse、Redis、MinIO 的基础 Schema。
-4. 实现四类存储适配器和迁移期双写。
-5. 增加 OpenAPI/AsyncAPI 校验。
-6. 保持当前 mootdx 采集和 Web 功能可运行。
-
-当前已完成第 1 至 6 项，并通过真实组件双写测试。双写后台队列仍不是持久 WAL，
-生产服务链路已由 Kafka 和 SQLite 持久 WAL 替代该临时队列；旧双写入口仅用于兼容。
-
-## 11.1 当前实现状态
-
-- P2：采集 WAL、Kafka Topic、ClickHouse Sink 和真实 Kafka 坐标幂等已实现。
-- P3：状态机事务、Inbox/Outbox、MinIO 报告和日报事件已实现。
-- P4：Flink SQL 作业实现秒级板块宽度和分钟量能窗口，Checkpoint 写入 MinIO。
-- P5：FastAPI、Redis 投影、SSE、标准错误结构和新版 Web 接口已实现。
-- P6：火山引擎 VKE、ALB HTTPS、EBS/NAS、应用多副本、探针、资源限制、
-  PDB/HPA/NetworkPolicy 已投入生产；数据服务当前为单副本，仍需完成托管高可用迁移、
-  自动备份恢复和故障演练。
-- P7：不可变多策略目录、父子血缘、唯一激活、关联数据永久删除、每策略每日记录、242 个交易日
-  幂等回填、年度严格可买对比、T+1 收益和盈利约束优化已实现。
-- P7：四个 Web 页面已统一设计令牌、导航、表单、按钮、状态、表格和响应式规则；
-  桌面与 `390x844` 已完成浏览器验证。
-
-## 11.2 P7：多策略研究与统一体验
-
-状态：`COMPLETE`
-
-已完成：
-
-- 参数变更保存为新策略，记录 `parent_strategy_id` 和 `config_changes`。
-- 数据库触发器禁止覆盖配置和血缘，名称可独立修正；部分唯一索引保证最多一条激活策略。
-- 定时任务、刷新和监控在执行开始时解析当前激活策略。
-- `strategy_day` 以 `(strategy_id, trade_date)` 聚合次日计划、执行计划和实际行情。
-- `catalog_backfill` 补齐 2025-09-25 至 2026-09-24 的 242 个交易日，重复执行不覆盖。
-- 月度准确率研究和年度双策略严格可买分析均保存完整明细。
-- T+1 开盘/收盘收益、五日跟踪和等权盈亏边界已生成。
-- 盈利约束优化使用 60/20/20 时间切分、T+1 开盘卖出和每笔 25bp 成本；
-  09:45 截止候选已作为未激活子策略保存。
-- 四页共享 `ui-standard.css`，并增加结构和响应式静态测试。
-
-后续验证：
-
-- 使用新增交易日对 09:45 候选做真正样本外验证，避免基于 9 笔样本直接激活。
-- 用券商成交记录校准分钟级“严格可买”的排队、滑点和不可卖代理。
-- 在目标 Kubernetes 集群完成容量、故障、备份和恢复演练。
-
-## 12. 变更管理
-
-2026-10-19 全新安装交付同步冷快照、静态资源引用、账户向导持久化、管理员工作空间
-和 Compute 公共挂载路径修复。自动化与公网验收分别记录；TOS、SMTP 和 GitHub 推送
-的实际状态见[发布记录](releases/2026-10-19-fresh-install-v0.5.1.md)，不得由部署成功
-推断全部外部服务已经配置。
-
-每个 Pull Request 必须说明：
-
-- 对应需求编号。
-- 是否修改 OpenAPI、AsyncAPI 或数据库 Schema。
-- 是否影响幂等键、状态机或数据生命周期。
-- 新增和更新的测试。
-- 部署、迁移和回滚步骤。
-
-策略规则变更必须创建新策略版本，不能直接覆盖历史配置。
-研究候选必须保持未激活，除非经过人工评审和独立样本验证后显式切换。
+当前生产状态见
+[全新安装记录](releases/2026-10-19-fresh-install-v0.5.1.md)，
+TOS/SMTP 与归档进度见 [外部服务验收](38-tos-smtp-acceptance.md)。

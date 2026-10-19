@@ -7,7 +7,7 @@
 > 当日实盘、复盘、回测、个股分析、设置；Policy 领域以内嵌 ASGI 模块提供次日计划和
 > 当日实盘。上游基线和部署边界见 [INTEGRATION.md](INTEGRATION.md)。
 
-[![CI](https://github.com/jelven007/TSP/actions/workflows/ci.yml/badge.svg)](https://github.com/jelven007/TSP/actions/workflows/ci.yml)
+[![CI](https://github.com/jelven007/LSS/actions/workflows/product.yml/badge.svg)](https://github.com/jelven007/LSS/actions/workflows/product.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 > 本系统用于数据分析和量化研究，不提供投资建议。回测结果不代表未来收益，
@@ -20,7 +20,8 @@
 [版本基线](docs/version-baseline.md)和 Policy 仓库的
 [全新安装记录](../docs/releases/2026-10-19-fresh-install-v0.5.1.md)。
 公网登录、九页和 SSE 已验收；TOS/SMTP 与完整业务签收待完成，
-本地最新 main 与候选标签因 GitHub 凭据阻塞尚未推送。
+远程 `main=132db778c03b5e4d724afd510c63d269c7764211`，候选标签为
+`v0.5.1-rc.1`。
 
 ## 项目定位
 
@@ -45,7 +46,7 @@ TSP 是持续维护的专用版本，当前重点是：
 | 盘中 | 自选、实时行情、集合竞价、异动、连板梯队、监控与通知 |
 | 交易辅助 | 持仓提醒、模拟盘、多账户对比、自动跟单规则 |
 | AI | OpenAI、DeepSeek、GLM、Codex CLI 和自定义兼容接口；显式选择 Chat Completions / Responses |
-| 开放能力 | API Token、Open API、SSE 事件流、MCP 服务器 |
+| 开放能力 | API Token、Open API、SSE 事件流 |
 
 ## 运行模式
 
@@ -58,7 +59,7 @@ Windows、macOS 和 Linux 桌面安装包采用本地免登录模式：
 - 数据和敏感配置保存在本机。
 
 桌面产物以当前仓库的
-[GitHub Releases](https://github.com/jelven007/TSP/releases) 为准。
+[GitHub Releases](https://github.com/jelven007/LSS/releases) 为准。
 
 ### 服务端部署
 
@@ -81,8 +82,8 @@ VKE 部署入口见[deploy/kubernetes](deploy/kubernetes/README.md)，独立主�
 前置要求：Docker Engine 和 Docker Compose。
 
 ```bash
-git clone https://github.com/jelven007/TSP.git
-cd TSP
+git clone https://github.com/jelven007/LSS.git
+cd LSS/product
 cp .env.example .env
 docker compose up --build -d
 ```
@@ -130,7 +131,7 @@ Copy-Item .env.example .env
 2. 首次启动自动创建四板有效股票全量同步任务；打开“数据”页面查看进度、结果及数据画像。
 3. 初始化失败后修复数据源，再运行盘后管道重试；成功后按既有调度增量更新 enriched 指标数据。
 4. 在“策略”和“回测”页面验证策略结果及费用口径。
-5. 按需配置 AI、监控通知、Open API Token 和 MCP。
+5. 按需配置 AI、监控通知和 Open API Token。
 
 全新安装的七项基础数据能力默认路由到 `rustdx`，全市场请求最多共用 35 个连接，
 原生桥接随后端依赖默认安装，Docker 和桌面包内置对应平台的扩展；构建和开发
@@ -208,11 +209,13 @@ EXT_INDUSTRY_DATA_URL=
   -> enriched 指标流水线
   -> 策略 / 因子 / 回测 / 监控 / 分析服务
   -> FastAPI / SSE / Open API
-  -> React 前端 / MCP 客户端
+  -> React 前端 / Open API 客户端
 ```
 
-后端采用模块化单体。主服务负责 API、调度和数据管理，重计算任务可使用隔离子进程。
-前端使用 React、TypeScript、Vite、TanStack Query 和 Tailwind CSS。
+独立桌面和根目录 Compose 采用模块化单体。生产 VKE 将统一 API、Task Worker、
+报告调度、公共行情平台、Market Worker 和无密钥 Compute 分开部署；Policy 通过
+同进程 ASGI 接入统一 API。前端使用 React、TypeScript、Vite、TanStack Query 和
+Tailwind CSS。
 
 完整边界见[架构文档](./docs/architecture.md)。
 
@@ -258,7 +261,6 @@ git diff --check
 | [二次开发](./docs/secondary-development.md) | 扩展点和核心修改规则 |
 | [rustdx 数据源](./docs/rustdx-data-source.md) | 默认路由、35 连接池和历史财务 |
 | [策略开发](./docs/strategy.md) | 内置、自定义和 AI 策略 |
-| [MCP 服务器](./mcp-server/README.md) | AI 客户端接入 |
 
 ## 第三方组件与数据源
 

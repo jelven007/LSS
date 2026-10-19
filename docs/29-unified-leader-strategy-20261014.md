@@ -81,7 +81,9 @@ flowchart TD
 - [原始策略逻辑](../src/banxia_strategy/strategy_archetypes.py)、[统一龙头身份与形态](../src/banxia_strategy/leader_strategy.py)、[候选引擎及计划](../src/banxia_strategy/strategy.py)。
 - [目录收敛迁移 024](../migrations/postgres/024_unified_leader_catalog.sql)、[目录适配器](../src/banxia_strategy/adapters/strategy_catalog.py)、[目录 API](../src/banxia_strategy/api.py)。
 - [龙头规则测试](../tests/test_leader_strategy.py)、[数据库隔离与目录测试](../tests/test_multi_strategy.py)。
-- [L7 T+1 重算报告](27-fusion-l7-t1-correction.md)、[生产架构审计](28-architecture-audit-20261014.md)。
+- [L7 T+1 重算报告](27-fusion-l7-t1-correction.md)。当时的生产架构审计已被
+  [v0.5.1 精简架构](36-lean-architecture-v0.5.1.md)和
+  [精简记录](37-production-simplification.md)取代。
 
 验收重点：运行目录仅一条、旧历史记录数量不减少、旧策略不可再次激活、真实龙头被过滤后不晋升跟风股、首阴与反包身份按最近涨停日期追溯、分支规则写入不可变计划、T+1 限制保持。
 

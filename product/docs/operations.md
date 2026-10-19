@@ -7,15 +7,18 @@
 
 当前生产提交、源码候选、稳定标签和 schema 边界统一见
 [版本基线](./version-baseline.md)。巡检和故障记录必须写完整提交 SHA，不能只写
-`0.5.0`。
+`0.5.1`。
 
 ## 1. 运行边界
 
-- 当前 VKE 多租户按角色运行平台、API、Gateway 和四类 Worker；PostgreSQL、公共版本、
-  Broker、备份和恢复见[VKE 部署](../deploy/kubernetes/README.md)。
-- 待发布版本为 `v0.5.1`/schema v6，实际 commit、镜像 digest 和线上验收状态见版本基线。
+- 当前 VKE 运行统一 Web/API、Task Worker、Report Scheduler、Market Worker、
+  Platform 和独立 Compute；备份和恢复见[VKE 部署](../deploy/kubernetes/README.md)。
+- `v0.5.1`/schema v6 候选已部署到 `shanao.asia`，实际 commit、镜像 digest 和验收
+  状态见版本基线。
 - 本次 VKE 按全新环境安装，不恢复旧业务数据；应用 Secret 重新生成，
   SMTP 未配置时禁用。执行结果见[安装记录](../../docs/releases/2026-10-19-fresh-install-v0.5.1.md)。
+- TOS 与 SMTP 尚未签收；`market-archive` CronJob 必须保持暂停，直到有数据交易日
+  的手工归档、对象读回和哈希校验通过。
 - 下方根目录 Compose 操作适用于独立运行模式，其生产形态是单容器、单 Uvicorn worker。
 - 同一 `DATA_DIR` 只能由一个 TSP 主实例写入。
 - 默认服务端口为 `3018`。
@@ -55,7 +58,30 @@ mkdir -p data backups
 
 ## 3. 启动、停止与状态
 
-### 3.1 Docker Compose
+### 3.1 VKE 生产
+
+```bash
+kubectl -n banxia get deploy,statefulset,cronjob,pod
+kubectl -n banxia rollout status deployment/tsp-product --timeout=5m
+kubectl -n banxia rollout status deployment/tsp-task-worker --timeout=5m
+kubectl -n banxia rollout status deployment/report-scheduler --timeout=5m
+kubectl -n banxia rollout status deployment/tsp-compute --timeout=5m
+kubectl -n banxia rollout status statefulset/market-collector --timeout=5m
+curl -fsS https://shanao.asia/health/ready
+```
+
+归档状态必须显式检查：
+
+```bash
+kubectl -n banxia get cronjob market-archive \
+  -o custom-columns=NAME:.metadata.name,SUSPEND:.spec.suspend,LAST:.status.lastScheduleTime
+```
+
+启用归档前按
+[TOS/SMTP 验收](../../docs/38-tos-smtp-acceptance.md)完成凭据配置、探针写入、首个
+有数据交易日手工归档和 Manifest 复核。不能仅因 CronJob 或 Pod Ready 就解除暂停。
+
+### 3.2 Docker Compose
 
 启动或重建：
 
@@ -86,7 +112,7 @@ docker compose down
 
 不要在未确认备份时添加删除卷参数，也不要删除宿主机 `data/`。
 
-### 3.2 单个 Docker 容器
+### 3.3 单个 Docker 容器
 
 ```bash
 docker ps --filter name=tsp
@@ -98,7 +124,7 @@ curl -fsS http://127.0.0.1:3018/health
 实际容器名应以部署命令为准。使用固定版本或提交 SHA 镜像，不要把 `latest` 当作
 可复现生产版本。
 
-### 3.3 Dev 模式
+### 3.4 Dev 模式
 
 ```bash
 ./dev.sh
@@ -121,7 +147,7 @@ curl -fsS http://127.0.0.1:3018/health/live
 ```json
 {
   "status": "ok",
-  "version": "0.4.1",
+  "version": "0.5.1",
   "mode": "none"
 }
 ```
@@ -256,6 +282,13 @@ GET /api/observability
 
 ## 7. 调度任务
 
+VKE 生产把职责拆分到常驻 Worker 和 Kubernetes CronJob。Market Worker 与
+Report Scheduler 使用数据库租约/队列；`market-archive` 在周二至周六 00:10
+归档前一日数据，但当前保持暂停。任何临时 `kubectl patch` 都必须同步回源清单，
+否则下一次发布会恢复仓库中的状态。
+
+下表描述独立运行模式的应用内调度；它不等同于 VKE 工作负载数量。
+
 当前主要默认时点均按北京时间：
 
 | 任务 | 默认/窗口 | 运维检查 |
@@ -294,7 +327,14 @@ GET /api/observability
 
 ## 8. 备份
 
+VKE 生产备份必须同时覆盖 PostgreSQL 三库、ClickHouse、TOS 对象与 Manifest、
+TSP 公共行情 NAS、Market Worker WAL/PVC，以及恢复所需的镜像 digest 和脱敏配置
+清单。Redis 是可重建投影，不作为唯一恢复来源。当前版本尚未完成整套生产恢复演练，
+不得据此承诺 RTO/RPO。
+
 ### 8.1 备份范围
+
+以下范围适用于独立运行模式。
 
 至少备份：
 
@@ -378,7 +418,8 @@ curl -fsS http://127.0.0.1:3018/health
 6. 执行[测试与验收](./testing.md)中的发布烟测。
 7. 观察一个与变更风险匹配的周期后再清理旧镜像和临时备份。
 
-`main` 每次推送都会刷新 GHCR `latest`，因此生产应固定版本 tag 或 SHA 标签。
+当前 CI 不自动构建或发布生产镜像。发布负责人必须从已验收提交构建镜像、记录
+Registry digest，并在 VKE overlay 中固定该 digest；生产不得依赖 `latest`。
 
 ### 10.2 回滚
 

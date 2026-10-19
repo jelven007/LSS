@@ -7,6 +7,9 @@
 
 权威架构见 [v0.5.1 精简生产架构](36-lean-architecture-v0.5.1.md)，部署清单见
 [`deploy/kubernetes/`](../deploy/kubernetes/README.md)。
+当前生产候选已完成固定 digest 部署，源码主线为 `132db77`，候选标签为
+`v0.5.1-rc.1`。TOS、SMTP、真实行情归档和完整恢复仍按
+[外部服务验收](38-tos-smtp-acceptance.md)执行。
 
 ## 2. 工作负载
 
@@ -19,6 +22,8 @@
 | `tsp-compute` | 1 | 隔离研究与回测计算 |
 | `market-collector` | 2 | `market-worker`，通过 PostgreSQL 租约单活 |
 | `market-reference-sync` | 1 | 证券、板块和参考数据 |
+| `intraday-monitor` | 1 | 行情指标、规则计算和告警暴露 |
+| `market-archive` | CronJob，暂停 | 五类 ClickHouse 行情日终归档；验收后启用 |
 | 数据与模拟盘 CronJob | 按计划 | 行情历史、板块资金、模拟盘对账 |
 
 生产清单不再部署独立 Policy API、SSE Gateway、Kafka、Flink、MinIO、独立 TSP
@@ -194,7 +199,8 @@ kubectl -n banxia delete networkpolicy api-ingress --ignore-not-found
 | `tsp-product` | 双库、公共行情、平台连接、Worker 心跳、Compute |
 | `market-worker` | 进程心跳、PostgreSQL 租约、WAL、ClickHouse、Redis |
 | `tsp-compute` | TCP 服务存活；Pod 无 Secret、无出网 |
-| 报告 Worker | PostgreSQL、ClickHouse、TOS |
+| 报告 Worker | PostgreSQL、ClickHouse；需要归档时还要求 TOS |
+| `market-archive` | 五类源表稳定、对象读回哈希一致、Manifest 最后发布 |
 
 公网验收：
 
@@ -203,6 +209,7 @@ curl -fsS https://shanao.asia/health/ready
 ```
 
 同时验证登录、九项菜单、次日计划、当日实盘、SSE、SMTP、回测和移动端布局。
+未配置的 TOS/SMTP 必须记录为未验收，不能以健康接口通过代替。
 
 ## 8. 监控与告警
 
@@ -238,10 +245,11 @@ P0 条件包括：交易时段行情停止、PostgreSQL 不可写、策略状态
 
 ## 10. 回滚
 
-1. 保留旧镜像 digest、旧 TSP PostgreSQL PVC 和 MinIO 数据卷。
+1. 保留旧镜像 digest；保留数据升级时同时保留旧 TSP PostgreSQL PVC 和对象存储。
 2. 新版本异常时回滚镜像和 Kustomize 提交，不反向覆盖数据库。
 3. 若已切换 TSP 数据库，只允许从发布前逻辑备份恢复到隔离实例后再切换 DSN。
-4. Market Worker 回滚到 Kafka/Flink 链路前，必须先停止新 Worker并核对WAL和Outbox。
+4. 不在当前运行时内恢复 Kafka/Flink；确需历史回滚时使用匹配的旧镜像和清单，
+   先停止 Market Worker 并核对 WAL 与 Outbox。
 5. 未完成数据校验前禁止删除任何旧 PVC、Bucket 或数据库。
 
 ## 11. 安全

@@ -1,17 +1,20 @@
 # TSP 产品整合说明
 
-## v0.5.1 生产候选
+## v0.5.1 已部署候选
 
 Policy 已安装到 TSP Runtime 镜像并通过 ASGI Transport 在同一进程调用；
 `/api/policy/*` 契约保持不变。生产清单不再部署独立 Policy API、独立 Gateway、
 独立 TSP PostgreSQL 或特权 DinD。完整说明见
 [`v0.5.1 精简架构`](../docs/36-lean-architecture-v0.5.1.md)。
 
+候选已部署到 <https://shanao.asia>，HTTPS、登录、九项页面和 SSE 已验收。
+TOS 实写、SMTP、首个有数据行情归档、真实有信号回测、容量和恢复演练仍待签收。
+
 ## 基线
 
-- 上游仓库：`https://github.com/jelven007/TSP`
-- 上游提交：`bb8ea7045b613f189159e7ebd84162567ffb09e5`
-- 上游版本：`0.4.8`
+- 当前仓库：`https://github.com/jelven007/LSS`
+- 当前主线：`132db778c03b5e4d724afd510c63d269c7764211`
+- TSP 初始导入来源：`jelven007/TSP@bb8ea7045b613f189159e7ebd84162567ffb09e5`
 - 整合产品版本：`0.5.1`
 - 许可证：MIT，原许可证保留在 `product/LICENSE`
 
@@ -72,21 +75,16 @@ POLICY_SERVICE_TIMEOUT_SECONDS=30
 | Policy 盘中行情和决策投影 | Policy ClickHouse / Redis / PostgreSQL |
 | Policy 行情采集 | 精简 `market-worker` 的 rustdx 长连接 |
 | TSP 公共行情发布 | `tsp-platform`，按不可变版本发布 |
+| 报告与行情归档 | 火山引擎 TOS；有效凭据配置前不视为可用 |
 
-## v0.5.0 生产发布边界（历史）
+## 生产工作负载
 
-`v0.5.0` 统一部署到火山引擎 VKE：
-
-1. Policy 工作负载使用当前主线镜像重建，原 `Retain` 数据卷继续挂载。
-2. TSP 使用独立 PostgreSQL 和 NAS 状态卷，不覆盖 Policy 数据库。
-3. `shanao.asia` 根路径切换到 TSP，Policy API 只保留集群内 Service。
-4. `/api/events*` 由 Gateway 处理，其余请求由 API 处理。
-5. SMTP 和 Policy Token 由 Kubernetes Secret 注入。
-
-完整产品的 Compute Broker 在 `v0.5.0` 使用 Pod 内 DinD 过渡方案：不挂载宿主 Docker
-socket，Compute 无网络、无凭据、只读公共行情，但 DinD 容器仍需 `privileged`。该例外
-必须使用固定 digest、NetworkPolicy 和单 Pod 边界控制，并在 Kubernetes 原生 Runner
-完成后删除。
+- `tsp-product`：统一 React/FastAPI、SSE、RBAC 和 Policy 门面，HPA 2～4 副本。
+- `tsp-task-worker`：研究、实时规则、模拟盘、通知和计划任务。
+- `report-scheduler`：Policy 报告刷新、历史生成和补跑。
+- `market-collector`：rustdx、SQLite WAL、幂等写入和实时投影，双副本租约单活。
+- `tsp-compute`：独立无密钥计算 Pod，禁止出网，只读公共行情。
+- `market-archive`：日终 TOS 归档 CronJob，当前保持暂停。
 
 清单、Secret 契约和验收见
 [`deploy/kubernetes/README.md`](deploy/kubernetes/README.md)。

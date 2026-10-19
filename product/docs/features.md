@@ -3,17 +3,16 @@
 本文描述所在源码已实现的功能；远程主线和生产是否已集成对应能力以
 [版本基线](./version-baseline.md)为准。
 
-当前源码候选的完整单机多租户拓扑使用 `deploy/full/compose.yml`，启用
-`MULTITENANCY_ENABLED=true`。保留完整前端与业务引擎，API 默认四进程；
-独立实时网关负责 SSE，平台负责唯一行情写入，四类 Worker 分别负责研究、
-实时监控/模拟盘、通知和调度。
-身份与租户业务持久化到 PostgreSQL v6，公共行情按不可变版本只读共享。
-部署步骤见[完整单机多租户部署](../deploy/full/README.md)，
-已完成的一期发布与 100 用户验收见[实施记录](./phase1-implementation.md)。
+当前 VKE 生产使用统一 React/FastAPI、内嵌 Policy、独立 Task Worker、
+Report Scheduler、Market Worker 和隔离 Compute。身份与租户业务持久化到
+PostgreSQL schema v6，公共行情按不可变版本只读共享。完整单机多租户 Compose
+仅保留作兼容和隔离验证，不代表 `shanao.asia` 当前拓扑。
 
 各功能模块的详细说明。配置见 [configuration.md](./configuration.md),部署见 [deployment.md](./deployment.md),策略相关见 [strategy.md](./strategy.md)。
 
-> 首次使用建议顺序:**设置 → 数据源**(确认默认 rustdx) → **数据页查看首次自动同步**(沪主板、深主板、创业板、科创板有效股票) → **自选页**加标的 → **选股页**扫描 → **回测页**验证 → **监控中心**配规则。
+> 首次使用建议顺序：设置数据源并确认 rustdx 可用，随后通过自选、策略、回测和
+> 复盘完成研究闭环。主导航固定为首页、自选、策略、次日计划、当日实盘、复盘、
+> 回测、个股分析和设置。
 
 ---
 
@@ -377,18 +376,6 @@ curl "http://localhost:8398/api/openapi.json?tier=a"
 ```
 
 返回按网关规则表过滤后的 OpenAPI 3 规范(`x-tier: a`)—— 哪些路径对外开放、需要什么 scope,**规则表是唯一契约源**,生成代码 / Postman 导入即用。开放面有**契约快照测试**守护(`test_openapi_contract.py`):增删开放端点必须显式更新快照,CI 会拦下无意识的契约变更。
-
-### MCP 接入(AI 客户端)
-
-`mcp-server/` 提供 **MCP (Model Context Protocol)** 服务器,把开放接口包装成 AI 可调用工具 — Claude / ZCode / Cursor 等客户端可直接查行情、看市场环境、读策略与告警、触发回测:
-
-```
-AI 客户端 ⇄ MCP stdio (薄桥) ⇄ HTTP + Bearer Token ⇄ 开放网关
-```
-
-- 工具按 Token 的 scope 暴露(12 个:搜索/日K/指数/总览/环境/策略/告警/扩展表读/写/回测),**权限裁决仍在网关** — 桥不持有业务逻辑,面板升级自动受益;
-- 模拟盘交易类端点刻意未包装(不建议把下单交给 AI);
-- 配置方法与工具清单见 [mcp-server/README](../mcp-server/README.md),可运行冒烟测试 `smoke_test.py` 验证连通。
 
 ### 桌面客户端版本清单
 

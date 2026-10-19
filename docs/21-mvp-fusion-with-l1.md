@@ -2,7 +2,8 @@
 
 > 实验窗口：2025-01-01 ~ 2026-09-28  
 > 融合层：L2 (D1≥3%) + L4 (Rule A) + L5 (LHB 反向) + L6 (D2 跳空闸门) + **L1 情绪门禁 (本轮)**  
-> 产物：[research/fusion-mvp/report_with_l1.json](../research/fusion-mvp/report_with_l1.json)、脚本 [scripts/mvp_fusion_backtest_with_l1.py](../scripts/mvp_fusion_backtest_with_l1.py)
+> 产物：`research/fusion-mvp/report_with_l1.json` 为未随源码发布的本地研究产物；脚本见
+> [scripts/mvp_fusion_backtest_with_l1.py](../scripts/mvp_fusion_backtest_with_l1.py)。
 
 ---
 

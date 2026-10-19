@@ -30,7 +30,7 @@ PrometheusRule CRD 不是这个部署的前提。
 | Stalled | 连续交易、有候选的主节点 30 秒未发布有效行情，1 分钟 | critical |
 | QuoteStale | 连续交易主节点行情源时间 P95 延迟大于 10 秒，2 分钟 | warning |
 | QuoteCoverageLow | 连续交易主节点候选有效行情覆盖率低于 100%，2 分钟 | warning |
-| PublishFailures | 连续交易期间最近 2 分钟发生 Kafka 发布失败，持续 1 分钟 | critical |
+| PublishFailures | 连续交易期间最近 2 分钟发生行情持久化失败，持续 1 分钟 | critical |
 | WalPending | WAL 有未确认事件，2 分钟 | warning |
 | CalendarUnavailable | 工作日连续交易时钟窗口无法验证当天交易日历，1 分钟 | critical |
 | NoCandidates | 已验证的连续交易时段候选数为 0，5 分钟 | info |
@@ -38,7 +38,8 @@ PrometheusRule CRD 不是这个部署的前提。
 完整规则名称均带 `BanxiaCollector` 前缀。异常指标至少包含 `environment`、
 `shard`；逐实例异常保留 `pod`、`instance` 标签。错误文本在采集器日志中，
 不作为 Prometheus 标签，防止基数失控。`errors_total` 的 stage 固定为
-calendar/candidates/lease/source/normalize/publish/status/config。
+calendar/candidates/lease/source/normalize/publish/status/config；其中 publish 表示
+当前 Market Worker 的 ClickHouse、PostgreSQL 或 Redis 持久化阶段，不再表示 Kafka。
 
 ## 交易时段与数据含义
 
@@ -78,7 +79,7 @@ VMP 工作区：上海 `embodied-data`，ID `691f39a8-48d5-48ae-b961-f78bb600949
 
 - 无主节点：检查 PostgreSQL 连通、采集器循环与候选计划。
 - 停滞、低覆盖率或行情延迟：检查 rustdx 节点连通、源时间和行情样本。
-- 发布失败或 WAL 积压：检查 Kafka broker、确认超时和 WAL 磁盘空间；
+- 发布失败或 WAL 积压：检查 ClickHouse、PostgreSQL、Redis、写入超时和 WAL 磁盘空间；
   恢复后等待重放完成，不删除未确认的 WAL。
 - 日历不可用：检查 PostgreSQL 的交易日历数据及同步任务。
 - 空名单：检查当前策略生成的监控计划，确认是正常筛选结果还是计划任务失败。
@@ -96,5 +97,5 @@ docker run --rm -v "$PWD/deploy/observability:/rules:ro" -w /rules \
 ```
 
 规则测试涵盖指标完全消失、空名单、午休/休市、故障触发、交易窗口结束后的恢复、
-主节点缺失、重复主节点、日历故障、Kafka 失败和 WAL 清空。
+主节点缺失、重复主节点、日历故障、持久化失败和 WAL 清空。
 这些是受控测试证据，不代表向生产注入故障或发送测试通知。

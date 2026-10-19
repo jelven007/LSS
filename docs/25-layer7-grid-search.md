@@ -7,9 +7,9 @@
 > 实验窗口：2025-01-01 ~ 2026-09-28（21 月，HOLDOUT 3 月）  
 > 样本池：L4+L5+L6 融合 485 笔  
 > 网格：35 组 (TP, SL) = `{3,4,5,6,7,8,10}% × {2,2.5,3,4,5}%`  
-> 产物：[research/fusion-mvp/layer7_grid_report.json](../research/fusion-mvp/layer7_grid_report.json)、
-> [research/fusion-mvp/layer7_grid_summary.csv](../research/fusion-mvp/layer7_grid_summary.csv)、
-> 脚本 [scripts/layer7_grid_search.py](../scripts/layer7_grid_search.py)
+> 产物：`research/fusion-mvp/layer7_grid_report.json` 和
+> `research/fusion-mvp/layer7_grid_summary.csv` 为未随源码发布的本地研究产物；
+> 脚本见 [scripts/layer7_grid_search.py](../scripts/layer7_grid_search.py)。
 
 ---
 

@@ -24,8 +24,9 @@
 | TSP 公共行情版本、租户产物 | NAS RWX | 发布 Manifest | Compute 只读挂载公共数据 |
 | 日志、追踪、指标 | Loki、Tempo、Prometheus | TOS/长期指标存储 | 独立生命周期 |
 
-生产不再部署 Kafka、Flink、自建 MinIO 或 Policy 报告 NAS。本地 Compose 保留旧流式链路，
-仅用于历史回归和紧急回滚验证。
+生产不再部署 Kafka、Flink、自建 MinIO 或 Policy 报告 NAS。本地 Policy Compose
+使用同一 Market Worker 处理模型，仅以 S3 兼容模拟器替代 TOS；历史流式链路只存在于
+Git 历史和旧镜像中。
 
 ## 3. 事件标识与时间
 
@@ -206,9 +207,12 @@ Manifest 至少包含对象哈希、Schema 版本、生成时间、策略版本�
 
 EBS/NAS 的 `Retain` 回收策略只能防止删除 PVC 时立即丢盘，不能替代数据库备份。
 
-## 12. 兼容回归
+## 12. 兼容与历史边界
 
-Kafka Topic、DLQ、Flink Checkpoint 和 MinIO Bucket 定义保留在旧 Compose、AsyncAPI、
-历史架构文档及迁移脚本中。它们不属于 `v0.5.1` 生产就绪依赖，也不能作为新功能默认实现。
+旧配置值 `mootdx` 会在读取边界归一化为 `rustdx`；旧 `BANXIA_MINIO_*` 变量只用于
+迁移期兼容读取。新配置、新部署和新文档不得继续生成这些旧值。
+
+Kafka Topic、DLQ、Flink Checkpoint 和 MinIO 生产定义已从当前源码、契约和部署清单
+删除。历史回滚必须使用对应 Git 提交与旧镜像，不能把旧组件重新接入当前运行时。
 只有达到 [精简架构扩展阈值](36-lean-architecture-v0.5.1.md#8-扩展阈值) 并完成容量验证后，
-才评估重新引入消息总线或流式计算。
+才重新设计消息总线或流式计算。

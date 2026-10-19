@@ -41,12 +41,12 @@ API 和 report scheduler 启动时都会幂等确保初始策略存在且未归�
 
 仅当前激活策略按其保存的时间表运行，执行开始时才解析当前激活策略。页面刷新任务
 不接受固定策略执行语义，即使请求带有历史 `strategy_id`，Worker 开始执行时仍读取
-当时激活策略。每天从 mootdx 更新
+当时激活策略。每天从 rustdx 更新
 交易日历，交易日预建每日记录，遗漏的收盘任务自动补跑。
 采集端动态合并各策略观察股票、按代码去重，复用长连接，按最快配置采集。
 策略引擎为每份有效计划维护独立处理器，拒绝非计划执行日的行情。
-输入去重按 `plan_id + source_event_id` 与计划范围内的 Kafka offset 进行，保证
-同一行情可以驱动多份计划，每份只落一次。
+输入去重按 `plan_id + source_event_id` 进行，保证同一行情可以驱动多份计划，
+每份只落一次；进度由 WAL、Inbox 和权威事务状态记录，不依赖 Kafka offset。
 
 行情写入当天记录时同时校验策略、计划 ID 和交易日；旧计划的延迟消息不能覆盖新计划记录。
 历史页面优先读取持久化收盘结果，异日 Redis 报价不会混入历史日。
@@ -88,7 +88,7 @@ PYTHONPATH=src python -m banxia_strategy.catalog_bootstrap
 ```
 
 导入默认策略已有报告及最近一次研究实验的两组历史记录，优化策略默认暂停。
-迁移重复执行不会覆盖较新的日报；旧报告错误的下一交易日按已有 mootdx 日历纠正。
+迁移重复执行不会覆盖较新的日报；迁移期旧报告错误的下一交易日按当时保存的交易日历纠正。
 实验原始数据保持不变，日表仅作为管理和展示记录。
 
 按当前目录中每条未归档策略的配置补齐历史日记录：
@@ -98,7 +98,7 @@ PYTHONPATH=src python -m banxia_strategy.catalog_backfill \
   --start 2025-09-25 --end 2026-09-24
 ```
 
-命令只使用 mootdx，额外采集开始日前两周以衔接首日的执行计划；已存在的
+命令当前使用 rustdx，额外采集开始日前两周以衔接首日的执行计划；已存在的
 `next_plan`、`execution_plan` 和 `actuals` 不会被覆盖。再次执行只校验并跳过已有数据。
 可用 `--snapshot` 复用已保存的快照，避免重复下载。
 
@@ -106,7 +106,8 @@ PYTHONPATH=src python -m banxia_strategy.catalog_backfill \
 未激活子策略 `9500ff4b-529c-4b08-ac24-0f0734fd7d60`，只把入场截止时间改为 `09:45`；
 它不会自动替换激活策略。
 
-随后更新 api、report-scheduler、report-worker、market-collector、strategy-engine 镜像。
+当前生产只需更新统一 Runtime、`report-scheduler`、`market-collector` 和 Compute
+对应镜像；旧 `report-worker` 与独立 `strategy-engine` 已退役。
 
 ```sh
 PYTHONPATH=src:tests python -m unittest discover -s tests

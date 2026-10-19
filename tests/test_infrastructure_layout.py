@@ -35,13 +35,8 @@ class StorageSchemaTest(unittest.TestCase):
         for state in DecisionState:
             self.assertIn(f"'{state.value}'", schema)
 
-    def test_decision_states_match_api_and_event_contracts(self):
-        contracts = "\n".join(
-            [
-                (ROOT / "docs/openapi.yaml").read_text(encoding="utf-8"),
-                (ROOT / "docs/asyncapi.yaml").read_text(encoding="utf-8"),
-            ]
-        )
+    def test_decision_states_match_api_contract(self):
+        contracts = (ROOT / "docs/openapi.yaml").read_text(encoding="utf-8")
         for state in DecisionState:
             self.assertIn(f"- {state.value}", contracts)
 

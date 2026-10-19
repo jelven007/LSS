@@ -4,7 +4,7 @@
 
 状态：v0.5.1 新环境已上线，HTTPS、登录、九页浏览器和 SSE 验收通过。
 完整业务签收仍待 TOS/SMTP 配置、行情数据同步和真实有信号回测；
-GitHub 最新推送受本机凭据阻塞，未完成项不算通过。
+GitHub `main` 与候选标签已同步，未完成业务项仍不算通过。
 
 ## 范围
 
@@ -35,7 +35,8 @@ Policy 制品复用本轮已构建且未变更的源码。部署使用 Digest，
 
 - 本轮开始时：功能分支为 `844f4ef`，远程 `main` 为 `d9fb82f`。
 - 本轮开始时线上是旧 v0.5.0 拓扑，TSP 数据库 CrashLoop，公网返回 503。
-- `fe1d4ae9122b54e11a096149e334c55a7b076125` 已推送并核对远程 main。
+- 中间部署提交曾为 `fe1d4ae9122b54e11a096149e334c55a7b076125`；本次最终主线已推进
+  到 `132db778c03b5e4d724afd510c63d269c7764211`，并在文末核对远程仓库。
 - 旧应用工作负载、应用 Secret 和 10 个 PVC 已删除；EBS PV 改为 Delete 回收。
   新 PostgreSQL、ClickHouse、Redis 及三个 EBS 卷已创建并 Ready。
 - 新应用凭据已生成，Policy Schema 与 TSP 双库角色初始化 Job 均 Complete。
@@ -97,11 +98,10 @@ Policy 制品复用本轮已构建且未变更的源码。部署使用 Digest，
 - SMTP/AI 未配置；验证码、邮件找回密码、AI 分析未验收。
 - 尚无 Policy 激活计划和报告；实际有信号回测、交易时段覆盖、容量与恢复演练
   不在此次公网入口烟测结论内。
-- 远程 `main` 最后确认是 `fe1d4ae9122b54e11a096149e334c55a7b076125`；
-  后续修复与本发布清单已本地提交，但 macOS Git 凭据访问失败：
-  `git-credential-osxkeychain` 阻塞，无交互模式报 `unable to get password from user`。
-  必须在本机完成 GitHub 认证后执行 `git push origin main --follow-tags`，
-  再核对远程 SHA 和候选 Tag；不能把镜像推送当作 Git 主线已同步。
+- 远程仓库已迁移为 <https://github.com/jelven007/LSS>。远程
+  `main=132db778c03b5e4d724afd510c63d269c7764211`，annotated
+  `v0.5.1-rc.1` 已同步并核对 peeled commit
+  `8b3a82db8fc5fdb7dc4cf9fb7204702b866b8b94`。
 - 诊断日志、临时浏览器文件及凭据不纳入源码发布。
 
 ## 恢复边界

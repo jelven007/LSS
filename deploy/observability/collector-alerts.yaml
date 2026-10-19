@@ -10,7 +10,7 @@ groups:
         labels: {severity: critical, service: market-collector, environment: production}
         annotations:
           summary: 盘中采集器全部不可用
-          runbook: &collector_runbook https://github.com/jelven007/test/blob/main/docs/31-intraday-monitoring.md
+          runbook: &collector_runbook https://github.com/jelven007/LSS/blob/main/docs/31-intraday-monitoring.md
       - alert: BanxiaCollectorHeartbeatStale
         expr: |
           time() - banxia_collector_heartbeat_timestamp_seconds{environment="production"}

@@ -4,8 +4,8 @@
 > 回测区间：2025-01-01 至 2026-09-28  
 > 数据源：mootdx  
 > 主口径：线上等价 L2+L4+L6，L5 龙虎榜检查关闭并放行  
-> 产物：[layer7_grid_report.json](../research/fusion-mvp/layer7_grid_report.json)、
-> [layer7_grid_summary.csv](../research/fusion-mvp/layer7_grid_summary.csv)
+> 产物：`research/fusion-mvp/layer7_grid_report.json` 和
+> `research/fusion-mvp/layer7_grid_summary.csv` 为未随源码发布的本地研究产物。
 
 ## 修正原因
 
@@ -84,4 +84,3 @@
 | 升级实盘 | 不允许 |
 | 模拟盘用途 | 仅用于记录前向失败/漂移证据，不构成实盘候选 |
 | `first-board-positive-v1` | 不受本次修改影响 |
-

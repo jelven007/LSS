@@ -8,7 +8,8 @@
 > 样本池：L4+L5+L6 融合后 485 笔（holdout 66 笔）  
 > 交易逻辑：D2 09:31 买入 → 分钟级监控 TP/SL → 未触发则 D3 09:31 开盘卖  
 > 费率：双边 0.30%  
-> 产物：[research/fusion-mvp/layer7_report.json](../research/fusion-mvp/layer7_report.json)、[scripts/layer7_dynamic_exit.py](../scripts/layer7_dynamic_exit.py)
+> 产物：`research/fusion-mvp/layer7_report.json` 为未随源码发布的本地研究产物；脚本见
+> [scripts/layer7_dynamic_exit.py](../scripts/layer7_dynamic_exit.py)。
 
 ---
 

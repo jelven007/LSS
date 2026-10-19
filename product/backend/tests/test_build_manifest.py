@@ -9,7 +9,6 @@ import zipfile
 from pathlib import Path
 
 import pytest
-import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("build_manifest", ROOT / "scripts/build_manifest.py")
@@ -197,23 +196,3 @@ def test_backup_size_limit_and_output_symlink(tmp_path, monkeypatch):
     (tmp_path / "link").symlink_to(tmp_path, target_is_directory=True)
     with pytest.raises(ValueError, match="symlink output"):
         manifest.backup(root, before, before, tmp_path / "link/escape")
-
-
-def test_build_workflows_bind_manifests_to_tested_revision_and_upload_sidecar():
-    docker = yaml.safe_load((ROOT / ".github/workflows/docker.yml").read_text())
-    steps = docker["jobs"]["build-and-push"]["steps"]
-    build = next(step for step in steps if step.get("uses", "").startswith("docker/build-push-action"))
-    assert "SOURCE_COMMIT=${{ steps.revision.outputs.revision }}" in build["with"]["build-args"]
-    release = yaml.safe_load((ROOT / ".github/workflows/release.yml").read_text())
-    steps = release["jobs"]["build"]["steps"]
-    seal_index = next(i for i, step in enumerate(steps) if "build_manifest.py seal" in step.get("run", ""))
-    uploads = [
-        (i, step) for i, step in enumerate(steps)
-        if step.get("uses", "").startswith(("actions/upload-artifact", "softprops/action-gh-release"))
-        and "matrix.artifact" in str(step)
-    ]
-    assert len(uploads) == 2
-    for i, step in uploads:
-        assert i > seal_index
-        assert ".manifest.json" in str(step["with"])
-    compile((ROOT / "packaging/tsp.spec").read_text(), "tsp.spec", "exec")

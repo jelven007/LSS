@@ -23,7 +23,7 @@
 `MULTITENANCY_ENABLED=true`。
 身份与租户业务持久化到 PostgreSQL v6，公共行情按不可变版本只读共享。
 VKE 部署步骤见[VKE 部署](../deploy/kubernetes/README.md)，独立主机步骤见
-[完整单机多租户部署](../deploy/full/README.md)。当前候选版本为 `v0.5.1`/schema v6，
+[完整单机多租户部署](../deploy/full/README.md)。当前 `v0.5.1`/schema v6 候选已部署，
 实际生产 commit 和镜像 digest 以[版本基线](./version-baseline.md)为准。
 
 下方根目录 Compose、Dev 和桌面步骤适用于独立运行模式。
@@ -42,8 +42,8 @@ VKE 部署步骤见[VKE 部署](../deploy/kubernetes/README.md)，独立主机�
 ### 首次部署
 
 ```bash
-git clone https://github.com/jelven007/TSP.git
-cd TSP
+git clone https://github.com/jelven007/LSS.git
+cd LSS/product
 cp .env.example .env
 docker compose up --build -d
 ```
@@ -166,7 +166,7 @@ rustdx 原生桥接是后端默认依赖，不需要额外指定 `--extra rustdx
 ## 桌面安装包
 
 桌面安装包从当前仓库的
-[GitHub Releases](https://github.com/jelven007/TSP/releases) 获取。
+[GitHub Releases](https://github.com/jelven007/LSS/releases) 获取。
 仅使用实际存在且校验通过的平台资产。
 
 桌面版与服务端版的明确差异：

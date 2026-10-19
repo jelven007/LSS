@@ -6,7 +6,8 @@
 
 > 实验窗口：2025-01-01 ~ 2026-09-28（21 个月，HOLDOUT 仅 3 月）  
 > 组合：单票 20%，≤5 并发  
-> 产物：[research/fusion-mvp/positive_month_report.json](../research/fusion-mvp/positive_month_report.json)、脚本 [scripts/positive_month_assessment.py](../scripts/positive_month_assessment.py)
+> 产物：`research/fusion-mvp/positive_month_report.json` 为未随源码发布的本地研究产物；脚本见
+> [scripts/positive_month_assessment.py](../scripts/positive_month_assessment.py)。
 
 ---
 

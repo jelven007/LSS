@@ -2,10 +2,10 @@
 
 ## 1. 范围与状态
 
-当前 FastAPI 服务以 `/api/v1/*` 为正式接口。运行时完整契约由
-`/api/openapi.json` 生成；仓库 [OpenAPI](openapi.yaml) 当前覆盖核心接口，市场、自选股、
-认证和部分运维接口仍需同步补齐。[AsyncAPI](asyncapi.yaml) 保留为 Kafka 兼容回归契约，
-不属于 `v0.5.1` VKE 主链路。旧 `/api/*` 只保留只读兼容代理。
+公网只暴露统一 TSP FastAPI。浏览器业务接口使用 `/api/*`，Policy 领域通过固定白名单
+`/api/policy/*` 访问同进程的 `/api/v1/*`，后者不是独立公网服务。运行时完整契约由
+`/api/openapi.json` 生成；仓库 [OpenAPI](openapi.yaml) 保存 Policy 核心接口快照。
+Kafka AsyncAPI 已随生产消息总线退役删除。
 
 ## 2. 通用约定
 
@@ -80,9 +80,10 @@ X-Request-ID: 5b60f996-3be1-4d53-9988-7a9825d187af
 
 ### 2.5 鉴权
 
-- 看板查询：OIDC 登录后使用 Bearer Token。
+- 浏览器：同源 Cookie 会话、租户上下文和 RBAC；写请求校验 Origin/CSRF。
+- 开放接口：租户绑定的 Bearer Token，按 scope 授权。
 - 运维和重放接口：独立管理员权限。
-- Kubernetes 内部服务：mTLS 和 ServiceAccount。
+- Kubernetes 内部服务：ClusterIP、NetworkPolicy 和服务专用凭据。
 - 健康检查可在集群内部匿名访问。
 - 系统不提供下单类权限和接口。
 
@@ -104,8 +105,10 @@ X-Request-ID: 5b60f996-3be1-4d53-9988-7a9825d187af
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/v1/health/live` | 进程是否存活，不检查外部依赖 |
-| GET | `/api/v1/health/ready` | PostgreSQL、ClickHouse、Redis、TOS 等关键依赖是否就绪 |
+| GET | `/health/live` | 统一 API 进程是否存活，不检查外部依赖 |
+| GET | `/health/ready` | 双库、公共行情、平台、Worker、指标和 Compute 是否就绪 |
+| GET | `/api/v1/health/live` | 内嵌 Policy 兼容探活 |
+| GET | `/api/v1/health/ready` | 内嵌 Policy 存储依赖检查 |
 | GET | `/api/v1/system/status` | 采集延迟、策略计划和依赖摘要 |
 
 `ready` 仅在服务能够正确处理请求时返回 200。不能因为进程存活就忽略数据库不可用。
@@ -231,7 +234,7 @@ SSE 不是权威存储。客户端重连时先调用普通查询，再使用 `La
 | GET | `/api/v1/research/{run_id}/strategy` | 下载独立策略 JSON |
 | GET | `/api/v1/research/{run_id}/assets/{filename}` | 流式下载白名单内的实验资产 |
 
-研究接口只读取 `research_*` 表和 MinIO 归档，不会激活策略，也不会生成实时交易事件。
+研究接口只读取 `research_*` 表和 TOS 归档，不会激活策略，也不会生成实时交易事件。
 
 ### 4.7 市场、股票与公司资料
 
@@ -324,32 +327,7 @@ SSE 不是权威存储。客户端重连时先调用普通查询，再使用 `La
 
 显示文案可以调整，状态代码不可随意改名。
 
-## 6. Kafka 事件约定
-
-公共事件信封：
-
-```json
-{
-  "event_id": "sha256-value",
-  "event_type": "market.quote.snapshot.v1",
-  "schema_version": 1,
-  "occurred_at": "2026-09-24T09:38:11.520+08:00",
-  "published_at": "2026-09-24T09:38:11.810+08:00",
-  "producer": "market-collector",
-  "trace_id": "3f2f43d79c86488aa5f813cc6e6f48c7",
-  "payload": {}
-}
-```
-
-规则：
-
-- `event_type` 包含主版本号。
-- 同一主版本只允许增加可选字段，不允许改变字段语义。
-- 删除字段、修改类型或改变单位必须发布新主版本 Topic。
-- 消费者必须忽略未知可选字段。
-- 金额、价格、时间和股票代码的格式与 HTTP API 保持一致。
-
-## 7. API 兼容策略
+## 6. API 兼容策略
 
 1. 先实现 `/api/v1` 并完成契约测试。
 2. 旧 `/api/*` 通过适配器调用新应用服务。
@@ -358,10 +336,9 @@ SSE 不是权威存储。客户端重连时先调用普通查询，再使用 `La
 5. 删除旧接口前检查访问日志，确认没有活跃客户端。
 6. `docs/openapi.yaml` 与运行时 `/api/openapi.json` 的路径和参数必须同步。
 
-## 8. 接口验收
+## 7. 接口验收
 
 - OpenAPI 可以通过规范校验器。
-- AsyncAPI 中所有 Topic 与生产代码配置一致。
 - 请求和响应具备自动契约测试。
 - 时间、金额、股票代码和状态枚举没有歧义。
 - API 返回的每个策略状态都可关联到 PostgreSQL 决策事件。
@@ -372,7 +349,7 @@ SSE 不是权威存储。客户端重连时先调用普通查询，再使用 `La
 - 研究资产下载只允许数据库索引中的文件名，拒绝路径穿越。
 - 无任何自动下单接口。
 
-## 9. 统一 Policy Facade
+## 8. 统一 Policy Facade
 
 公网 Web 不直接暴露 Policy `/api/v1`。以下同源接口由统一 TSP 会话和权限层保护，
 再通过 ASGI Transport 调用同进程 Policy 模块。
@@ -388,20 +365,20 @@ SSE 不是权威存储。客户端重连时先调用普通查询，再使用 `La
 Facade 只允许固定白名单。日期必须为 `YYYY-MM-DD`，任务 ID、股票代码和查询参数在调用前
 校验；执行超时由 `POLICY_SERVICE_TIMEOUT_SECONDS` 控制。
 
-### 9.1 错误语义
+### 8.1 错误语义
 
 - TSP 会话无效：返回 `401/403`，由统一账户流程处理。
 - 内嵌 Policy 初始化失败：返回 `503`，不得触发 TSP 退出登录。
 - Policy 数据依赖不可达：返回对应 `5xx`，次日计划和当日实盘保留默认界面。
 - 只读请求使用静默错误模式，不弹全局依赖 Toast；页面内提供同步状态与重试。
 
-### 9.2 安全约束
+### 8.2 安全约束
 
 - 浏览器请求、HTML、JavaScript、日志和错误正文不得包含数据服务凭据。
 - Policy 不创建独立 Service 或公网 Ingress。
 - 报告刷新必须通过 TSP `data:manage` 权限校验。
 
-## 10. 账户启动状态
+## 9. 账户启动状态
 
 `GET /api/business/settings` 返回账户向导状态；管理员标记来自控制库
 `user_preferences`，租户直接进入业务页。`POST /api/business/onboarding/complete`

@@ -107,5 +107,7 @@ docker compose -f deploy/compose/docker-compose.yml config --quiet
 kubectl kustomize --load-restrictor=LoadRestrictionsNone deploy/kubernetes/overlays/volcengine
 ```
 
-迁移前能力矩阵见 [mootdx 能力归档](26-mootdx-capability-matrix.md)；
-持久化模型见 [非实时数据持久化设计](11-mootdx-persistence.md)。
+迁移前 mootdx 能力矩阵、旧持久化目标和 HTTP 服务预分析已从当前文档集删除；
+需要追溯时使用 Git 历史。当前数据归属以
+[数据与存储](03-data-storage.md)为准，生产链路以
+[系统架构](02-architecture.md)为准。

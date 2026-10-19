@@ -145,5 +145,7 @@ python3 scripts/verify_external_services.py --email-to <指定收件地址>
   归档镜像烟测 Job Complete。
 - 线上只读查询已完成；实际写入、日终有数据归档和邮件流程需有效新凭据。
 - <https://shanao.asia/health/ready> 仍返回 200/ready。
-- GitHub 主线推送仍受本机认证阻塞；本轮无交互推送超时，不记为已同步。
+- GitHub 主线和候选标签已同步到 <https://github.com/jelven007/LSS>：
+  `main=132db778c03b5e4d724afd510c63d269c7764211`，`v0.5.1-rc.1` 指向
+  `8b3a82db8fc5fdb7dc4cf9fb7204702b866b8b94`。
 - 不创建正式稳定 Tag，不将源码、模拟测试或健康检查当作业务签收。

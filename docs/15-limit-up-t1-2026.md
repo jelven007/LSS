@@ -10,7 +10,7 @@
 
 复盘并非没有成功股票：主板首板范围内，三种固定买点与两种退出模型的事后成功并集有 **988 次股票日期事件、660 只股票**。这些是复盘清单，不能把事后并集当成事前可选择的策略收益。
 
-完整交付：[中文 Excel](assets/t1-2026/2026涨停隔日交易复盘.xlsx)、[达标股票明细 CSV](assets/t1-2026/达标股票明细.csv)、[冻结规则全部样本](assets/t1-2026/selected-trades.csv)、[本地全部事件](../research/limit-up-t1-2026/all-events.csv)、[复现方法](t1-research-method.md)。
+完整交付：[中文 Excel](assets/t1-2026/2026涨停隔日交易复盘.xlsx)、[达标股票明细 CSV](assets/t1-2026/达标股票明细.csv)、[冻结规则全部样本](assets/t1-2026/selected-trades.csv)、`research/limit-up-t1-2026/all-events.csv`（本地研究产物，未随源码发布）和[复现方法](t1-research-method.md)。
 
 ## 1. 范围与成交证据
 
@@ -168,7 +168,7 @@ R0381 全区间已知退出平均净收益为 -0.48%，最差为 -22.26%，且�
 
 ## 7. 参考资料与可追溯文件
 
-[1] 本项目. 2026 年 mootdx 涨停历史与逐事件回放数据集[DS]. PostgreSQL `banxia.limit_up_history`、`banxia.limit_up_history_coverage`，提取时间 2026-10-02 10:34:22（北京时间）. [统计数据摘要](assets/t1-2026/data-summary.json)，[采集清单](assets/t1-2026/collection-manifest.json)，[本地完整事件 CSV](../research/limit-up-t1-2026/all-events.csv).
+[1] 本项目. 2026 年 mootdx 涨停历史与逐事件回放数据集[DS]. PostgreSQL `banxia.limit_up_history`、`banxia.limit_up_history_coverage`，提取时间 2026-10-02 10:34:22（北京时间）. [统计数据摘要](assets/t1-2026/data-summary.json)，[采集清单](assets/t1-2026/collection-manifest.json)，`research/limit-up-t1-2026/all-events.csv`（本地研究产物，未随源码发布）。
 
 [2] 本项目. 2026 年隔日交易协议及复现方法[CP/OL]. 2026-10-02. [研究协议](research/2026-limit-up-protocol.json)，[方法说明](t1-research-method.md)，[冻结选择](assets/t1-2026/frozen-selection.json)，[原 v2 选择](assets/t1-2026/original-v2-selection.json). 协议 v2 在收益回放前冻结；v3 仅补正科创板最低申报股数，原选择及结果另有留档，并验证主板结果完全一致。
 

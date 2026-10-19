@@ -5,7 +5,7 @@
 > 入场：D2 09:31 开盘；退出：D3 09:31 开盘  
 > 费率：双边合计 0.30%  
 > Holdout：D1 日期 ≥ 2026-07-01  
-> 产物：[research/fusion-mvp/report.json](../research/fusion-mvp/report.json)、[trades.csv.gz](../research/fusion-mvp/trades.csv.gz)
+> 产物：`research/fusion-mvp/report.json`、`trades.csv.gz` 为本地研究产物，未随源码发布。
 
 ---
 
@@ -115,4 +115,4 @@ L6: D2 开盘跳空 gap_pct_d2 ∈ [-1.0, +4.0]
 - `research/monthly-target-v1/`、`research/monthly-target-v1-3pct/` — 仅读取，未写入
 - 生产模拟盘 `first-board-positive-v1` — 保持冻结
 
-本次产出仅落在 [research/fusion-mvp/](../research/fusion-mvp/)。
+本次产出仅落在未随源码发布的本地目录 `research/fusion-mvp/`。
