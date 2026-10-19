@@ -36,12 +36,12 @@ images:
     digest: sha256:3f569013ce24412457b1d9c118921cd0b45157b09984b3e39775681d7e0bc789
   - name: lss-product-runtime
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
-    newTag: web-v0.5.1
-    digest: sha256:cf1a2864e39678b4a5ee5cda7735494bf85771cff7a22a49d6ea4993d3a8d995
+    newTag: web-v0.5.1-lss-c77f7ca
+    digest: sha256:17b61264eb5fabfaac422c0146e90c763bc5640515c390064aac08678802873f
   - name: lss-product-compute
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/banxia-strategy
-    newTag: compute-v0.5.1
-    digest: sha256:9bf4fce66903f48286812aa84dfdbcef3afcb9a7f68cc3e964e41ec5e47070f0
+    newTag: compute-v0.5.1-lss-c77f7ca
+    digest: sha256:2f0bb17371671722647e1a911687b25a5f040446432a60045f490082c201c70b
   - name: postgres
     newName: xm1001-cn-shanghai.cr.volces.com/banxia/postgres
     newTag: 16.4-alpine
