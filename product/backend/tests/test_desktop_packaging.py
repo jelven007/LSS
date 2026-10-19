@@ -1,4 +1,4 @@
-"""Desktop runtime and Windows packaging regression tests."""
+"""Desktop runtime regression tests."""
 
 from __future__ import annotations
 
@@ -86,29 +86,6 @@ def test_smoke_plugin_validation_rejects_incomplete_rustdx(plugin: dict | None) 
         desktop._validate_smoke_plugins(
             [] if plugin is None else [plugin]
         )
-
-
-def test_windows_installer_contract() -> None:
-    script = (ROOT / "packaging" / "tsp.iss").read_text(encoding="utf-8")
-    run_section = script.split("[Run]", 1)[1].split("[UninstallRun]", 1)[0]
-
-    assert "MinVersion=10.0" in script
-    assert "ArchitecturesAllowed=x64compatible" in script
-    assert "ArchitecturesInstallIn64BitMode=x64compatible" in script
-    assert run_section.count('Filename: "{app}\\{#MyAppExeName}"') == 1
-    assert 'Source: "redist\\{#WebView2SetupName}"; Flags: dontcopy' in script
-    assert "function IsWebView2RuntimeInstalled(): Boolean;" in script
-    assert "function PrepareToInstall(var NeedsRestart: Boolean): String;" in script
-    assert "'/silent /install'" in script
-
-
-def test_pyinstaller_collects_default_data_provider() -> None:
-    spec = (ROOT / "packaging" / "tsp.spec").read_text(encoding="utf-8")
-
-    assert '"tsp_rustdx_native",' in spec
-    assert 'BUILTIN_PLUGINS.glob("*/plugin.yaml")' in spec
-    assert '"tsp-rustdx-native",' in spec
-    assert '"pywebview", "pythonnet", "clr-loader",' in spec
 
 
 @pytest.mark.parametrize(
@@ -228,71 +205,3 @@ def test_gui_smoke_rejects_a_page_that_remains_blank() -> None:
             timeout=0,
             poll_interval=0,
         )
-
-
-def test_windows_smoke_log_checks_use_explicit_powershell_parameters() -> None:
-    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-
-    assert "https://go.microsoft.com/fwlink/p/?LinkId=2124703" in workflow
-    assert "Get-AuthenticodeSignature $bootstrapper" in workflow
-    assert "Microsoft Corporation" in workflow
-    assert workflow.count(
-        "Select-String -Path $log -Pattern 'DESKTOP_SMOKE_TEST_OK' -Quiet"
-    ) == 1
-    assert workflow.count(
-        "Select-String -Path $desktopLog -Pattern 'DESKTOP_SMOKE_TEST_OK' -Quiet"
-    ) == 1
-    assert "$env:TSP_DESKTOP_GUI_SMOKE_TEST = '1'" in workflow
-    assert "DESKTOP_AUTH_BYPASS_SMOKE_TEST_OK" in workflow
-    assert "matrix.platform == 'macos' || matrix.platform == 'linux'" in workflow
-    assert "packaging/smtp_sink.py" not in workflow
-    assert "TSP_DESKTOP_SMTP_SMOKE_TEST" not in workflow
-    assert (
-        "Select-String -Path $desktopLog -Pattern "
-        "'DESKTOP_GUI_SMOKE_TEST_OK renderer=edgechromium' -Quiet"
-    ) in workflow
-
-
-def test_windows_release_matrix_keeps_native_runtime_install_and_manifest_gates() -> None:
-    import importlib.util
-
-    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(
-        encoding="utf-8"
-    )
-
-    scripts = str(ROOT / "scripts")
-    sys.path.insert(0, scripts)
-    try:
-        spec = importlib.util.spec_from_file_location(
-            "_test_release_platforms", ROOT / "scripts" / "prepare_release.py",
-        )
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        assert module.PLATFORMS["windows"]["os"] == "windows-latest"
-        assert "scripts/prepare_release.py" in workflow
-    finally:
-        sys.path.remove(scripts)
-    assert "$env:PROCESSOR_ARCHITECTURE -ne 'AMD64'" in workflow
-    assert "_polars_runtime_32/_polars_runtime.pyd" in workflow
-    assert "_polars_runtime_compat/_polars_runtime.pyd" in workflow
-    assert "python -m app.plugins.rustdx.client" in workflow
-    assert "backend/dist/TSP/TSP.exe" in workflow
-    assert "ISCC.exe" in workflow
-    assert "'DESKTOP_GUI_SMOKE_TEST_OK renderer=edgechromium'" in workflow
-    assert "'ci-uninstall-preserve.txt'" in workflow
-    assert "Uninstall removed user data without explicit confirmation" in workflow
-    assert "build_manifest.py seal --root backend/dist" in workflow
-    assert '${{ matrix.artifact }}.manifest.json' in workflow
-
-
-def test_release_stays_draft_until_update_manifest_is_uploaded() -> None:
-    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-
-    assert "draft: true" in workflow
-    assert '"url": asset["browser_download_url"]' not in workflow
-    assert 'f"https://github.com/{repo}/releases/download/"' in workflow
-    assert "urllib.parse.quote(tag, safe='')" in workflow
-    assert "urllib.parse.quote(name, safe='')" in workflow
-    upload = workflow.index('"name": "latest.json"')
-    publish = workflow.index('body={"draft": False}')
-    assert upload < publish

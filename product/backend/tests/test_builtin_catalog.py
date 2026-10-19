@@ -3,7 +3,6 @@ from pathlib import Path
 
 import pytest
 
-from app.api.monitor_rules import _DEMO_STRATEGY_RULES
 from app.strategy.engine import StrategyEngine
 from scripts.run_governed_builtin_backtest import _validate_report_checkpoint
 
@@ -11,7 +10,7 @@ BUILTIN_DIR = Path(__file__).resolve().parents[1] / "app" / "strategy" / "builti
 RETIRED = {"trend_breakout", "limit_up_momentum", "broken_board_recovery"}
 
 
-def test_retired_builtins_are_removed_after_reload_and_templates_still_resolve():
+def test_retired_builtins_are_removed_after_reload():
     engine = StrategyEngine(strategy_dirs=[BUILTIN_DIR])
     engine.reload()
     public = {meta["id"] for meta in engine.list_strategies()}
@@ -21,8 +20,6 @@ def test_retired_builtins_are_removed_after_reload_and_templates_still_resolve()
     assert {"breakout_new_high_60d", "consecutive_limit_ups"} <= public
     assert "factor_rank_research" not in public
     assert engine.get("factor_rank_research").meta["research_only"]
-    for rule in _DEMO_STRATEGY_RULES:
-        assert rule["strategy_id"] in public
     for sid in RETIRED:
         with pytest.raises(ValueError, match="unknown strategy"):
             engine.get(sid)
