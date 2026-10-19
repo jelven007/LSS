@@ -25,11 +25,11 @@ x-lss: &lss
     PYTHONDONTWRITEBYTECODE: "1"
     TZ: Asia/Shanghai
   volumes:
-    - ${LEAN_STATE_DIR}/public:/state/public:ro
-    - ${LEAN_STATE_DIR}/platform-config:/state/platform-config:ro
+    - public-market:/state/public:ro
+    - platform-config:/state/platform-config:ro
     - ${LEAN_STATE_DIR}/tenant-artifacts:/state/tenant-artifacts
   read_only: true
-  tmpfs: [/tmp:rw,nosuid,nodev,size=1g,uid=10001,gid=10001]
+  tmpfs: ["/tmp:rw,nosuid,nodev,size=1g,uid=10001,gid=10001"]
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
   networks: [default, compute]
@@ -40,13 +40,44 @@ x-lss: &lss
   cpus: 2
 
 services:
+  state-bootstrap:
+    image: postgres:16
+    user: "0:0"
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        for name in public platform-data platform-config; do
+          if [ ! -f "/target/$${name}/.lean-seed-complete" ]; then
+            cp -a "/seed/$${name}/." "/target/$${name}/"
+            chown -R 10001:10001 "/target/$${name}"
+            touch "/target/$${name}/.lean-seed-complete"
+          fi
+        done
+    volumes:
+      - ${LEAN_STATE_DIR}/public:/seed/public:ro
+      - ${LEAN_STATE_DIR}/platform-data:/seed/platform-data:ro
+      - ${LEAN_STATE_DIR}/platform-config:/seed/platform-config:ro
+      - public-market:/target/public
+      - platform-data:/target/platform-data
+      - platform-config:/target/platform-config
+    network_mode: none
+    restart: "no"
+
   postgres:
     extends: {file: ../../../deploy/compose/docker-compose.yml, service: postgres}
     image: postgres:16
     environment:
       LSS_CONTROL_RUNTIME_PASSWORD: ${LSS_CONTROL_RUNTIME_PASSWORD:?Required}
       LSS_DATA_RUNTIME_PASSWORD: ${LSS_DATA_RUNTIME_PASSWORD:?Required}
-    volumes:
+    # The temporary initdb server accepts Unix sockets before migrations finish.
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes: !override
+      - postgres-data:/var/lib/postgresql/data
+      - ../../../migrations/postgres:/policy-migrations:ro
       - ./postgres-init.sh:/docker-entrypoint-initdb.d/900-lss.sh:ro
 
   clickhouse:
@@ -58,11 +89,34 @@ services:
     mem_limit: 256m
 
   minio:
-    extends: {file: ../../../deploy/compose/docker-compose.yml, service: minio}
+    # S3rver uses the fixed test-only credential S3RVER/S3RVER.
+    # The historic MinIO community artifacts are no longer downloadable.
+    image: policy-s3-test:3.7.1
+    command: [--address, "0.0.0.0", --port, "9000", --directory, /data, --no-vhost-buckets]
+    ports: ["127.0.0.1:${MINIO_API_PORT:-39002}:9000"]
+    volumes: [minio-data:/data]
+    restart: unless-stopped
     mem_limit: 512m
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:9000').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   minio-init:
-    extends: {file: ../../../deploy/compose/docker-compose.yml, service: minio-init}
+    image: ${POLICY_IMAGE}
+    entrypoint: [python, -c]
+    command:
+      - |
+        from minio import Minio
+        client = Minio("minio:9000", access_key="S3RVER", secret_key="S3RVER", secure=False)
+        for name in ("strategy-reports", "market-raw"):
+            if not client.bucket_exists(name):
+                client.make_bucket(name)
+        print("S3 test buckets ready")
+    depends_on:
+      minio: {condition: service_healthy}
+    restart: "no"
 
   catalog-bootstrap:
     extends: {file: ../../../deploy/compose/docker-compose.yml, service: catalog-bootstrap}
@@ -73,9 +127,34 @@ services:
     image: ${POLICY_IMAGE}
     mem_limit: 1g
 
+  calendar-initialize:
+    image: ${POLICY_IMAGE}
+    env_file: ${LEAN_STATE_DIR}/policy.env
+    entrypoint: [python, -u, -c]
+    command:
+      - |
+        from banxia_strategy.adapters.postgres import PostgresStorage
+        from banxia_strategy.config import RuntimeSettings
+        from banxia_strategy.data_provider import make_provider
+        settings = RuntimeSettings.from_env(service_name="calendar-initialize")
+        dates = make_provider(settings.data_provider).trading_dates()
+        if not dates:
+            raise RuntimeError("Trading calendar is empty")
+        repository = PostgresStorage(settings.storage.postgres_dsn)
+        try:
+            repository.save_trading_sessions(dates)
+        finally:
+            repository.close()
+        print({"calendar_sessions": len(dates)})
+    depends_on:
+      catalog-bootstrap: {condition: service_completed_successfully}
+    restart: "no"
+
   report-scheduler:
     extends: {file: ../../../deploy/compose/docker-compose.yml, service: report-scheduler}
     image: ${POLICY_IMAGE}
+    depends_on:
+      calendar-initialize: {condition: service_completed_successfully}
     mem_limit: 2g
 
   market-reference-sync:
@@ -87,16 +166,47 @@ services:
     image: ${LSS_RUNTIME_IMAGE}
     user: "10001:10001"
     env_file: ${LEAN_STATE_DIR}/admin.env
+    volumes:
+      - ./bootstrap.py:/bootstrap.py:ro
+    environment:
+      NUMBA_CACHE_DIR: /tmp/numba
+      NUMBA_NUM_THREADS: "2"
+      POLARS_MAX_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
     entrypoint: [/bin/sh, -ec]
     command:
       - |
         /app/.venv/bin/python -m app.cell.admin migrate --kind control --runtime-role lss_control_runtime --target-version 6
         /app/.venv/bin/python -m app.cell.admin migrate --kind data --runtime-role lss_data_runtime --cell-id local --target-version 6
         /app/.venv/bin/python -m app.cell.admin bootstrap-full-identity
-        /app/.venv/bin/python -m app.cell.admin register-cell --cell-id local --api-url "http://127.0.0.1:${LEAN_WEB_PORT:-3051}"
+        /app/.venv/bin/python -m app.cell.admin register-cell --cell-id local --api-url "http://127.0.0.1:${LEAN_WEB_PORT:-3061}"
         /app/.venv/bin/python -m app.cell.admin sync-strategies
+        /app/.venv/bin/python /bootstrap.py
     depends_on:
       postgres: {condition: service_healthy}
+    restart: "no"
+
+  market-initialize:
+    <<: *lss
+    env_file: ${LEAN_STATE_DIR}/platform.env
+    environment:
+      <<: *lss-env
+      DATA_DIR: /state/platform-data
+    command:
+      - /app/.venv/bin/python
+      - -c
+      - |
+        import json
+        from pathlib import Path
+        from app.market_scope import purge_removed_market
+        print(json.dumps(purge_removed_market(Path("/state/platform-data"))), flush=True)
+    volumes:
+      - platform-data:/state/platform-data
+    depends_on:
+      state-bootstrap: {condition: service_completed_successfully}
+    networks: [default]
     restart: "no"
 
   platform:
@@ -110,9 +220,11 @@ services:
       LSS_PUBLIC_MARKET_DIR: /state/public
     command: [/app/.venv/bin/python, -m, uvicorn, app.main:app, --host, 0.0.0.0, --port, "3018"]
     volumes:
-      - ${LEAN_STATE_DIR}/platform-data:/state/platform-data
-      - ${LEAN_STATE_DIR}/platform-config:/state/platform-config
-      - ${LEAN_STATE_DIR}/public:/state/public
+      - platform-data:/state/platform-data
+      - platform-config:/state/platform-config
+      - public-market:/state/public
+    depends_on:
+      market-initialize: {condition: service_completed_successfully}
     networks: [default]
     healthcheck:
       test: [CMD, /app/.venv/bin/python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3018/health/ready',timeout=5)"]
@@ -131,10 +243,12 @@ services:
       DATA_DIR: /state/public/current
       TICKFLOW_ENV_FILE: /dev/null
     volumes:
-      - ${LEAN_STATE_DIR}/public:/state/public:ro
+      - public-market:/state/public:ro
+    depends_on:
+      state-bootstrap: {condition: service_completed_successfully}
     networks: [compute]
     read_only: true
-    tmpfs: [/tmp:rw,nosuid,nodev,size=1g,uid=10001,gid=10001]
+    tmpfs: ["/tmp:rw,nosuid,nodev,size=1g,uid=10001,gid=10001"]
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     pids_limit: 128
@@ -168,7 +282,7 @@ services:
       POLICY_SERVICE_URL: embedded://policy
     command: [/app/.venv/bin/python, -m, uvicorn, app.main:app, --host, 0.0.0.0, --port, "3018", --workers, "1"]
     ports:
-      - "127.0.0.1:${LEAN_WEB_PORT:-3051}:3018"
+      - "127.0.0.1:${LEAN_WEB_PORT:-3061}:3018"
     depends_on:
       initialize: {condition: service_completed_successfully}
       catalog-bootstrap: {condition: service_completed_successfully}
@@ -190,6 +304,9 @@ networks:
     internal: true
 
 volumes:
+  public-market:
+  platform-data:
+  platform-config:
   postgres-data:
   clickhouse-data:
   redis-data:

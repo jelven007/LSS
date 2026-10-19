@@ -35,6 +35,7 @@ SSE 和基础就绪验收；TOS 实际写入、SMTP 投递、首个有数据交�
 | 精简生产架构 | [v0.5.1 架构](36-lean-architecture-v0.5.1.md) |
 | 功能退役 | [生产架构精简记录](37-production-simplification.md) |
 | TOS / SMTP | [配置、归档与验收](38-tos-smtp-acceptance.md) |
+| 本地集成 | [精简架构本地验收](39-local-lean-acceptance.md) |
 | 产品整合 | [LSS 与 Policy 整合](35-lss-product-integration.md) |
 | 数据源 | [rustdx 迁移与当前契约](30-rustdx-migration.md) |
 | 多策略 | [多策略管理](09-multi-strategy.md) |

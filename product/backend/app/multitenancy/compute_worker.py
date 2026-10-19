@@ -6,6 +6,7 @@ import base64
 import contextlib
 import json
 import math
+import os
 import re
 import sys
 import tempfile
@@ -48,7 +49,12 @@ def execute(payload: dict, private_root: Path) -> dict:
     from app.strategy.engine import StrategyEngine
     from app.tickflow.repository import DataStore, KlineRepository
 
-    market_root = settings.data_dir.resolve()
+    configured_root = settings.data_dir.resolve()
+    market_root = (
+        Path(os.environ.get("DATA_DIR", "/market")).resolve(strict=True)
+        if configured_root == private_root.resolve()
+        else configured_root
+    )
     settings.data_dir = private_root
     for path in market_root.iterdir():
         if path.name not in {"research", "strategies", "user_data"}:
