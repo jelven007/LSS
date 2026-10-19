@@ -448,6 +448,13 @@ df -h
 
 ## 13. 变更与值班交接
 
+v0.5.1 新安装在注册 Cell 后执行离线
+`python -m app.cell.admin bootstrap-full-workspace --cell-id production`，使用安装 Job
+的管理员 DSN，在控制库和业务库创建真实工作空间。可重复执行，保留管理员密码和
+后续选择。登录后确认租户选择器、业务读取和 SSE；向导标记从控制库读取，不能用
+修改平台文件或前端缓存作为修复。实际制品和未配置项见
+[全新安装记录](../../docs/releases/2026-10-19-fresh-install-v0.5.1.md)。
+
 每次生产变更至少记录：
 
 ```text

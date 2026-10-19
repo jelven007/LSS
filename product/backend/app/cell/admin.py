@@ -285,6 +285,26 @@ def provision_tenant(control, data, tenant_id: str, name: str, cell_id: str, own
         )
 
 
+def bootstrap_full_workspace(control, data, cell_id: str) -> str:
+    """Create the initial admin's workspace offline, preserving later selections."""
+    admin = control.execute(
+        """SELECT u.id FROM control.users u JOIN control.user_roles r ON r.user_id=u.id
+           WHERE u.username='admin' AND r.role_id='admin' AND u.active"""
+    ).fetchone()
+    if not admin:
+        raise ValueError("active initial administrator required")
+    tenant_id = "admin-" + admin["id"]
+    provision_tenant(control, data, tenant_id, "管理员工作空间", cell_id, admin["id"])
+    with data.transaction():
+        data.execute("SELECT business.initialize_tenant(%s,1)", (tenant_id,))
+    with control.transaction():
+        control.execute(
+            "UPDATE control.users SET default_tenant_id=%s WHERE id=%s AND default_tenant_id IS NULL",
+            (tenant_id, admin["id"]),
+        )
+    return tenant_id
+
+
 def set_tenant_status(control, tenant_id: str, status: str, actor_id: str) -> None:
     if status not in {"active", "suspended"}:
         raise ValueError("unsupported tenant status")
@@ -503,6 +523,8 @@ def main() -> None:
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("sync-strategies")
     commands.add_parser("bootstrap-full-identity")
+    workspace = commands.add_parser("bootstrap-full-workspace")
+    workspace.add_argument("--cell-id", required=True)
     choose = commands.add_parser("select-cell")
     choose.add_argument("--realtime-units", type=int, default=1)
     capacity = commands.add_parser("cell-capacity")
@@ -571,6 +593,10 @@ def main() -> None:
             with connect_admin("TSP_CONTROL_ADMIN_DSN") as control:
                 if args.command == "bootstrap-full-identity":
                     print(json.dumps({"created": bootstrap_full_identity(control)}))
+                elif args.command == "bootstrap-full-workspace":
+                    with connect_admin("TSP_DATA_ADMIN_DSN") as data:
+                        tenant_id = bootstrap_full_workspace(control, data, args.cell_id)
+                        print(json.dumps({"tenant_id": tenant_id}))
                 elif args.command == "create-user":
                     password = os.environ.get("TSP_BOOTSTRAP_PASSWORD") or getpass("Password: ")
                     print(json.dumps({"user_id": add_user(control, args.email, password)}))

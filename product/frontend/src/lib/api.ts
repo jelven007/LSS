@@ -2504,9 +2504,15 @@ export const api = {
   notificationRetry: (id: string) =>
     request<{ ok: boolean }>(`/api/monitor-rules/notifications/deliveries/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
 
-  settings: () => request<SettingsState>(
-    multitenancyEnabled() && !hasPermission('settings:manage') ? '/api/business/settings' : '/api/settings',
-  ),
+  settings: async () => {
+    if (!multitenancyEnabled()) return request<SettingsState>('/api/settings')
+    if (!hasPermission('settings:manage')) return request<SettingsState>('/api/business/settings')
+    const [platform, business] = await Promise.all([
+      request<SettingsState>('/api/settings'),
+      request<Pick<SettingsState, 'onboarding_completed'>>('/api/business/settings'),
+    ])
+    return { ...platform, onboarding_completed: business.onboarding_completed }
+  },
   saveTickflowKey: (api_key: string) =>
     request<SaveTickflowKeyResult>('/api/settings/tickflow-key', {
       method: 'POST',
@@ -2515,10 +2521,11 @@ export const api = {
   clearTickflowKey: () =>
     request<any>('/api/settings/tickflow-key', { method: 'DELETE' }),
 
-  /** 标记首次使用向导完成（持久化到后端 preferences） */
+  /** 标记首次使用向导完成（多租户模式按账户持久化） */
   completeOnboarding: () =>
     request<{ ok: boolean; onboarding_completed: boolean }>(
-      '/api/settings/onboarding/complete', { method: 'POST' },
+      multitenancyEnabled() ? '/api/business/onboarding/complete' : '/api/settings/onboarding/complete',
+      { method: 'POST' },
     ),
 
   /** 保存 AI 配置 */

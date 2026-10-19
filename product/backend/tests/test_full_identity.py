@@ -19,6 +19,7 @@ from psycopg.rows import dict_row
 
 from app.cell.admin import (
     bootstrap_full_identity,
+    bootstrap_full_workspace,
     import_full_accounts,
     import_users,
     migrate,
@@ -143,6 +144,61 @@ def test_admin_username_no_fake_email_and_password_never_reset(env):
     token, changed = AccountIdentity(env["db"]).login("admin", "UpdatedAdmin123", uuid.uuid4().hex)
     assert changed["id"] == admin["id"]
     identity.change_password(token, "UpdatedAdmin123", "Admin123")
+
+
+def test_initial_workspace_is_idempotent_and_preserves_admin_selection(env):
+    identity = env["identity"]
+    _, admin = identity.login("admin", "Admin123", uuid.uuid4().hex)
+    previous = admin["default_tenant_id"]
+    try:
+        tenant_id = bootstrap_full_workspace(env["control"], env["data"], "full")
+        assert bootstrap_full_workspace(env["control"], env["data"], "full") == tenant_id
+        _, admin = identity.login("admin", "Admin123", uuid.uuid4().hex)
+        assert admin["default_tenant_id"] == tenant_id
+        context = identity.context(admin, None, "initial-workspace")
+        with env["db"].business_transaction(context) as conn:
+            assert conn.execute(
+                "SELECT value FROM business.documents WHERE namespace='preferences'"
+            ).fetchone()["value"] == {}
+        _, other = register(env)
+        identity.choose_tenant(admin, other["default_tenant_id"], "admin-choice")
+        bootstrap_full_workspace(env["control"], env["data"], "full")
+        _, admin = identity.login("admin", "Admin123", uuid.uuid4().hex)
+        assert admin["default_tenant_id"] == other["default_tenant_id"]
+    finally:
+        env["control"].execute(
+            "UPDATE control.users SET default_tenant_id=%s WHERE id=%s", (previous, admin["id"]),
+        )
+
+
+def test_onboarding_survives_new_api_and_keeps_account_preferences(env, monkeypatch):
+    from app.multitenancy.preferences import UserPreferences
+
+    monkeypatch.setattr(
+        "app.services.preferences.get_onboarding_completed",
+        lambda: pytest.fail("onboarding must not read a platform file"),
+    )
+    token, admin = env["identity"].login("admin", "Admin123", uuid.uuid4().hex)
+    env["control"].execute("DELETE FROM control.user_preferences WHERE user_id=%s", (admin["id"],))
+    client = env["client"]
+    client.cookies.set("tf_session", token)
+    assert client.get("/api/business/settings").json()["onboarding_completed"] is False
+    columns = [{"key": "mine", "visible": True}]
+    client.put("/api/business/preferences/watchlist-columns", json={"columns": columns})
+    result = client.post("/api/business/onboarding/complete")
+    assert result.status_code == 200 and result.json()["onboarding_completed"]
+    restarted = AccountIdentity(env["db"])
+    client.app.state.account_identity = restarted
+    try:
+        assert client.get("/api/business/settings").json()["onboarding_completed"] is True
+        assert UserPreferences(env["db"]).load(admin["id"])["watchlist_columns"] == columns
+        assert client.post("/api/business/onboarding/complete").status_code == 200
+        other_token, other = register(env)
+        client.cookies.set("tf_session", other_token)
+        assert not UserPreferences(env["db"]).load(other["id"])["onboarding_completed"]
+        assert client.get("/api/business/settings").json()["onboarding_completed"] is True
+    finally:
+        client.app.state.account_identity = env["identity"]
 
 
 def test_chinese_secret_is_required_before_any_email(env):
@@ -433,7 +489,7 @@ def test_business_bootstrap_keeps_full_navigation_and_private_display_preference
     response = client.get("/api/business/bootstrap")
     assert response.status_code == 200, response.text
     payload = response.json()
-    assert len(payload["menus"]) == 18 and "/" in payload["menus"] and "/data" not in payload["menus"]
+    assert len(payload["menus"]) == 8 and "/" in payload["menus"] and "/data" not in payload["menus"]
     assert payload["settings_tabs"] == ["account"] and payload["business"]["onboarding_completed"]
     assert "smtp" not in response.text and "api_key" not in response.text and "base_url" not in response.text
     layout = {"v": 1, "items": [{"i": "mine", "t": "indices", "x": 0, "y": 0, "w": 4, "h": 8}]}

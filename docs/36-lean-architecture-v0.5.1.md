@@ -147,6 +147,14 @@ Policy、TSP 控制库和 TSP 业务库使用同一个 PostgreSQL 集群：
 
 ## 8. 扩展阈值
 
+全新安装通过 `bootstrap-full-workspace --cell-id production` 创建初始管理员所属工作
+空间。控制库保存租户、成员和默认选择，业务库通过现有初始化函数创建绑定和默认
+偏好；重复运行不改变密码和后续租户选择。API 不获得管理员 DSN。
+
+向导完成状态由 `/api/business/onboarding/complete` 写入控制库的账户偏好，
+`/api/business/settings` 与 bootstrap 从同一表读取。平台设置仍通过认证管理通道读取，
+前端仅以账户标记决定首次向导，避免跨进程文件状态不一致。
+
 只有满足以下任一条件时才重新引入 Kafka：
 
 - 持续事件量超过 `10,000 events/s`。

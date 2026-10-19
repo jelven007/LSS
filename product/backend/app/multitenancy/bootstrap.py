@@ -20,12 +20,14 @@ def preferences(request: Request) -> UserPreferences:
     return UserPreferences(request.app.state.account_identity.db)
 
 
-def _settings(account: dict) -> dict:
+def _settings(request: Request, account: dict) -> dict:
     from app.services import ai_provider
-    from app.services import preferences as platform
 
     return {
-        "onboarding_completed": True if account["role"] == "tenant" else platform.get_onboarding_completed(),
+        "onboarding_completed": (
+            account["role"] == "tenant"
+            or preferences(request).load(account["id"])["onboarding_completed"]
+        ),
         "ai_configured": ai_provider.ai_configured(),
         "ai_round_checkpoint": ai_provider.current_ai_round_checkpoint(),
     }
@@ -72,14 +74,20 @@ def bootstrap(request: Request) -> dict:
             if "settings:manage" in account["permissions"] else ["account"]
         ),
         "preferences": _preferences(request, account),
-        "business": _settings(account),
+        "business": _settings(request, account),
         "version": __version__,
     }
 
 
 @router.get("/settings")
 def business_settings(request: Request) -> dict:
-    return _settings(require(request, "business:read"))
+    return _settings(request, require(request, "business:read"))
+
+
+@router.post("/onboarding/complete")
+def complete_onboarding(request: Request) -> dict:
+    account = require(request, "business:write")
+    return {"ok": True, **preferences(request).complete_onboarding(account["id"])}
 
 
 @router.get("/preferences")

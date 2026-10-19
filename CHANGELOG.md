@@ -19,6 +19,14 @@
 - Policy 原生桥接统一使用 crates.io 固定版 `jelven-rustdx-complete 1.12.2`，镜像构建
   不再依赖 GitHub 读取凭据。
 
+### Fixed
+
+- 冷启动股票快照不再等待首次同步的独占计算槽，板块复用同次快照。
+- 镜像构建校验首页引用资源，避免缺失 JavaScript/CSS 导致公网白屏。
+- 多租户向导完成标记按账户写入 PostgreSQL，刷新与新 API 副本使用同一状态。
+- 全新安装通过幂等离线命令创建管理员工作空间，业务请求和 SSE 有真实租户上下文；
+  重复初始化保留密码和后续租户选择。
+
 ### Removed
 
 - VKE 生产拓扑中的 Kafka、Flink、独立 Policy API、独立 TSP PostgreSQL、SSE Gateway

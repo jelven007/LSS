@@ -177,6 +177,12 @@ P2 参数交互补充验证 `test_strategy_param_normalize.py` 的 API 保存/�
 未配置 DSN 时跳过的数据库用例不算通过。需覆盖身份/RBAC、RLS、任务/事件、
 模拟盘事务、迁移与平台边界；发布验收见[一期记录](./phase1-implementation.md)。
 
+v0.5.1 新安装回归使用 `test_full_identity.py` 验证管理员工作空间重复初始化、默认
+选择保留，以及向导状态在新 AccountIdentity 实例中持久可见、个人列配置不丢失。
+前端 `onboarding-api.test.ts` 验证管理配置与账户标记合并和独立模式兼容。
+公网验收须真实登录、完成向导、刷新、点击九项菜单并读取 SSE 首帧；页面仅有 `h1`
+或 HTTP 200 不算业务路由验收，须确认未回到向导且无 JavaScript 错误。
+
 二期第一步的本地百人关键链路验收使用同类一次性 PostgreSQL 服务：
 
 ```bash

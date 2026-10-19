@@ -159,6 +159,8 @@ spec:
               /app/.venv/bin/python -m app.cell.admin bootstrap-full-identity
               /app/.venv/bin/python -m app.cell.admin register-cell \
                 --cell-id production --api-url https://shanao.asia
+              /app/.venv/bin/python -m app.cell.admin bootstrap-full-workspace \
+                --cell-id production
               /app/.venv/bin/python -m app.cell.admin sync-strategies
           env:
             - name: HOME

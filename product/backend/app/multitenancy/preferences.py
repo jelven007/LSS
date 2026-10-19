@@ -14,6 +14,7 @@ DEFAULTS = {
     "dashboard_layout": None, "watchlist_columns": None, "screener_result_columns": None,
     "watchlist_groups_in_nav": False, "sse_refresh_pages": {}, "nav_order": [], "nav_hidden": [],
     "screener_auto_run": False,
+    "onboarding_completed": False,
 }
 EDITABLE = frozenset({"dashboard_layout", "watchlist_columns", "screener_result_columns"})
 
@@ -43,11 +44,17 @@ class UserPreferences:
                 raise AccessError(400, "列表列配置格式错误")
             if len(json.dumps(value, ensure_ascii=False)) > 64 * 1024:
                 raise AccessError(400, "列表列配置过大")
+        return self._merge(user_id, {key: value})
+
+    def complete_onboarding(self, user_id: str) -> dict:
+        return self._merge(user_id, {"onboarding_completed": True})
+
+    def _merge(self, user_id: str, updates: dict) -> dict:
         with self.db.control.connection() as conn:
             conn.execute(
                 """INSERT INTO control.user_preferences(user_id,value) VALUES(%s,%s)
                    ON CONFLICT(user_id) DO UPDATE SET
                      value=control.user_preferences.value || excluded.value,
-                     revision=control.user_preferences.revision+1""", (user_id, Jsonb({key: value})),
+                     revision=control.user_preferences.revision+1""", (user_id, Jsonb(updates)),
             )
-        return {key: value}
+        return updates

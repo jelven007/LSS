@@ -55,7 +55,9 @@ TSP 控制库和业务库必须使用不同运行角色，两个角色均禁止 
 3. 保留 VKE 系统、镜像拉取认证、域名证书和 ALB 安装通道；这些不承载旧业务数据。
 4. 重新生成 PostgreSQL、ClickHouse、Redis、两个 TSP 运行角色及平台 Token。
    TOS AK/SK 需由云端授权提供，随机字符串不能代替云存储凭据。
-5. 应用空库清单，完成 Policy Schema、TSP 双库角色、schema v6 和首次管理员初始化。
+5. 应用空库清单，完成 Policy Schema、TSP 双库角色、schema v6、首次管理员及其工作
+   空间初始化。`bootstrap-full-workspace --cell-id production` 可幂等重跑，不覆盖
+   密码和后续租户选择。
 6. 验证公共行情发布标记、独立 Task Worker、Compute、统一 API、HTTPS 和登录。
    全新环境没有历史报告，页面必须展示真实空态。
 7. SMTP 未配置时保持禁用；上线记录明确说明邮件注册及密码找回尚未验收。
